@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LIMITS } from "../config/limits";
+import { LIMITS, MAX_OFFSET_PAGE } from "../config/limits";
 import {
   WAR_MEMBER_STAT_KEYS,
   WAR_RESULTS,
@@ -206,6 +206,8 @@ const guildWarActivePoolMemberSchema = z.object({
   warHistoryId: z.string().nullable(),
   eventId: z.string().nullable(),
   userId: z.string(),
+  display_name: z.string().optional(),
+  avatar_media_id: mediaIdSchema.nullable(),
 });
 
 export const guildWarActiveResponseSchema = z.object({
@@ -213,7 +215,7 @@ export const guildWarActiveResponseSchema = z.object({
   event: eventSchema.nullable(),
   teams: z.array(
     warTeamSchema.extend({
-      members: z.array(warTeamMemberSchema),
+      members: z.array(guildWarMemberReadSchema),
     }),
   ),
   pool: z.array(guildWarActivePoolMemberSchema),
@@ -222,6 +224,7 @@ export const guildWarActiveResponseSchema = z.object({
 });
 
 export const guildWarHistoryDetailResponseSchema = warHistorySchema.extend({
+  etag: z.string().min(1),
   teams: z.array(warTeamSchema.extend({
     members: z.array(guildWarMemberReadSchema),
   })),
@@ -249,7 +252,7 @@ export const guildWarHistoryListResponseSchema = z.object({
 const historyTimestampSchema = z.string().datetime().transform((value) => new Date(value).toISOString());
 
 export const guildWarHistoryQuerySchema = z.object({
-  page: z.coerce.number().int().positive().max(10_000).default(1),
+  page: z.coerce.number().int().positive().max(MAX_OFFSET_PAGE).default(1),
   limit: z.coerce.number().int().positive().max(LIMITS.pagination.guildWar)
     .default(LIMITS.pagination.guildWar),
   date_from: historyTimestampSchema.optional(),

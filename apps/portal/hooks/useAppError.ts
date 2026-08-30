@@ -25,9 +25,17 @@ export function presentAppError(error: unknown, fallbackMessage = i18n.t("common
       return;
     }
     if (error.status === 409) {
-      showErrorToast(
+      const message = [
         i18n.t("common:errors.conflict", { defaultValue: "Conflict detected. Please refresh and try again." }),
-      );
+        error.errorCode ? `${i18n.t("common:errors.codeLabel")}: ${error.errorCode}` : null,
+        error.requestId ? `${i18n.t("common:errors.requestLabel")}: ${error.requestId}` : null,
+      ].filter(Boolean).join("\n");
+      portalToast({
+        title: i18n.t("common:errors.conflictTitle"),
+        message,
+        status: "warning",
+        autoClose: 6000,
+      });
       return;
     }
     if (error.errorCode === "VALIDATION_ERROR") {

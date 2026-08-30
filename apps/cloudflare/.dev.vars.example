@@ -1,5 +1,4 @@
-# Copy this file to .dev.vars for local development only.
-# For production, store both values with `wrangler secret put`; never add them
-# to wrangler.jsonc, environment vars, or source control.
-IG_INVITE_TOKEN_SECRET=replace-with-at-least-32-random-bytes
-IG_AUDIT_DOWNLOAD_SECRET=replace-with-at-least-32-random-bytes
+# Copy this file to .dev.vars for optional local runtime variables only.
+# Optional public maintenance metadata. The deadline must use UTC canonical ISO format:
+# IG_MAINTENANCE_REASON=Database maintenance
+# IG_MAINTENANCE_UNTIL=2026-08-30T12:00:00.000Z

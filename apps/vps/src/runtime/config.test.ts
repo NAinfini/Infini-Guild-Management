@@ -2,11 +2,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { readVpsRuntimeConfig } from "./config.js";
 
-const SECRET = "0123456789abcdef0123456789abcdef";
 const BASE = {
   IG_PUBLIC_URL: "https://guild.example",
-  IG_INVITE_TOKEN_SECRET: SECRET,
-  IG_AUDIT_DOWNLOAD_SECRET: SECRET,
 };
 
 describe("readVpsRuntimeConfig", () => {
@@ -38,6 +35,21 @@ describe("readVpsRuntimeConfig", () => {
     for (const value of ["on", " on ", "true", "invalid"]) {
       expect(readVpsRuntimeConfig({ ...BASE, IG_MAINTENANCE_MODE: value }).maintenanceMode).toBe(true);
     }
+  });
+
+  it("reads and validates public maintenance metadata", () => {
+    expect(readVpsRuntimeConfig({
+      ...BASE,
+      IG_MAINTENANCE_REASON: " Database maintenance ",
+      IG_MAINTENANCE_UNTIL: "2026-08-30T12:00:00.000Z",
+    }).maintenance).toEqual({
+      reason: "Database maintenance",
+      until: "2026-08-30T12:00:00.000Z",
+    });
+    expect(() => readVpsRuntimeConfig({ ...BASE, IG_MAINTENANCE_UNTIL: "2026-08-30T12:00:00Z" }))
+      .toThrow(/IG_MAINTENANCE_UNTIL/);
+    expect(() => readVpsRuntimeConfig({ ...BASE, IG_MAINTENANCE_REASON: "x".repeat(501) }))
+      .toThrow(/IG_MAINTENANCE_REASON/);
   });
 
   it("requires all Cloudflare Email Sending REST values together", () => {

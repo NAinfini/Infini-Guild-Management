@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "infini-guild-e2e",
-  "main": "../../apps/cloudflare/src/index.ts",
+  "main": "../../apps/cloudflare/dist/worker.mjs",
   "compatibility_date": "2026-07-28",
   // The worker resolves the per-request ExecutionContext through
   // AsyncLocalStorage; without this flag workerd refuses to load the bundle.
@@ -38,6 +38,10 @@
       {
         "name": "NOTIFICATIONS",
         "class_name": "CloudflareNotificationDurableObject"
+      },
+      {
+        "name": "AUTH_LOGIN_RATE_LIMITER",
+        "class_name": "AuthRateLimitDO"
       }
     ]
   },
@@ -45,6 +49,10 @@
     {
       "tag": "notifications-v1",
       "new_sqlite_classes": ["CloudflareNotificationDurableObject"]
+    },
+    {
+      "tag": "auth-login-rate-limit-v1",
+      "new_sqlite_classes": ["AuthRateLimitDO"]
     }
   ],
 
@@ -63,6 +71,11 @@
       "name": "READ_RATE_LIMITER",
       "namespace_id": "9002",
       "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "CONTENT_VIEW_RATE_LIMITER",
+      "namespace_id": "9008",
+      "simple": { "limit": 20, "period": 60 }
     },
     {
       "name": "MUTATION_RATE_LIMITER",
@@ -87,9 +100,9 @@
   ],
 
   "vars": {
-    "IG_PUBLIC_URL": "https://127.0.0.1:8787",
-    "IG_ALLOWED_ORIGINS": "https://127.0.0.1:8787",
-    "IG_SESSION_COOKIE_NAME": "__Host-ig_session",
+    "IG_PUBLIC_URL": "http://127.0.0.1:8787",
+    "IG_ALLOWED_ORIGINS": "http://127.0.0.1:8787",
+    "IG_SESSION_COOKIE_NAME": "ig_session",
     "IG_PBKDF2_ITERATIONS": "10000"
   }
 }

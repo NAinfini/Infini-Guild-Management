@@ -261,6 +261,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
 
   const handleDelete = async (badge: MemberBadge) => {
     if (isBadgeDeletePending(badge.id)) return;
+    const expectedUpdatedAt = badge.updated_at;
 
     const accepted = await confirm({
       title: t("badges.confirmDelete.title"),
@@ -273,7 +274,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
       cancelLabel: t("badges.action.cancel"),
       intent: "danger",
     });
-    if (accepted) deleteBadge(badge.id);
+    if (accepted) deleteBadge(badge.id, expectedUpdatedAt);
   };
 
   /*
@@ -325,7 +326,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
   };
 
   return (
-    <div className="admin-panel admin-md">
+      <div className="admin-panel admin-md admin-badges__workbench">
       <div className="admin-md__master">
         <div className="admin-md__master-head">
           <div className="admin-md__master-head-row">
@@ -430,8 +431,8 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                 ) : null}
               </div>
             </div>
-            <ScrollArea className="admin-md__detail-body">
-              <div className="admin-md__detail-pad admin-md__detail-stack">
+            <div className="admin-md__detail-body admin-badges__detail-body">
+              <div className="admin-md__detail-pad admin-md__detail-stack admin-badges__detail-layout">
                 <BadgeFormFields form={form} setForm={setForm} />
                 {selectedBadge ? (
                   <div className="admin-badges__membership">
@@ -449,6 +450,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                       ) : null}
                     </div>
                     <PickList
+                      className="admin-badges__member-picker"
                       aria-label={t("badges.field.members")}
                       options={memberOptions}
                       selected={draftMemberIds}
@@ -465,7 +467,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                   <span className="admin-md__muted">{t("badges.membership.createFirst")}</span>
                 )}
               </div>
-            </ScrollArea>
+            </div>
             <div className="admin-md__detail-foot">
               <div className="admin-md__detail-actions">
                 <Button variant="outline" onClick={discardChanges} disabled={!isDirty}>

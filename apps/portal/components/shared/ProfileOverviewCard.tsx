@@ -99,11 +99,12 @@ export function ProfileOverviewCard({
   );
 
   return (
-    <section
-      className="profile-overview"
-      /* 主职业色。和名片预览用同一个来源，两块的色调才是一致的。 */
-      style={primaryColor ? ({ "--overview-accent": primaryColor } as CSSProperties) : undefined}
-    >
+    <div className="profile-overview-container">
+      <section
+        className="profile-overview"
+        /* 主职业色。和名片预览用同一个来源，两块的色调才是一致的。 */
+        style={primaryColor ? ({ "--overview-accent": primaryColor } as CSSProperties) : undefined}
+      >
       <div className="profile-overview__identity">
         <span className="profile-overview__avatar">
           {avatarSrc ? (
@@ -224,13 +225,14 @@ export function ProfileOverviewCard({
         </div>
       </div>
 
-      <dl className="profile-overview__stats">
-        {stat("power", <BoltIcon size={13} />, t("field.power"), power.toLocaleString())}
-        {stat("classes", <SwordsIcon size={13} />, t("section.classes"), String(classList.length))}
-        {stat("images", <PhotoIcon size={13} />, t("gaps.field.images"), String(imageList.length))}
-        {stat("videos", <VideoIcon size={13} />, t("media.videos"), String(videoList.length))}
-        {stat("week", <ClockIcon size={13} />, t("overview.stat.weekHours"), t("week.hoursShort", { hours: weekHours }))}
-      </dl>
-    </section>
+        <dl className="profile-overview__stats">
+          {stat("power", <BoltIcon size={13} />, t("field.power"), power.toLocaleString())}
+          {stat("classes", <SwordsIcon size={13} />, t("section.classes"), String(classList.length))}
+          {stat("images", <PhotoIcon size={13} />, t("gaps.field.images"), String(imageList.length))}
+          {stat("videos", <VideoIcon size={13} />, t("media.videos"), String(videoList.length))}
+          {stat("week", <ClockIcon size={13} />, t("overview.stat.weekHours"), t("week.hoursShort", { hours: weekHours }))}
+        </dl>
+      </section>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   ANALYTICS_SELECTION_SOFT_CAP,
@@ -17,6 +17,8 @@ import { copyPlainText } from "../../utils/copy";
 import { localDateKey } from "../../utils/datetime";
 import { useGuildWarAnalyticsComputed } from "./useGuildWarAnalyticsComputed";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";
+import { updateAdminAnalyticsSettings } from "../../services/SiteConfigService";
+import { useAppError } from "../useAppError";
 import {
   getMetricLabelKey,
   hashToPaletteColor,
@@ -24,7 +26,7 @@ import {
   metricValueOrNullFromWarMember,
   normalizeMetricValue,
 } from "../../utils/guild-war-analytics";
-import { DEFAULT_GAME_RULES, GUILD_WAR_KDA_KEY } from "@guild/shared";
+import { DEFAULT_GAME_RULES, formatCsvCell, GUILD_WAR_KDA_KEY } from "@guild/shared";
 
 type UseGuildWarAnalyticsParams = {
   historyRows: Array<{ id: string; war_name: string; created_at: string }>;
@@ -32,12 +34,26 @@ type UseGuildWarAnalyticsParams = {
   guildWarService: GuildWarService;
 };
 
+export function buildAnalyticsCsv(
+  columns: readonly Readonly<{ dataKey: string; title: string }>[],
+  rows: readonly Readonly<Record<string, unknown>>[],
+): string {
+  return [
+    columns.map(({ title }) => formatCsvCell(title, { alwaysQuote: true })).join(","),
+    ...rows.map((row) => columns
+      .map(({ dataKey }) => formatCsvCell(row[dataKey], { alwaysQuote: true }))
+      .join(",")),
+  ].join("\n");
+}
+
 export function useGuildWarAnalytics({
   historyRows,
   chartPalette,
   guildWarService,
 }: UseGuildWarAnalyticsParams) {
   const { t } = useTranslation("guild-war");
+  const queryClient = useQueryClient();
+  const { showError } = useAppError();
   const hasSession = useAuthStore((state) => Boolean(state.user));
   const warRules = DEFAULT_GAME_RULES.guild_war;
   const {
@@ -220,6 +236,27 @@ export function useGuildWarAnalytics({
     }
   }, [analyticsSettings, modifierWeightsInitialized]);
 
+  const modifierWeightsDirty = analyticsSettings
+    ? Object.entries(modifierWeights).some(
+      ([key, weight]) => analyticsSettings.modifier_weights[
+        key as keyof typeof analyticsSettings.modifier_weights
+      ] !== weight,
+    )
+    : false;
+  const modifierWeightsValid = Object.values(modifierWeights).some((weight) => weight > 0);
+  const saveModifierWeightsMutation = useMutation({
+    mutationFn: () => updateAdminAnalyticsSettings({ modifier_weights: modifierWeights }),
+    onSuccess: async (settings) => {
+      setModifierWeights({ ...settings.modifier_weights });
+      setModifierWeightsInitialized(true);
+      notifySuccess(t("analytics.normalization.saved"));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.analyticsAll() });
+    },
+    onError: (error) => {
+      showError(error, t("analytics.normalization.saveFailed"));
+    },
+  });
+
   const warNormContext = useMemo(() => {
     const wars = analyticsQuery.data?.wars ?? [];
     const map = new Map<string, { durationMinutes: number | null; modifier: number }>();
@@ -276,22 +313,14 @@ export function useGuildWarAnalytics({
   };
 
   const copyAnalyticsCsv = async () => {
-    const headers = computed.analyticsTableColumns
-      .map((column) => ("dataIndex" in column ? String(column.dataIndex) : column.key))
-      .filter((value): value is string => Boolean(value));
-    const lines = [headers.join(",")];
-    for (const row of computed.analyticsTableRows as Array<Record<string, unknown>>) {
-      lines.push(
-        headers
-          .map((header) => {
-            const value = row[header];
-            const text = value === null || value === undefined ? "" : String(value);
-            return `"${text.replaceAll("\"", "\"\"")}"`;
-          })
-          .join(","),
-      );
-    }
-    await copyPlainText(lines.join("\n"));
+    const columns = computed.analyticsTableColumns.flatMap((column) => {
+      const dataKey = column.dataIndex ?? column.key;
+      return dataKey ? [{ dataKey, title: column.title }] : [];
+    });
+    await copyPlainText(buildAnalyticsCsv(
+      columns,
+      computed.analyticsTableRows as Array<Record<string, unknown>>,
+    ));
     notifySuccess(t("message.csvCopied"));
   };
 
@@ -338,10 +367,19 @@ export function useGuildWarAnalytics({
     setAnalyticsHeatmapEnabled,
     modifierWeights,
     setModifierWeights,
+    modifierWeightsDirty,
+    modifierWeightsValid,
+    saveModifierWeights: () => {
+      if (modifierWeightsDirty && modifierWeightsValid && !saveModifierWeightsMutation.isPending) {
+        saveModifierWeightsMutation.mutate();
+      }
+    },
+    saveModifierWeightsPending: saveModifierWeightsMutation.isPending,
     referenceDuration,
     analyticsWarOptions,
     analyticsSelectableUserIds: computed.analyticsSelectableUserIds,
     analyticsUserIdToUsername: computed.analyticsUserIdToUsername,
+    analyticsUserIdToAvatarMediaId: computed.analyticsUserIdToAvatarMediaId,
     analyticsTeamOptions: computed.analyticsTeamOptions,
     analyticsMetricLabel: computed.analyticsMetricLabel,
     analyticsWarSummary: computed.analyticsWarSummary,

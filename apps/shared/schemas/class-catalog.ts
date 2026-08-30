@@ -2,6 +2,7 @@ import { z } from "zod";
 import { LIMITS } from "../config/limits";
 import { CLASS_VECTOR_ICON_IDS } from "../constants/class-icons";
 import { mediaIdSchema } from "./media";
+import { catalogRevisionTokenSchema, catalogUpdatedAtSchema } from "./catalog-revision";
 
 export const classIdSchema = z
   .string()
@@ -53,7 +54,8 @@ export const createClassCatalogItemSchema = z.object({
 
 export const updateClassCatalogItemSchema = createClassCatalogItemSchema
   .partial()
-  .refine((value) => Object.keys(value).length > 0, {
+  .extend({ expected_updated_at: catalogUpdatedAtSchema })
+  .refine(({ expected_updated_at: _expectedUpdatedAt, ...patch }) => Object.keys(patch).length > 0, {
     message: "At least one class field is required",
   });
 
@@ -67,6 +69,7 @@ export const updateClassCatalogItemSchema = createClassCatalogItemSchema
  * 前后端对「最终顺序是什么」不存在第二种解释。
  */
 export const reorderClassCatalogSchema = z.object({
+  expected_revision_token: catalogRevisionTokenSchema,
   order: z.array(classIdSchema)
     .min(1)
     .max(LIMITS.content.classCatalogSize.max)

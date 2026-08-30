@@ -63,12 +63,23 @@ describe("guild-war Portal presenters", () => {
       etag: '"active-event-1-2"',
     }));
     expect(parsed.teams[0]).toMatchObject({ event_id: "event-1", war_history_id: null });
-    expect(parsed.pool[0]).toMatchObject({ eventId: "event-1", warHistoryId: null, userId: "user-2" });
+    expect(parsed.teams[0]?.members[0]).toMatchObject({
+      user_id: "user-1",
+      avatar_media_id: AVATAR_MEDIA_ID,
+    });
+    expect(parsed.pool[0]).toMatchObject({
+      eventId: "event-1",
+      warHistoryId: null,
+      userId: "user-2",
+      display_name: "Two",
+      avatar_media_id: null,
+    });
   });
 
   it("preserves history detail and analytics fixed-stat wire", () => {
     const history = aggregate("concluded");
     const detail = guildWarHistoryDetailResponseSchema.parse(presentHistoryDetail(history));
+    expect(detail.etag).toBe('"history-war-1-2"');
     expect(detail.teams[0]?.members[0]).toMatchObject({
       user_id: "user-1",
       display_name: "One",

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  NOTIFICATION_CONNECTION_POLICY,
   NotificationConnectionPolicy,
   type NotificationSessionSnapshot,
 } from "@guild/server";
@@ -78,6 +79,20 @@ function snapshot(): NotificationSessionSnapshot {
     roleLevel: 100,
     permissions: [],
   };
+}
+
+function snapshotFor(sessionId: string): NotificationSessionSnapshot {
+  return {
+    sessionId,
+    userId: sessionId.replace("session-", "user-"),
+    roleId: "member",
+    roleLevel: 100,
+    permissions: [],
+  };
+}
+
+function snapshotWithPermissions(permissions: readonly string[]): NotificationSessionSnapshot {
+  return { ...snapshot(), permissions };
 }
 
 async function verifyRuntimeContract(create: () => RuntimeHarness): Promise<void> {
@@ -212,6 +227,137 @@ describe("notification runtime parity", () => {
     }));
   });
 
+  it("immediately closes targeted revoked sockets in both runtimes", async () => {
+    const cloudflareSocket = new FakeSocket();
+    cloudflareSocket.serializeAttachment({
+      session: snapshot(),
+      lastHeartbeatAt: 1,
+      lastSessionCheckedAt: 1,
+    });
+    const resolver = {
+      resolve: vi.fn(async () => snapshot()),
+      resolveMany: vi.fn(async () => new Map<string, NotificationSessionSnapshot | null>([["session-1", null]])),
+    };
+    const cloudflareObject = new CloudflareNotificationDurableObject({
+      getWebSockets: () => [cloudflareSocket] as unknown as WebSocket[],
+    } as unknown as DurableObjectState, { DB: {} as D1Database }, new NotificationConnectionPolicy(resolver));
+
+    const cloudflareResponse = await cloudflareObject.fetch(new Request("https://notifications.internal/publish", {
+      method: "POST",
+      body: JSON.stringify({ type: "authorization_refresh", user_ids: ["user-1"] }),
+    }));
+
+    expect(await cloudflareResponse.json()).toEqual({ ok: true, refreshed: 1, closed: 1 });
+    expect(cloudflareSocket.closes).toEqual([{ code: 4401, reason: "session revoked" }]);
+
+    const vpsSocket = new FakeSocket();
+    const vpsHub = new VpsNotificationWebSocketHub(new NotificationConnectionPolicy(resolver));
+    expect((await vpsHub.connect(vpsSocket, "session-1")).accepted).toBe(true);
+
+    await vpsHub.publish({ type: "authorization_refresh", user_ids: ["user-1"] });
+
+    expect(vpsSocket.closes).toEqual([{ code: 4401, reason: "session revoked" }]);
+    expect(vpsHub.connectionCount).toBe(0);
+    await vpsHub.stop();
+  });
+
+  it("serializes Cloudflare authorization refreshes so an older result cannot overwrite a newer one", async () => {
+    const socket = new FakeSocket();
+    socket.serializeAttachment({
+      session: snapshot(),
+      lastHeartbeatAt: 1,
+      lastSessionCheckedAt: 1,
+    });
+    let releaseFirst!: () => void;
+    let firstStarted!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      firstStarted = resolve;
+    });
+    let call = 0;
+    const resolveMany = vi.fn(async () => {
+      call += 1;
+      if (call === 1) {
+        firstStarted();
+        await firstGate;
+        return new Map([["session-1", snapshotWithPermissions(["permission:old"])]]);
+      }
+      return new Map([["session-1", snapshotWithPermissions(["permission:new"])]]);
+    });
+    const object = new CloudflareNotificationDurableObject({
+      getWebSockets: () => [socket] as unknown as WebSocket[],
+    } as unknown as DurableObjectState, { DB: {} as D1Database }, new NotificationConnectionPolicy({
+      resolve: async () => snapshot(),
+      resolveMany,
+    }, { now: () => 100 }));
+    const request = () => new Request("https://notifications.internal/publish", {
+      method: "POST",
+      body: JSON.stringify({ type: "authorization_refresh", user_ids: ["user-1"] }),
+    });
+
+    const first = object.fetch(request());
+    await started;
+    const second = object.fetch(request());
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(resolveMany).toHaveBeenCalledTimes(1);
+
+    releaseFirst();
+    await expect(first).resolves.toMatchObject({ status: 200 });
+    await expect(second).resolves.toMatchObject({ status: 200 });
+    expect((socket.attachment as { session: NotificationSessionSnapshot }).session.permissions)
+      .toEqual(["permission:new"]);
+  });
+
+  it("preserves a heartbeat received while Cloudflare revalidates authorization", async () => {
+    const socket = new FakeSocket();
+    socket.serializeAttachment({
+      session: snapshot(),
+      lastHeartbeatAt: 1,
+      lastSessionCheckedAt: 1,
+    });
+    let release!: () => void;
+    let started!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const revalidationStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const policy = new NotificationConnectionPolicy({
+      resolve: async () => snapshot(),
+      resolveMany: async () => {
+        started();
+        await gate;
+        return new Map([["session-1", snapshotWithPermissions(["permission:new"])]]);
+      },
+    }, { now: () => 500 });
+    const object = new CloudflareNotificationDurableObject({
+      getWebSockets: () => [socket] as unknown as WebSocket[],
+    } as unknown as DurableObjectState, { DB: {} as D1Database }, policy);
+
+    const refresh = object.fetch(new Request("https://notifications.internal/publish", {
+      method: "POST",
+      body: JSON.stringify({ type: "authorization_refresh", user_ids: ["user-1"] }),
+    }));
+    await revalidationStarted;
+    object.webSocketMessage(socket as unknown as WebSocket, JSON.stringify({
+      type: "heartbeat",
+      tab_id: "tab-1",
+      seq: 1,
+      sent_at: "2026-08-09T00:00:00.000Z",
+    }));
+    release();
+    await refresh;
+
+    expect(socket.attachment).toMatchObject({
+      lastHeartbeatAt: 500,
+      lastSessionCheckedAt: 500,
+      session: { permissions: ["permission:new"] },
+    });
+  });
+
   it("does not accept a Durable Object socket when alarm preparation fails", async () => {
     const acceptWebSocket = vi.fn();
     const state = {
@@ -248,6 +394,50 @@ describe("notification runtime parity", () => {
       observed_at: expect.any(String),
       connection_count: 2,
     });
+  });
+
+  it("resumes bounded session revalidation on later alarms without closing deferred sockets", async () => {
+    const now = NOTIFICATION_CONNECTION_POLICY.sessionRevalidationIntervalMs;
+    const total = NOTIFICATION_CONNECTION_POLICY.sessionRevalidationsPerSweep + 1;
+    const sockets = Array.from({ length: total }, (_, index) => {
+      const socket = new FakeSocket();
+      const session = snapshotFor(`session-${String(index).padStart(4, "0")}`);
+      socket.serializeAttachment({
+        session,
+        lastHeartbeatAt: now,
+        lastSessionCheckedAt: 0,
+      });
+      return socket;
+    });
+    const resolve = vi.fn(async (sessionId: string) => snapshotFor(sessionId));
+    const policy = new NotificationConnectionPolicy({ resolve }, { now: () => now });
+    const setAlarm = vi.fn(async () => undefined);
+    const state = {
+      getWebSockets: () => sockets as unknown as WebSocket[],
+      storage: {
+        getAlarm: async () => null,
+        setAlarm,
+      },
+    } as unknown as DurableObjectState;
+    const object = new CloudflareNotificationDurableObject(state, { DB: {} as D1Database }, policy);
+
+    await object.alarm();
+
+    expect(resolve).toHaveBeenCalledTimes(NOTIFICATION_CONNECTION_POLICY.sessionRevalidationsPerSweep);
+    expect(sockets.filter((socket) => (
+      (socket.attachment as { lastSessionCheckedAt: number }).lastSessionCheckedAt === now
+    ))).toHaveLength(NOTIFICATION_CONNECTION_POLICY.sessionRevalidationsPerSweep);
+    expect(sockets.flatMap((socket) => socket.closes)).toHaveLength(0);
+    expect(setAlarm).toHaveBeenCalledWith(now + NOTIFICATION_CONNECTION_POLICY.sweepIntervalMs);
+
+    await object.alarm();
+
+    expect(resolve).toHaveBeenCalledTimes(total);
+    expect(sockets.every((socket) => (
+      (socket.attachment as { lastSessionCheckedAt: number }).lastSessionCheckedAt === now
+    ))).toBe(true);
+    expect(sockets.flatMap((socket) => socket.closes)).toHaveLength(0);
+    expect(setAlarm).toHaveBeenCalledTimes(2);
   });
 
   it("reserves VPS quota before HTTP 101 with one-use expiring claims", async () => {

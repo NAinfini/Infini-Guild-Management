@@ -169,7 +169,10 @@ const updateSiteMediaPolicySchema = z.object({
   quotas: siteMediaPolicySchema.shape.quotas.partial().optional(),
 });
 
+export const siteConfigRevisionTokenSchema = z.string().min(1).max(200);
+
 export const updateSiteConfigSchema = z.object({
+  expected_revision_token: siteConfigRevisionTokenSchema,
   site_name: z.string().trim().min(1).max(100).optional(),
   site_description: z.string().trim().min(1).max(SITE_DESCRIPTION_MAX_LENGTH).optional(),
   features: featureFlagsSchema.partial().optional(),
@@ -177,12 +180,13 @@ export const updateSiteConfigSchema = z.object({
   media_policy: updateSiteMediaPolicySchema.optional(),
   storage_policy: siteStoragePolicySchema.partial().optional(),
   absence_policy: siteAbsencePolicySchema.partial().optional(),
-}).strict().refine((value) => Object.keys(value).length > 0, {
+}).strict().refine(({ expected_revision_token: _revisionToken, ...changes }) => Object.keys(changes).length > 0, {
   message: "At least one site config field is required",
 });
 
 export const adminSiteConfigResponseSchema = z.object({
   site: siteConfigSchema.omit({ analytics_settings: true }),
+  revision_token: siteConfigRevisionTokenSchema,
   oauth_provider_status: oauthProviderStatusesSchema,
 });
 

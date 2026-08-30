@@ -1,6 +1,6 @@
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
 import type { MemberView } from "@guild/server/modules/members";
-import type { MemberAbsence } from "@guild/shared";
+import { memberProfileRevisionEtag, type MemberAbsence } from "@guild/shared";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { createHttpErrorHandler } from "../../core/error-handler.js";
@@ -11,18 +11,21 @@ const NOW = "2026-08-09T12:00:00.000Z";
 const AVATAR_ID = "aaaaaaaaaaaaaaaaaaaaa";
 const IMAGE_ID = "bbbbbbbbbbbbbbbbbbbbb";
 const AUDIO_ID = "ccccccccccccccccccccc";
+const UPLOADED_IMAGE_ID = "ddddddddddddddddddddd";
+const UPLOADED_AVATAR_ID = "eeeeeeeeeeeeeeeeeeeee";
+const UPLOADED_AUDIO_ID = "fffffffffffffffffffff";
 const view: MemberView = {
   projection: "admin",
   record: {
     user: {
       id: "user-1", display_name: "Member", roleId: "member", roleName: "Member", roleColor: null,
       roleLevel: 100, isActive: true, deletedAt: null, createdAt: NOW, updatedAt: NOW,
-      lastLoginAt: null,
+      lastLoginAt: null, revisionToken: "user-v1",
     },
     profile: {
       userId: "user-1", power: 12, classes: ["class-1"], titleHtml: null, bio: "Bio",
       videoUrls: [], availability: null, vacationStart: null, vacationEnd: null, notes: "Admin note",
-      createdAt: NOW, updatedAt: NOW,
+      createdAt: NOW, updatedAt: NOW, revisionToken: "profile-v1",
     },
     badges: [{ id: "badge-1", name: "Badge", label_html: "Badge", color: "#fff" }],
   },
@@ -44,17 +47,17 @@ function buildApp() {
     list: vi.fn().mockResolvedValue({ data: [view], total: 1, page: 1, limit: 20, totalPages: 1 }),
     stats: vi.fn().mockResolvedValue({ active_members: 1, total_members: 1 }),
     detail: vi.fn().mockResolvedValue(view),
-    updateProfile: vi.fn().mockResolvedValue(profile),
+    updateProfile: vi.fn().mockResolvedValue({ profile, revisionToken: "profile-v2" }),
     listAbsenceWindow: vi.fn().mockResolvedValue({ data: [absence] }),
     listUserAbsences: vi.fn().mockResolvedValue({ data: [absence] }),
     createAbsence: vi.fn().mockResolvedValue(absence),
     deleteAbsence: vi.fn().mockResolvedValue({ ok: true as const }),
-    uploadImages: vi.fn().mockResolvedValue({ media_ids: ["image-2"] }),
-    deleteImages: vi.fn().mockResolvedValue({ ok: true as const, deleted: 1 }),
-    uploadAvatar: vi.fn().mockResolvedValue({ media_id: "avatar-2" }),
-    deleteAvatar: vi.fn().mockResolvedValue({ ok: true as const }),
-    uploadAudio: vi.fn().mockResolvedValue({ media_id: "audio-2" }),
-    deleteAudio: vi.fn().mockResolvedValue({ ok: true as const }),
+    uploadImages: vi.fn().mockResolvedValue({ media_ids: [UPLOADED_IMAGE_ID], profileRevisionToken: "profile-v2" }),
+    deleteImages: vi.fn().mockResolvedValue({ ok: true as const, deleted: 1, profileRevisionToken: "profile-v3" }),
+    uploadAvatar: vi.fn().mockResolvedValue({ media_id: UPLOADED_AVATAR_ID, profileRevisionToken: "profile-v4" }),
+    deleteAvatar: vi.fn().mockResolvedValue({ ok: true as const, profileRevisionToken: "profile-v5" }),
+    uploadAudio: vi.fn().mockResolvedValue({ media_id: UPLOADED_AUDIO_ID, profileRevisionToken: "profile-v6" }),
+    deleteAudio: vi.fn().mockResolvedValue({ ok: true as const, profileRevisionToken: "profile-v7" }),
   };
   const app = new Hono<HttpEnv>();
   app.onError(createHttpErrorHandler());
@@ -74,6 +77,13 @@ function buildApp() {
 }
 
 describe("users Portal HTTP contract", () => {
+  it("rejects pathological offset pages before querying storage", async () => {
+    const { app, service } = buildApp();
+
+    expect((await app.request("/api/users?page=10001")).status).toBe(400);
+    expect(service.list).not.toHaveBeenCalled();
+  });
+
   it("presents roster and detail projections in the frozen snake_case shape", async () => {
     const { app, service } = buildApp();
     const list = await app.request("/api/users?page=1&limit=20&include_total=true&external_view=true&role=member&class=class-1&active=true");
@@ -83,6 +93,7 @@ describe("users Portal HTTP contract", () => {
         user: { id: "user-1", role_name: "Member", is_active: true },
         profile: { user_id: "user-1", avatar_media_id: AVATAR_ID, audio_name: "intro.opus" },
         badges: [{ id: "badge-1" }],
+        edit_revisions: { user_revision_token: "user-v1", profile_revision_token: "profile-v1" },
       }],
       total: 1,
       total_pages: 1,
@@ -120,14 +131,91 @@ describe("users Portal HTTP contract", () => {
       const response = await app.request(path, {
         method,
         body,
-        ...(typeof body === "string" ? { headers: { "Content-Type": "application/json" } } : {}),
+        headers: {
+          ...(typeof body === "string" ? { "Content-Type": "application/json" } : {}),
+          ...(path.includes("/media/") ? { "If-Match": memberProfileRevisionEtag("profile-v1") } : {}),
+        },
       });
       expect(response.status, `${method} ${path}: ${await response.clone().text()}`).toBe(status);
     }
     expect(service.uploadAudio).toHaveBeenCalledWith(expect.anything(), "user-1", {
       full: expect.any(Uint8Array),
       originalName: "intro.opus",
+    }, memberProfileRevisionEtag("profile-v1"));
+  });
+
+  it("forwards the profile CAS token and returns the committed revision in JSON and ETag", async () => {
+    const { app, service } = buildApp();
+    const expected = memberProfileRevisionEtag("profile-v1");
+    const response = await app.request("/api/users/user-1/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "If-Match": expected },
+      body: json({ bio: "Next" }),
     });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("ETag")).toBe(memberProfileRevisionEtag("profile-v2"));
+    expect(await response.json()).toEqual({ ...profile, profile_revision_token: "profile-v2" });
+    expect(service.updateProfile).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      { bio: "Next" },
+      expected,
+    );
+  });
+
+  it("forwards one frozen profile ETag through every media route and returns the next revision in JSON", async () => {
+    const { app, service } = buildApp();
+    const expected = memberProfileRevisionEtag("profile-v1");
+    const response = await app.request("/api/users/user-1/media/images", {
+      method: "POST",
+      headers: { "If-Match": expected },
+      body: imageForm(),
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get("ETag")).toBe(memberProfileRevisionEtag("profile-v2"));
+    expect(await response.json()).toEqual({ media_ids: [UPLOADED_IMAGE_ID], profile_revision_token: "profile-v2" });
+    expect(service.uploadImages).toHaveBeenCalledWith(expect.anything(), "user-1", expect.any(Array), expected);
+
+    const imageDelete = await app.request("/api/users/user-1/media/images", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", "If-Match": expected },
+      body: json({ media_ids: [IMAGE_ID] }),
+    });
+    expect(await imageDelete.json()).toEqual({ ok: true, deleted: 1, profile_revision_token: "profile-v3" });
+
+    const avatarUpload = await app.request("/api/users/user-1/media/avatar", {
+      method: "POST",
+      headers: { "If-Match": expected },
+      body: imageForm(),
+    });
+    expect(await avatarUpload.json()).toEqual({ media_id: UPLOADED_AVATAR_ID, profile_revision_token: "profile-v4" });
+
+    const avatarDelete = await app.request("/api/users/user-1/media/avatar", {
+      method: "DELETE",
+      headers: { "If-Match": expected },
+    });
+    expect(await avatarDelete.json()).toEqual({ ok: true, profile_revision_token: "profile-v5" });
+
+    const audioUpload = await app.request("/api/users/user-1/media/audio", {
+      method: "POST",
+      headers: { "If-Match": expected },
+      body: audioForm(),
+    });
+    expect(await audioUpload.json()).toEqual({ media_id: UPLOADED_AUDIO_ID, profile_revision_token: "profile-v6" });
+
+    const audioDelete = await app.request("/api/users/user-1/media/audio", {
+      method: "DELETE",
+      headers: { "If-Match": expected },
+    });
+    expect(await audioDelete.json()).toEqual({ ok: true, profile_revision_token: "profile-v7" });
+
+    expect(service.deleteImages).toHaveBeenCalledWith(expect.anything(), "user-1", [IMAGE_ID], expected);
+    expect(service.uploadAvatar).toHaveBeenCalledWith(expect.anything(), "user-1", expect.anything(), expected);
+    expect(service.deleteAvatar).toHaveBeenCalledWith(expect.anything(), "user-1", expected);
+    expect(service.uploadAudio).toHaveBeenCalledWith(expect.anything(), "user-1", expect.anything(), expected);
+    expect(service.deleteAudio).toHaveBeenCalledWith(expect.anything(), "user-1", expected);
   });
 
   it("maps absence DTOs before calling domain services", async () => {

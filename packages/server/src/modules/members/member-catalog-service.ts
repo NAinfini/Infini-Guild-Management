@@ -1,17 +1,18 @@
 import type {
   ClassCatalogItem,
   ClassTag,
+  CatalogRevisionEntry,
   AuditChange,
   CreateClassCatalogItemInput,
   CreateClassTagInput,
   MemberBadge,
   ReorderClassCatalogInput,
   ReorderClassTagsInput,
-  ReorderMemberBadgesInput,
+  ReorderMemberBadgeCatalogInput,
   UpdateClassCatalogItemInput,
   UpdateClassTagInput,
 } from "@guild/shared";
-import { badgeAssignmentsListQuerySchema } from "@guild/shared";
+import { badgeAssignmentsListQuerySchema, catalogRevisionToken } from "@guild/shared";
 import { PERMISSION_ID } from "@guild/shared";
 import { AppError, type RequestContext } from "@guild/kernel";
 import { createAuditEvent } from "../audit/public.js";
@@ -19,6 +20,9 @@ import type { ImageUpload } from "../media/public.js";
 import type {
   BadgeAssignmentCursor,
   BadgeAssignmentRecord,
+  CatalogCreateResult,
+  ClassCatalogStoreRecord,
+  ClassTagStoreRecord,
   ClassTagUsageReader,
   MemberMediaPort,
   MembersStore,
@@ -34,6 +38,7 @@ type CreateBadgeInput = Readonly<{
 }>;
 
 type UpdateBadgeInput = Readonly<{
+  expected_updated_at: string;
   name?: string;
   label_html?: string;
   color?: string;
@@ -58,38 +63,14 @@ export class MemberCatalogService {
   async listClasses(): Promise<readonly ClassCatalogItem[]> {
     const rows = await this.options.store.listClasses();
     const icons = await this.options.media.listClassIcons(rows.map((row) => row.id));
-    return rows.map((row): ClassCatalogItem => row.icon_type === "image"
-      ? {
-          id: row.id, label: row.label, color: row.color, sort_order: row.sort_order,
-          created_at: row.created_at, updated_at: row.updated_at,
-          icon_type: "image", vector_icon: null,
-          icon_media_id: icons.get(row.id) ?? this.missingClassIcon(row.id),
-        }
-      : {
-          id: row.id, label: row.label, color: row.color, sort_order: row.sort_order,
-          created_at: row.created_at, updated_at: row.updated_at,
-          icon_type: "vector", vector_icon: row.vector_icon ?? this.missingVectorIcon(row.id),
-          icon_media_id: null,
-        });
+    return rows.map((row) => this.projectClass(row, icons.get(row.id) ?? null));
   }
 
   async getClass(id: string): Promise<ClassCatalogItem> {
     const row = await this.options.store.findClass(id);
     if (!row) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Class not found" });
-    const icon = (await this.options.media.listClassIcons([id])).get(id);
-    return row.icon_type === "image"
-      ? {
-          id: row.id, label: row.label, color: row.color, sort_order: row.sort_order,
-          created_at: row.created_at, updated_at: row.updated_at,
-          icon_type: "image", vector_icon: null,
-          icon_media_id: icon ?? this.missingClassIcon(id),
-        }
-      : {
-          id: row.id, label: row.label, color: row.color, sort_order: row.sort_order,
-          created_at: row.created_at, updated_at: row.updated_at,
-          icon_type: "vector", vector_icon: row.vector_icon ?? this.missingVectorIcon(row.id),
-          icon_media_id: null,
-        };
+    const icon = (await this.options.media.listClassIcons([id])).get(id) ?? null;
+    return this.projectClass(row, icon);
   }
 
   async createClass(context: RequestContext, input: CreateClassCatalogItemInput): Promise<ClassCatalogItem> {
@@ -116,13 +97,13 @@ export class MemberCatalogService {
         }]),
       ],
     }));
-    this.handleCatalogOutcome(outcome, "Class");
-    return this.getClass(id);
+    return this.projectClass(this.createdCatalogRecord(outcome, "Class"), null);
   }
 
   async updateClass(context: RequestContext, id: string, input: UpdateClassCatalogItemInput): Promise<ClassCatalogItem> {
     context.authorization.require(PERMISSION_ID.ADMIN_CLASSES_MANAGE);
     const existing = await this.getClass(id);
+    if (input.expected_updated_at !== existing.updated_at) throw catalogConflict("Class changed since this editor was opened");
     const changes: AuditChange[] = [];
     if (input.label !== undefined && input.label !== existing.label) changes.push({
       field: "label",
@@ -145,12 +126,14 @@ export class MemberCatalogService {
       after: { type: "number", value: input.sort_order },
     });
     if (changes.length === 0) return existing;
+    const updatedAt = monotonicTimestamp(context.now, existing.updated_at);
     const outcome = await this.options.store.updateClass(id, {
       ...(input.label === undefined ? {} : { label: input.label }),
       ...(input.color === undefined ? {} : { color: input.color }),
       ...(input.vector_icon === undefined ? {} : { vectorIcon: input.vector_icon }),
       ...(input.sort_order === undefined ? {} : { sortOrder: input.sort_order }),
-      now: context.now,
+      expectedUpdatedAt: existing.updated_at,
+      now: updatedAt,
     }, createAuditEvent(context, {
       subjectType: "class_catalog",
       subjectId: id,
@@ -158,61 +141,110 @@ export class MemberCatalogService {
       action: "update",
       changes,
     }));
-    this.handleCatalogOutcome(outcome, "Class");
-    return this.getClass(id);
+    if (outcome !== "updated") this.throwCatalogOutcome(outcome, "Class");
+    return this.projectClass({
+      id: existing.id,
+      label: input.label ?? existing.label,
+      color: input.color ?? existing.color,
+      sort_order: input.sort_order ?? existing.sort_order,
+      created_at: existing.created_at,
+      updated_at: updatedAt,
+      icon_type: input.vector_icon === undefined ? existing.icon_type : "vector",
+      vector_icon: input.vector_icon === undefined ? existing.vector_icon : input.vector_icon,
+    }, input.vector_icon === undefined && existing.icon_type === "image" ? existing.icon_media_id : null);
   }
 
   async reorderClasses(context: RequestContext, input: ReorderClassCatalogInput): Promise<readonly ClassCatalogItem[]> {
     context.authorization.require(PERMISSION_ID.ADMIN_CLASSES_MANAGE);
-    const existing = await this.options.store.listClasses();
+    const existing = await this.listClasses();
+    if (input.expected_revision_token !== catalogRevisionToken(existing)) {
+      throw catalogConflict("Class order is stale");
+    }
     if (input.order.length === existing.length
       && input.order.every((id, index) => id === existing[index]?.id)) return this.listClasses();
     const labels = new Map(existing.map((item) => [item.id, item.label]));
     if (input.order.length !== existing.length || input.order.some((id) => !labels.has(id))) {
       throw new AppError({ code: "CONFLICT", status: 409, message: "Class order is stale" });
     }
-    const outcome = await this.options.store.reorderClasses(input.order, context.now, createAuditEvent(context, {
+    const next = reorderedCatalogEntries(existing, input.order, context.now);
+    const outcome = await this.options.store.reorderClasses({
+      order: input.order,
+      expected: catalogEntries(existing),
+      next,
+    }, createAuditEvent(context, {
       subjectType: "class_catalog",
       subjectId: "catalog",
       subjectLabel: null,
       action: "reorder",
       changes: [orderChange(existing.map((item) => item.id), input.order, labels)],
     }));
-    if (outcome === "stale_order") throw new AppError({ code: "CONFLICT", status: 409, message: "Class order is stale" });
-    return this.listClasses();
+    if (outcome === "stale_order") throw catalogConflict("Class order is stale");
+    return reorderedCatalogSnapshot(existing, next);
   }
 
-  async uploadClassIcon(context: RequestContext, id: string, upload: ImageUpload): Promise<ClassCatalogItem> {
+  async uploadClassIcon(
+    context: RequestContext,
+    id: string,
+    upload: ImageUpload,
+    expectedUpdatedAt: string,
+  ): Promise<ClassCatalogItem> {
     context.authorization.require(PERMISSION_ID.ADMIN_CLASSES_MANAGE);
     const current = await this.getClass(id);
-    await this.options.media.uploadClassIcon(context, id, upload, createAuditEvent(context, {
+    if (expectedUpdatedAt !== current.updated_at) throw catalogConflict("Class changed since this editor was opened");
+    const snapshot = await this.options.media.uploadClassIcon(context, id, upload, {
+      expectedUpdatedAt,
+      updatedAt: monotonicTimestamp(context.now, current.updated_at),
+    }, createAuditEvent(context, {
       subjectType: "class_catalog",
       subjectId: id,
       subjectLabel: current.label,
       action: "upload_icon",
       context: [],
     }));
-    return this.getClass(id);
+    return this.projectClass({
+      id: current.id,
+      label: current.label,
+      color: current.color,
+      sort_order: current.sort_order,
+      created_at: current.created_at,
+      updated_at: snapshot.updatedAt,
+      icon_type: snapshot.iconType,
+      vector_icon: snapshot.vectorIcon,
+    }, snapshot.iconMediaId);
   }
 
-  async deleteClassIcon(context: RequestContext, id: string): Promise<ClassCatalogItem> {
+  async deleteClassIcon(context: RequestContext, id: string, expectedUpdatedAt: string): Promise<ClassCatalogItem> {
     context.authorization.require(PERMISSION_ID.ADMIN_CLASSES_MANAGE);
     const current = await this.getClass(id);
+    if (expectedUpdatedAt !== current.updated_at) throw catalogConflict("Class changed since this editor was opened");
     if (current.icon_type !== "image") return current;
-    await this.options.media.deleteClassIcon(context, id, createAuditEvent(context, {
+    const snapshot = await this.options.media.deleteClassIcon(context, id, {
+      expectedUpdatedAt,
+      updatedAt: monotonicTimestamp(context.now, current.updated_at),
+    }, createAuditEvent(context, {
       subjectType: "class_catalog",
       subjectId: id,
       subjectLabel: current.label,
       action: "delete",
       context: [{ field: "icon", value: { type: "code", value: "image" } }],
     }));
-    return this.getClass(id);
+    return this.projectClass({
+      id: current.id,
+      label: current.label,
+      color: current.color,
+      sort_order: current.sort_order,
+      created_at: current.created_at,
+      updated_at: snapshot.updatedAt,
+      icon_type: snapshot.iconType,
+      vector_icon: snapshot.vectorIcon,
+    }, snapshot.iconMediaId);
   }
 
-  async deleteClass(context: RequestContext, id: string): Promise<{ deleted: true }> {
+  async deleteClass(context: RequestContext, id: string, expectedUpdatedAt: string): Promise<{ deleted: true }> {
     context.authorization.require(PERMISSION_ID.ADMIN_CLASSES_MANAGE);
     const current = await this.getClass(id);
-    const outcome = await this.options.store.deleteClass(id, createAuditEvent(context, {
+    if (expectedUpdatedAt !== current.updated_at) throw catalogConflict("Class changed since this editor was opened");
+    const outcome = await this.options.store.deleteClass(id, expectedUpdatedAt, createAuditEvent(context, {
       subjectType: "class_catalog",
       subjectId: id,
       subjectLabel: current.label,
@@ -224,6 +256,7 @@ export class MemberCatalogService {
       ],
     }));
     if (outcome === "not_found") throw new AppError({ code: "NOT_FOUND", status: 404, message: "Class not found" });
+    if (outcome === "stale") throw catalogConflict("Class changed since this editor was opened");
     if (outcome === "referenced") throw new AppError({ code: "CONFLICT", status: 409, message: "Class is still referenced" });
     return { deleted: true };
   }
@@ -231,17 +264,18 @@ export class MemberCatalogService {
   async listClassTags(): Promise<readonly ClassTag[]> {
     const rows = await this.options.store.listClassTags();
     const usage = await this.options.tagUsage.countByTagIds(rows.map((row) => row.id));
-    return rows.map((row) => ({ ...row, usage_count: usage.get(row.id) ?? 0 }));
+    return rows.map((row) => this.projectClassTag(row, usage.get(row.id) ?? 0));
   }
 
   async createClassTag(context: RequestContext, input: CreateClassTagInput): Promise<ClassTag> {
     context.authorization.require(PERMISSION_ID.ADMIN_CLASSES_MANAGE);
-    const classLabels = await this.classLabels(input.class_ids);
+    const classIds = [...input.class_ids].sort();
+    const classLabels = await this.classLabels(classIds);
     const id = this.generateId();
     const outcome = await this.options.store.createClassTag({
       id,
       label: input.label,
-      classIds: input.class_ids,
+      classIds,
       ...(input.sort_order === undefined ? {} : { sortOrder: input.sort_order }),
       now: context.now,
     }, createAuditEvent(context, {
@@ -253,27 +287,27 @@ export class MemberCatalogService {
         field: "class_ids",
         value: {
           type: "list",
-          value: input.class_ids.map((classId) => ({
+          value: classIds.map((classId) => ({
             type: "reference" as const,
             value: { id: classId, label: classLabels.get(classId) ?? null },
           })),
         },
       }],
     }));
-    this.handleCatalogOutcome(outcome, "Class tag");
-    return this.getClassTag(id);
+    return this.projectClassTag(this.createdCatalogRecord(outcome, "Class tag"), 0);
   }
 
   async getClassTag(id: string): Promise<ClassTag> {
     const tag = await this.options.store.findClassTag(id);
     if (!tag) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Class tag not found" });
     const usage = await this.options.tagUsage.countByTagIds([id]);
-    return { ...tag, usage_count: usage.get(id) ?? 0 };
+    return this.projectClassTag(tag, usage.get(id) ?? 0);
   }
 
   async updateClassTag(context: RequestContext, id: string, input: UpdateClassTagInput): Promise<ClassTag> {
     context.authorization.require(PERMISSION_ID.ADMIN_CLASSES_MANAGE);
     const existing = await this.getClassTag(id);
+    if (input.expected_updated_at !== existing.updated_at) throw catalogConflict("Class tag changed since this editor was opened");
     const classLabels = input.class_ids === undefined
       ? null
       : await this.classLabels([...existing.class_ids, ...input.class_ids]);
@@ -281,8 +315,12 @@ export class MemberCatalogService {
       label?: string;
       classIds?: readonly string[];
       sortOrder?: number;
+      expectedUpdatedAt: string;
       now: string;
-    } = { now: context.now };
+    } = {
+      expectedUpdatedAt: existing.updated_at,
+      now: monotonicTimestamp(context.now, existing.updated_at),
+    };
     const changes: AuditChange[] = [];
     if (input.label !== undefined && input.label !== existing.label) {
       patch.label = input.label;
@@ -322,34 +360,56 @@ export class MemberCatalogService {
       action: "update",
       changes,
     }));
-    this.handleCatalogOutcome(outcome, "Class tag");
-    return this.getClassTag(id);
+    if (outcome !== "updated") this.throwCatalogOutcome(outcome, "Class tag");
+    return this.projectClassTag({
+      id: existing.id,
+      label: patch.label ?? existing.label,
+      class_ids: [...(patch.classIds ?? existing.class_ids)],
+      sort_order: patch.sortOrder ?? existing.sort_order,
+      created_at: existing.created_at,
+      updated_at: patch.now,
+    }, existing.usage_count);
   }
 
   async reorderClassTags(context: RequestContext, input: ReorderClassTagsInput): Promise<readonly ClassTag[]> {
     context.authorization.require(PERMISSION_ID.ADMIN_CLASSES_MANAGE);
     const existing = await this.listClassTags();
+    if (input.expected_revision_token !== catalogRevisionToken(existing)) {
+      throw catalogConflict("Class tag order is stale");
+    }
     if (input.order.length === existing.length
-      && input.order.every((id, index) => id === existing[index]?.id)) return existing;
+      && input.order.every((id, index) => id === existing[index]?.id)) return this.listClassTags();
     const labels = new Map(existing.map((item) => [item.id, item.label]));
     if (input.order.length !== existing.length || input.order.some((id) => !labels.has(id))) {
       throw new AppError({ code: "CONFLICT", status: 409, message: "Class tag order is stale" });
     }
-    const outcome = await this.options.store.reorderClassTags(input.order, context.now, createAuditEvent(context, {
+    const next = reorderedCatalogEntries(existing, input.order, context.now);
+    const outcome = await this.options.store.reorderClassTags({
+      order: input.order,
+      expected: catalogEntries(existing),
+      next,
+    }, createAuditEvent(context, {
       subjectType: "class_tag",
       subjectId: "catalog",
       subjectLabel: null,
       action: "reorder",
       changes: [orderChange(existing.map((item) => item.id), input.order, labels)],
     }));
-    if (outcome === "stale_order") throw new AppError({ code: "CONFLICT", status: 409, message: "Class tag order is stale" });
-    return this.listClassTags();
+    if (outcome === "stale_order") throw catalogConflict("Class tag order is stale");
+    return reorderedCatalogSnapshot(existing, next);
   }
 
-  async deleteClassTag(context: RequestContext, id: string): Promise<{ deleted: true }> {
+  async deleteClassTag(
+    context: RequestContext,
+    id: string,
+    expectedUpdatedAt: string,
+    expectedUsageCount: number,
+  ): Promise<{ deleted: true }> {
     context.authorization.require(PERMISSION_ID.ADMIN_CLASSES_MANAGE);
     const current = await this.getClassTag(id);
-    if (!(await this.options.store.deleteClassTag(id, createAuditEvent(context, {
+    if (expectedUpdatedAt !== current.updated_at) throw catalogConflict("Class tag changed since this editor was opened");
+    if (expectedUsageCount !== current.usage_count) throw catalogConflict("Class tag usage changed since this confirmation was opened");
+    const outcome = await this.options.store.deleteClassTag(id, expectedUpdatedAt, expectedUsageCount, createAuditEvent(context, {
       subjectType: "class_tag",
       subjectId: id,
       subjectLabel: current.label,
@@ -358,7 +418,9 @@ export class MemberCatalogService {
         { field: "class_ids", value: await this.auditClassReferences(current.class_ids) },
         { field: "sort_order", value: { type: "number", value: current.sort_order } },
       ],
-    })))) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Class tag not found" });
+    }));
+    if (outcome === "not_found") throw new AppError({ code: "NOT_FOUND", status: 404, message: "Class tag not found" });
+    if (outcome === "stale") throw catalogConflict("Class tag changed since this editor was opened");
     return { deleted: true };
   }
 
@@ -396,13 +458,13 @@ export class MemberCatalogService {
         }]),
       ],
     }));
-    this.handleCatalogOutcome(outcome, "Badge");
-    return this.getBadge(id);
+    return this.createdCatalogRecord(outcome, "Badge");
   }
 
   async updateBadge(context: RequestContext, id: string, input: UpdateBadgeInput): Promise<MemberBadge> {
     context.authorization.require(PERMISSION_ID.ADMIN_BADGES_MANAGE);
     const existing = await this.getBadge(id);
+    if (input.expected_updated_at !== existing.updated_at) throw catalogConflict("Badge changed since this editor was opened");
     const labelHtml = input.label_html === undefined ? undefined : this.sanitizeBadgeHtml(input.label_html);
     const patch: {
       name?: string;
@@ -410,8 +472,12 @@ export class MemberCatalogService {
       color?: string;
       description?: string | null;
       sortOrder?: number;
+      expectedUpdatedAt: string;
       now: string;
-    } = { now: context.now };
+    } = {
+      expectedUpdatedAt: existing.updated_at,
+      now: monotonicTimestamp(context.now, existing.updated_at),
+    };
     const changes: AuditChange[] = [];
     const changedSections: string[] = [];
     if (input.name !== undefined && input.name !== existing.name) {
@@ -471,34 +537,52 @@ export class MemberCatalogService {
         },
       }],
     }));
-    this.handleCatalogOutcome(outcome, "Badge");
-    return this.getBadge(id);
+    if (outcome !== "updated") this.throwCatalogOutcome(outcome, "Badge");
+    return {
+      id: existing.id,
+      name: patch.name ?? existing.name,
+      label_html: patch.labelHtml ?? existing.label_html,
+      color: patch.color ?? existing.color,
+      description: patch.description === undefined ? existing.description : patch.description,
+      sort_order: patch.sortOrder ?? existing.sort_order,
+      created_at: existing.created_at,
+      updated_at: patch.now,
+    };
   }
 
-  async reorderBadges(context: RequestContext, input: ReorderMemberBadgesInput): Promise<readonly MemberBadge[]> {
+  async reorderBadges(context: RequestContext, input: ReorderMemberBadgeCatalogInput): Promise<readonly MemberBadge[]> {
     context.authorization.require(PERMISSION_ID.ADMIN_BADGES_MANAGE);
     const existing = await this.listBadges();
+    if (input.expected_revision_token !== catalogRevisionToken(existing)) {
+      throw catalogConflict("Badge order is stale");
+    }
     if (input.order.length === existing.length
       && input.order.every((id, index) => id === existing[index]?.id)) return existing;
     const labels = new Map(existing.map((item) => [item.id, item.name]));
     if (input.order.length !== existing.length || input.order.some((id) => !labels.has(id))) {
       throw new AppError({ code: "CONFLICT", status: 409, message: "Badge order is stale" });
     }
-    const outcome = await this.options.store.reorderBadges(input.order, context.now, createAuditEvent(context, {
+    const next = reorderedCatalogEntries(existing, input.order, context.now);
+    const outcome = await this.options.store.reorderBadges({
+      order: input.order,
+      expected: catalogEntries(existing),
+      next,
+    }, createAuditEvent(context, {
       subjectType: "member_badge",
       subjectId: "catalog",
       subjectLabel: null,
       action: "reorder",
       changes: [orderChange(existing.map((item) => item.id), input.order, labels)],
     }));
-    if (outcome === "stale_order") throw new AppError({ code: "CONFLICT", status: 409, message: "Badge order is stale" });
-    return this.listBadges();
+    if (outcome === "stale_order") throw catalogConflict("Badge order is stale");
+    return reorderedCatalogSnapshot(existing, next);
   }
 
-  async deleteBadge(context: RequestContext, id: string): Promise<{ ok: true }> {
+  async deleteBadge(context: RequestContext, id: string, expectedUpdatedAt: string): Promise<{ ok: true }> {
     context.authorization.require(PERMISSION_ID.ADMIN_BADGES_MANAGE);
     const current = await this.getBadge(id);
-    if (!(await this.options.store.deleteBadge(id, createAuditEvent(context, {
+    if (expectedUpdatedAt !== current.updated_at) throw catalogConflict("Badge changed since this editor was opened");
+    const outcome = await this.options.store.deleteBadge(id, expectedUpdatedAt, createAuditEvent(context, {
       subjectType: "member_badge",
       subjectId: id,
       subjectLabel: current.name,
@@ -510,7 +594,9 @@ export class MemberCatalogService {
           : { type: "text", value: current.description } },
         { field: "sort_order", value: { type: "number", value: current.sort_order } },
       ],
-    })))) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Badge not found" });
+    }));
+    if (outcome === "not_found") throw new AppError({ code: "NOT_FOUND", status: 404, message: "Badge not found" });
+    if (outcome === "stale") throw catalogConflict("Badge changed since this editor was opened");
     return { ok: true };
   }
 
@@ -541,11 +627,11 @@ export class MemberCatalogService {
     const actor = context.authorization.require(PERMISSION_ID.ADMIN_BADGES_MANAGE);
     this.assertBadgeAssignmentBatch(userIds);
     const badge = await this.getBadge(badgeId);
-    const assigned = await this.options.store.assignBadge(
+    const outcome = await this.options.store.assignBadge(
       badgeId,
       userIds,
       actor.userId,
-      context.now,
+      monotonicTimestamp(context.now, badge.updated_at),
       createAuditEvent(context, {
         subjectType: "member_badge",
         subjectId: badgeId,
@@ -554,21 +640,23 @@ export class MemberCatalogService {
         // The store appends the members it actually changed; a requested count here would contradict it.
       }),
     );
-    return { assigned };
+    if (outcome.updatedAt === null) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Badge not found" });
+    return { assigned: outcome.changed, updated_at: outcome.updatedAt };
   }
 
   async unassignBadge(context: RequestContext, badgeId: string, userIds: readonly string[]) {
     context.authorization.require(PERMISSION_ID.ADMIN_BADGES_MANAGE);
     this.assertBadgeAssignmentBatch(userIds);
     const badge = await this.getBadge(badgeId);
-    const removed = await this.options.store.unassignBadge(badgeId, userIds, createAuditEvent(context, {
+    const outcome = await this.options.store.unassignBadge(badgeId, userIds, monotonicTimestamp(context.now, badge.updated_at), createAuditEvent(context, {
       subjectType: "member_badge",
       subjectId: badgeId,
       subjectLabel: badge.name,
       action: "unassign",
       // The store appends the members it actually changed; a requested count here would contradict it.
     }));
-    return { removed };
+    if (outcome.updatedAt === null) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Badge not found" });
+    return { removed: outcome.changed, updated_at: outcome.updatedAt };
   }
 
   private async classLabels(classIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
@@ -589,12 +677,40 @@ export class MemberCatalogService {
     return auditReferences(classIds, await this.classLabels(classIds));
   }
 
-  private handleCatalogOutcome(outcome: string, label: string): void {
+  private projectClass(row: ClassCatalogStoreRecord, iconMediaId: string | null): ClassCatalogItem {
+    if (row.icon_type === "image") {
+      return {
+        id: row.id, label: row.label, color: row.color, sort_order: row.sort_order,
+        created_at: row.created_at, updated_at: row.updated_at,
+        icon_type: "image", vector_icon: null,
+        icon_media_id: iconMediaId ?? this.missingClassIcon(row.id),
+      };
+    }
+    return {
+      id: row.id, label: row.label, color: row.color, sort_order: row.sort_order,
+      created_at: row.created_at, updated_at: row.updated_at,
+      icon_type: "vector", vector_icon: row.vector_icon ?? this.missingVectorIcon(row.id),
+      icon_media_id: null,
+    };
+  }
+
+  private projectClassTag(row: ClassTagStoreRecord, usageCount: number): ClassTag {
+    return { ...row, usage_count: usageCount };
+  }
+
+  private createdCatalogRecord<TRecord>(outcome: CatalogCreateResult<TRecord>, label: string): TRecord {
+    if (outcome.outcome === "created") return outcome.record;
+    return this.throwCatalogOutcome(outcome.outcome, label);
+  }
+
+  private throwCatalogOutcome(outcome: string, label: string): never {
     if (outcome === "not_found") throw new AppError({ code: "NOT_FOUND", status: 404, message: `${label} not found` });
     if (outcome === "conflict") throw new AppError({ code: "CONFLICT", status: 409, message: `${label} already exists` });
+    if (outcome === "stale") throw catalogConflict(`${label} changed since this editor was opened`);
     if (outcome === "limit_reached") {
       throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: `${label} limit reached` });
     }
+    throw new AppError({ code: "SERVER_ERROR", status: 500, message: `Unknown ${label} mutation outcome` });
   }
 
   private missingClassIcon(id: string): never {
@@ -622,6 +738,49 @@ export class MemberCatalogService {
       });
     }
   }
+}
+
+function catalogEntries(entries: readonly CatalogRevisionEntry[]): CatalogRevisionEntry[] {
+  return entries.map(({ id, sort_order, updated_at }) => ({ id, sort_order, updated_at }));
+}
+
+function reorderedCatalogSnapshot<T extends CatalogRevisionEntry>(
+  existing: readonly T[],
+  revisions: readonly CatalogRevisionEntry[],
+): T[] {
+  const byId = new Map(existing.map((item) => [item.id, item]));
+  return revisions.map((revision) => ({ ...byId.get(revision.id)!, ...revision }));
+}
+
+function reorderedCatalogEntries(
+  existing: readonly CatalogRevisionEntry[],
+  order: readonly string[],
+  now: string,
+): CatalogRevisionEntry[] {
+  const byId = new Map(existing.map((entry) => [entry.id, entry]));
+  return order.map((id, index) => {
+    const current = byId.get(id);
+    if (!current) throw catalogConflict("Catalog order is stale");
+    const sort_order = index * 10;
+    return {
+      id,
+      sort_order,
+      updated_at: sort_order === current.sort_order
+        ? current.updated_at
+        : monotonicTimestamp(now, current.updated_at),
+    };
+  });
+}
+
+function monotonicTimestamp(now: string, previous: string): string {
+  const nowMs = Date.parse(now);
+  const previousMs = Date.parse(previous);
+  if (!Number.isFinite(nowMs) || !Number.isFinite(previousMs)) return now;
+  return new Date(Math.max(nowMs, previousMs + 1)).toISOString();
+}
+
+function catalogConflict(message: string): AppError {
+  return new AppError({ code: "CONFLICT", status: 409, message });
 }
 
 /** A new sequence only means anything beside the old one, so reordering travels as a single before/after change. */

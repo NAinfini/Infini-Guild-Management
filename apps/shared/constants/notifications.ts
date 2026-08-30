@@ -7,6 +7,9 @@ export const INBOX_NOTIFICATION_KINDS = [
 
 export type InboxNotificationKind = (typeof INBOX_NOTIFICATION_KINDS)[number];
 
+export const NOTIFICATION_PREFERENCE_KEYS = INBOX_NOTIFICATION_KINDS;
+export type NotificationPreferenceKey = (typeof NOTIFICATION_PREFERENCE_KEYS)[number];
+
 export const INBOX_NOTIFICATION_ENTITY_TYPES = [
   "member",
   "announcement",

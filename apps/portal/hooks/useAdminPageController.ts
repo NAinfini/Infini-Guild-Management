@@ -2,7 +2,7 @@ import { Badge } from "@portal/components/ui/badge";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { createElement, type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ColumnDef as TanStackColumnDef } from "@tanstack/react-table";
+import type { DataTableColumnDef } from "../components/shared/data-table-features";
 import { usePageHeaderActions } from "../context/PageHeaderContext";
 import { useAuthStore } from "../stores/auth";
 import { canManageUserByRoleLevel, isRoleAssignableToUser, userCanAccessAdmin } from "../utils/permissions";
@@ -174,12 +174,14 @@ export function useAdminPageController() {
     isDirty: memberDetailIsDirty,
     markMemberDetailSaved,
     selectedMemberDetail,
+    memberDetailRevisions,
     createMemberModalOpen,
     createMemberModalHandlers,
     memberMediaController,
   } = useAdminMemberDetail({
     usersData: usersQuery.data?.data,
     memberSearchParam,
+    currentUserId: user?.id,
     showError,
   });
 
@@ -217,7 +219,7 @@ export function useAdminPageController() {
     return [...rows.values()];
   }, [auditLogQuery.data]);
 
-  const userColumns = useMemo((): TanStackColumnDef<(typeof userRows)[number], unknown>[] => [
+  const userColumns = useMemo((): DataTableColumnDef<(typeof userRows)[number]>[] => [
     {
       header: t("member.table.display_name"),
       id: "display_name",
@@ -303,33 +305,46 @@ export function useAdminPageController() {
     (patch: Partial<typeof memberDetailForm>) => setMemberDetailForm((prev) => ({ ...prev, ...patch })),
     [setMemberDetailForm],
   );
-  const saveSelectedMemberProfile = useCallback(() => {
-    if (!selectedMemberDetail || !canManageUserByRoleLevel(selectedMemberDetail.user, user)) return;
+  const saveSelectedMemberProfile = useCallback(async (): Promise<boolean> => {
+    if (!selectedMemberDetail || !memberDetailRevisions || !canManageUserByRoleLevel(selectedMemberDetail.user, user)) return false;
     const memberId = selectedMemberDetail.user.id;
-    const savedForm = { ...memberDetailForm, classes: [...memberDetailForm.classes] };
+    const savedForm = structuredClone(memberDetailForm);
     const profileChanged = memberDetailForm.power !== selectedMemberDetail.profile.power
       || JSON.stringify(memberDetailForm.classes) !== JSON.stringify(selectedMemberDetail.profile.classes)
       || memberDetailForm.titleHtml !== (selectedMemberDetail.profile.title_html ?? "")
       || memberDetailForm.bio !== (selectedMemberDetail.profile.bio ?? "")
+      || JSON.stringify(memberDetailForm.availability) !== JSON.stringify(selectedMemberDetail.profile.availability)
       || memberDetailForm.notes !== (selectedMemberDetail.profile.notes ?? "");
+    const displayNameChanged = memberDetailForm.displayName !== selectedMemberDetail.user.display_name;
     const roleChanged = memberDetailForm.role !== selectedMemberDetail.user.role;
     const statusChanged = memberDetailForm.isActive !== selectedMemberDetail.user.is_active;
     const update = {
       userId: memberId,
+      expectedUserRevisionToken: memberDetailRevisions.user_revision_token,
+      expectedProfileRevisionToken: memberDetailRevisions.profile_revision_token,
+      displayName: canEditUsers && displayNameChanged ? memberDetailForm.displayName : undefined,
       profile: canEditUsers && profileChanged ? memberDetailForm : undefined,
       role: canAssignUserRoles && roleChanged ? memberDetailForm.role : undefined,
       isActive: canActivateUsers && statusChanged ? memberDetailForm.isActive : undefined,
     };
-    if (!update.profile && !update.role && update.isActive === undefined) return;
-    adminMutations.updateMemberProfileMutation.mutate(update, {
-      onSuccess: () => markMemberDetailSaved(memberId, savedForm),
-    });
+    if (update.displayName === undefined && !update.profile && !update.role && update.isActive === undefined) return true;
+    try {
+      const result = await adminMutations.updateMemberProfileMutation.mutateAsync(update);
+      markMemberDetailSaved(memberId, savedForm, {
+        user_revision_token: result.user_revision_token,
+        profile_revision_token: result.profile_revision_token,
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }, [
     adminMutations.updateMemberProfileMutation,
     canActivateUsers,
     canAssignUserRoles,
     canEditUsers,
     markMemberDetailSaved,
+    memberDetailRevisions,
     memberDetailForm,
     selectedMemberDetail,
     user,

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchStorageItems } from "./storage";
+import { fetchStorageItems, fetchStorageTransactions } from "./storage";
 
 const clientMocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
@@ -50,5 +50,19 @@ describe("storage queries", () => {
     expect(params.has("category_id")).toBe(false);
     expect(params.has("search")).toBe(false);
     expect(params.has("cursor")).toBe(false);
+  });
+
+  it("serializes the storage filter for the page-level ledger", async () => {
+    await fetchStorageTransactions({
+      storageId: "storage-1",
+      page: 2,
+      limit: 20,
+    });
+
+    const url = clientMocks.apiRequest.mock.calls[0]?.[0] as string;
+    const params = new URLSearchParams(url.split("?")[1]);
+    expect(params.get("storage_id")).toBe("storage-1");
+    expect(params.get("page")).toBe("2");
+    expect(params.get("limit")).toBe("20");
   });
 });

@@ -4,12 +4,14 @@ export const queryKeys = {
     user: (userId: string) => ["notifications", "inbox", userId] as const,
     inbox: (userId: string | null | undefined) =>
       [...queryKeys.notifications.user(userId ?? "anonymous"), "recent"] as const,
+    preferences: (userId: string | null | undefined) =>
+      [...queryKeys.notifications.user(userId ?? "anonymous"), "preferences"] as const,
   },
   importantNotices: {
     all: ["important-notices"] as const,
-    active: () => ["important-notices", "active"] as const,
-    acknowledgements: (userId: string | null | undefined) => ["important-notices", "acknowledgements", userId ?? "anonymous"] as const,
+    active: (userId: string | null | undefined) => ["important-notices", "active", userId ?? "anonymous"] as const,
     admin: () => ["important-notices", "admin"] as const,
+    audienceRoles: () => ["important-notices", "admin", "audience-roles"] as const,
   },
   auth: {
     all: ["auth"] as const,
@@ -18,7 +20,8 @@ export const queryKeys = {
   },
   users: {
     all: ["users"] as const,
-    roster: (viewMode: "external" | "default") => [...queryKeys.users.all, "roster", viewMode] as const,
+    directory: (viewerKey: string, projection: "public" | "internal") =>
+      [...queryKeys.users.all, "directory", viewerKey, projection] as const,
     stats: () => [...queryKeys.users.all, "stats"] as const,
   },
   absences: {
@@ -56,8 +59,9 @@ export const queryKeys = {
   },
   announcements: {
     all: ["announcements"] as const,
-    list: (scope: string, status: string, search: string, sort: string) =>
-      [...queryKeys.announcements.all, "list", scope, status, search, sort] as const,
+    list: (status: string, category: string, search: string, sort: string) =>
+      [...queryKeys.announcements.all, "list", status, category, search, sort] as const,
+    pinned: () => [...queryKeys.announcements.all, "pinned"] as const,
     detail: (id: string | null) => [...queryKeys.announcements.all, "detail", id] as const,
   },
   gallery: {
@@ -93,6 +97,7 @@ export const queryKeys = {
   },
   dashboard: {
     all: ["dashboard"] as const,
+    latestAnnouncement: () => [...queryKeys.dashboard.all, "latest-announcement"] as const,
     members: () => [...queryKeys.dashboard.all, "members"] as const,
     events: (viewerKey: string, externalView: boolean) =>
       [...queryKeys.dashboard.all, "events", viewerKey, externalView] as const,
@@ -116,7 +121,6 @@ export const queryKeys = {
     auditArchive: (month?: string | null, page?: number) => [...queryKeys.admin.all, "audit-archive", month ?? null, page ?? 1] as const,
     roles: () => [...queryKeys.admin.all, "roles"] as const,
     status: () => [...queryKeys.admin.all, "status"] as const,
-    loginLock: (userId: string | null) => [...queryKeys.admin.all, "login-lock", userId] as const,
   },
   guildWar: {
     all: ["guild-war"] as const,
@@ -127,7 +131,8 @@ export const queryKeys = {
       [...queryKeys.guildWar.all, "history", fromKey, toKey, searchKey, page ?? 1, perPage ?? 20] as const,
     historyAll: () => [...queryKeys.guildWar.all, "history"] as const,
     historyDetail: (historyId: string | null) => [...queryKeys.guildWar.all, "history-detail", historyId] as const,
-    analytics: (warIdsKey: string) => [...queryKeys.guildWar.all, "analytics", warIdsKey] as const,
+    analyticsAll: () => [...queryKeys.guildWar.all, "analytics"] as const,
+    analytics: (warIdsKey: string) => [...queryKeys.guildWar.analyticsAll(), warIdsKey] as const,
     analyticsDetails: (warIdsKey: string) => [...queryKeys.guildWar.all, "analytics-details", warIdsKey] as const,
     analyticsDetailsAll: () => [...queryKeys.guildWar.all, "analytics-details"] as const,
     concludedEventIds: () => [...queryKeys.guildWar.all, "concluded-event-ids"] as const,
@@ -135,8 +140,9 @@ export const queryKeys = {
   wiki: {
     all: ["wiki"] as const,
     categories: () => [...queryKeys.wiki.all, "categories"] as const,
-    articles: (categoryId: string, search: string, archivedMode: string, pinnedOnly: boolean, sort: string) =>
-      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, pinnedOnly, sort] as const,
+    pinned: () => [...queryKeys.wiki.all, "pinned"] as const,
+    articles: (categoryId: string, search: string, archivedMode: string, sort: string) =>
+      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, sort] as const,
     article: (slug: string | null) => [...queryKeys.wiki.all, "article", slug] as const,
     revisions: (articleId: string | null) => [...queryKeys.wiki.all, "revisions", articleId] as const,
     revision: (articleId: string | null, revision: number | null) => [...queryKeys.wiki.all, "revision", articleId, revision] as const,

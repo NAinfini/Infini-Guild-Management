@@ -9,6 +9,6 @@
   "dependencies": {
     "@guild/kernel": "workspace:*",
     "@guild/shared": "workspace:*",
-    "nanoid": "^6.0.0"
+    "nanoid": "^6.0.1"
   }
 }

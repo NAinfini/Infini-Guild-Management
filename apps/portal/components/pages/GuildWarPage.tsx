@@ -11,7 +11,7 @@ import { useTheme } from "../../providers/ThemeProvider";
 import { useSearch } from "@tanstack/react-router";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import { useAppError } from "../../hooks/useAppError";
@@ -22,11 +22,13 @@ import { useGuildWarHistory } from "../../hooks/guild-war/useGuildWarHistory";
 import { useGuildWarMutations } from "../../hooks/guild-war/useGuildWarMutations";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { GuildWarService } from "../../services/GuildWarService";
+import { GuildWarService, isApiRequestError } from "../../services/GuildWarService";
 import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { queryKeys } from "../../api/query-keys";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { useGuildWarStore } from "../../stores/guildWar";
+import { useAuthStore } from "../../stores/auth";
+import { viewerIdentity } from "../../session-storage";
 import { PageLayout } from "../layout/PageLayout";
 import { PageSubnav } from "../shared/PageSubnav";
 import { useGuildWarActiveController } from "../feature/guild-war/useGuildWarActiveController";
@@ -49,6 +51,28 @@ type GuildWarTabResolution = {
 };
 
 type GuildWarActiveAvailability = "loading" | "available" | "empty";
+
+export function resolveGuildWarManagementPermissions(
+  permissions: {
+    teamsEdit: boolean;
+    historyEdit: boolean;
+    eventsEdit: boolean;
+  },
+  isExternalView: boolean,
+) {
+  if (isExternalView) {
+    return {
+      canManageActive: false,
+      canManageHistory: false,
+      canRemoveParticipants: false,
+    };
+  }
+  return {
+    canManageActive: permissions.teamsEdit,
+    canManageHistory: permissions.historyEdit,
+    canRemoveParticipants: permissions.teamsEdit && permissions.eventsEdit,
+  };
+}
 
 export function resolveGuildWarTab(
   search: Pick<GuildWarRouteSearch, "tab" | "warName">,
@@ -91,6 +115,21 @@ export function buildGuildWarTabSearch(
   };
 }
 
+export function resolveGuildWarHistorySelection(
+  rows: readonly Readonly<{ id: string }>[],
+  selectedId: string | null,
+  excludedId: string | null,
+): string | null {
+  if (selectedId && selectedId !== excludedId && rows.some(({ id }) => id === selectedId)) {
+    return selectedId;
+  }
+  return rows.find(({ id }) => id !== excludedId)?.id ?? null;
+}
+
+export function isMissingGuildWarHistoryDetail(error: unknown): boolean {
+  return isApiRequestError(error) && error.status === 404;
+}
+
 export function GuildWarPage() {
   const { t } = useTranslation("guild-war");
   const guildWarSearch = useSearch({ strict: false }) as GuildWarRouteSearch;
@@ -108,9 +147,20 @@ export function GuildWarPage() {
   }, []);
 
   const isExternalView = useExternalView();
+  const sessionUserId = useAuthStore((state) => state.user?.id);
+  const publicMemberProjection = isExternalView || !sessionUserId;
   const { canManage: canManagePermission } = useEffectivePermissions();
-  const isModerator = canManagePermission(["guildwar.teams.edit"]);
-  const canManageActive = isModerator && !isExternalView;
+  const {
+    canManageActive,
+    canManageHistory,
+    canRemoveParticipants,
+  } = resolveGuildWarManagementPermissions({
+    teamsEdit: canManagePermission(["guildwar.teams.edit"]),
+    historyEdit: canManagePermission(["guildwar.history.edit"]),
+    eventsEdit: canManagePermission(["events.edit"]),
+  }, isExternalView);
+  const canManageAnalyticsSettings = canManagePermission(["admin.analytics.manage"])
+    && !isExternalView;
   const canViewMemberNotes = canManagePermission(["admin.users.view"]) && !isExternalView;
   const canCreateWarEvent = canManagePermission(["events.create"]) && !isExternalView;
   const { showError } = useAppError();
@@ -170,6 +220,7 @@ export function GuildWarPage() {
     })),
   );
   const [historySearch, setHistorySearchValue] = useState(guildWarSearch.warName ?? "");
+  const missingHistoryIdRef = useRef<string | null>(null);
   const debouncedHistorySearch = useDebouncedValue(historySearch.trim(), 250);
   const setHistorySearch = useCallback((value: string) => {
     setHistorySearchValue(value);
@@ -210,6 +261,7 @@ export function GuildWarPage() {
       coordinateGetter: guildWarKeyboardCoordinates,
     }),
   );
+  const requestedTab = resolveGuildWarTab(guildWarSearch, isExternalView).activeTab;
 
   const {
     warEventsQuery,
@@ -217,11 +269,11 @@ export function GuildWarPage() {
     activeEligibilityReady,
     eligibleWarEvents,
     activeSelectedEventId,
-    selectedEventDetailQuery,
     activeQuery,
     historyQuery,
     historyDetailQuery,
   } = useGuildWarData({
+    tab: requestedTab,
     selectedEventId,
     selectedHistoryId,
     historyDateFrom,
@@ -230,6 +282,7 @@ export function GuildWarPage() {
     historyPage,
     historyPerPage,
   });
+  const historyDetailMissing = isMissingGuildWarHistoryDetail(historyDetailQuery.error);
 
   const activeAvailability: GuildWarActiveAvailability = !activeEligibilityReady
     ? "loading"
@@ -256,16 +309,18 @@ export function GuildWarPage() {
   });
 
   const usersQuery = useQuery({
-    queryKey: queryKeys.users.all,
-    queryFn: () => fetchAllUsersListWithOptions(),
+    queryKey: queryKeys.users.directory(
+      viewerIdentity(sessionUserId),
+      publicMemberProjection ? "public" : "internal",
+    ),
+    queryFn: () => fetchAllUsersListWithOptions({ externalView: publicMemberProjection }),
+    enabled: activeTab === "active",
     staleTime: 10 * 60_000,
   });
 
   const guildWarMutations = useGuildWarMutations({
     selectedEventId: activeSelectedEventId,
     selectedHistoryId: selectedHistoryId ?? "",
-    historyDateFrom,
-    historyDateTo,
     setSelectedHistoryId,
   });
 
@@ -277,6 +332,7 @@ export function GuildWarPage() {
     activeData: activeQuery.data,
     usersData: usersQuery.data?.data,
     canManageActive,
+    canRemoveParticipants,
     selectedEventId: activeSelectedEventId,
     activeController,
     roleTagMutation: guildWarMutations.roleTagMutation,
@@ -285,6 +341,7 @@ export function GuildWarPage() {
   });
 
   useEffect(() => {
+    if (activeTab !== "active") return;
     if (!activeEligibilityReady) return;
     if (activeSelectedEventId) return;
     const nextEventId = eligibleWarEvents[0]?.id;
@@ -294,20 +351,35 @@ export function GuildWarPage() {
   }, [
     activeEligibilityReady,
     activeSelectedEventId,
+    activeTab,
     eligibleWarEvents,
     selectedEventId,
     setSelectedEventId,
   ]);
 
   useEffect(() => {
-    if (selectedHistoryId) {
-      return;
+    if (activeTab !== "history") return;
+    if (!historyDetailMissing || !selectedHistoryId) return;
+    missingHistoryIdRef.current = selectedHistoryId;
+    setSelectedHistoryId(null);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.historyAll() });
+  }, [activeTab, historyDetailMissing, queryClient, selectedHistoryId, setSelectedHistoryId]);
+
+  useEffect(() => {
+    if (activeTab !== "history") return;
+    if (historyQuery.isFetching) return;
+    const rows = historyQuery.data?.data ?? [];
+    const missingId = missingHistoryIdRef.current;
+    if (missingId && !rows.some(({ id }) => id === missingId)) {
+      missingHistoryIdRef.current = null;
     }
-    const first = historyQuery.data?.data[0];
-    if (first) {
-      setSelectedHistoryId(first.id);
-    }
-  }, [historyQuery.data, selectedHistoryId, setSelectedHistoryId]);
+    const nextId = resolveGuildWarHistorySelection(
+      rows,
+      selectedHistoryId,
+      missingHistoryIdRef.current,
+    );
+    if (selectedHistoryId !== nextId) setSelectedHistoryId(nextId);
+  }, [activeTab, historyQuery.data, historyQuery.isFetching, selectedHistoryId, setSelectedHistoryId]);
 
   const concludeWarDisabled = useMemo(() => {
     const activeData = activeQuery.data;
@@ -326,20 +398,18 @@ export function GuildWarPage() {
     return undefined;
   }, [activeQuery.data, t]);
 
+  const currentTabLoadError = activeTab === "active"
+    ? warEventsQuery.isError || concludedEventIdsQuery.isError || usersQuery.isError || activeQuery.isError
+    : historyQuery.isError || (activeTab === "history" && historyDetailQuery.isError && !historyDetailMissing);
   useLoadWarningToast(
-    warEventsQuery.isError ||
-      concludedEventIdsQuery.isError ||
-      selectedEventDetailQuery.isError ||
-      activeQuery.isError ||
-      historyQuery.isError ||
-      historyDetailQuery.isError,
+    currentTabLoadError,
     t("common:loadErrorRetry"),
   );
 
   return (
     <PageLayout
       className="guild-war-page"
-      workspaceMode="contained"
+      workspaceMode={activeTab === "analytics" ? "scroll" : "contained"}
       toolbar={(
         <PageSubnav
           value={activeTab}
@@ -361,6 +431,7 @@ export function GuildWarPage() {
               selectedEventId={activeSelectedEventId}
               setSelectedEventId={setSelectedEventId}
               canManageActive={canManageActive}
+              canRemoveParticipants={canRemoveParticipants}
               canViewMemberNotes={canViewMemberNotes}
               activeController={activeController}
               guildWarDrag={guildWarDrag}
@@ -373,6 +444,7 @@ export function GuildWarPage() {
               sensors={sensors}
               concludeWarDisabled={concludeWarDisabled}
               concludeWarDisabledReason={concludeWarDisabledReason}
+              usersData={usersQuery.data?.data ?? []}
             />
           </div>
         ) : null}
@@ -381,7 +453,7 @@ export function GuildWarPage() {
         {activeTab === "history" ? (
         <div className="guild-war-page__panel guild-war-page__panel--fill">
           <GuildWarHistoryTabWrapper
-            canManageActive={canManageActive}
+            canManageHistory={canManageHistory}
             historyViewMode={historyViewMode}
             setHistoryViewMode={setHistoryViewMode}
             historyChartMetric={historyChartMetric}
@@ -401,6 +473,7 @@ export function GuildWarPage() {
             guildWarMutations={guildWarMutations}
             historyQuery={historyQuery}
             historyDetailQuery={historyDetailQuery}
+            historyDetailMissing={historyDetailMissing}
             chartThemeName={chartThemeName}
             chartThemeConfig={chartThemeConfig}
             chartPalette={chartPalette}
@@ -417,7 +490,7 @@ export function GuildWarPage() {
             guildWarService={guildWarService}
             chartThemeName={chartThemeName}
             chartThemeConfig={chartThemeConfig}
-            canManageWeights={isModerator}
+            canManageWeights={canManageAnalyticsSettings}
           />
         </div>
         ) : null}

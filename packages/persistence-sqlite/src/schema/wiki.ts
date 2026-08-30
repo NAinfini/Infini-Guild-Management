@@ -62,6 +62,7 @@ export const wikiArticles = sqliteTable(
     // body_json 的纯文本投影，供搜索 LIKE 使用；声明必须保持末位以匹配
     // ALTER TABLE ADD COLUMN 的物理列序。
     searchText: text("search_text").notNull().default(""),
+    viewCount: integer("view_count").notNull().default(0),
   },
   (table) => [
     uniqueIndex("ux_wiki_articles_slug").on(table.slug),
@@ -87,6 +88,7 @@ export const wikiArticles = sqliteTable(
     check("wiki_articles_title_bounded", sql`length(trim(${table.title})) BETWEEN 1 AND 200`),
     check("wiki_articles_body_bounded", sql`length(${table.bodyJson}) BETWEEN 1 AND 500000`),
     check("wiki_articles_pinned_boolean", sql`${table.pinned} IN (0, 1)`),
+    check("wiki_articles_view_count_valid", sql`${table.viewCount} >= 0`),
     check("wiki_articles_delete_is_archived", sql`${table.deletedAt} IS NULL OR ${table.archivedAt} IS NOT NULL`),
     check("wiki_articles_revision_positive", sql`${table.currentRevision} >= 1`),
     check("wiki_articles_revision_present", sql`length(${table.revisionToken}) >= 16`),

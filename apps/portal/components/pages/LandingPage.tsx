@@ -17,6 +17,7 @@ import "./LandingPage.css";
 export function LandingPage() {
   const { t } = useTranslation("common");
   const siteName = useSiteConfigStore((state) => state.siteName);
+  const siteLogoUrl = useSiteConfigStore((state) => state.siteLogoUrl);
 
   return (
     <div className="landing-page">
@@ -28,16 +29,17 @@ export function LandingPage() {
       />
       <PublicSiteHeader showNavigation={false} />
 
-      <main id="landing-main" className="landing-page__main">
+      <main id="landing-main" tabIndex={-1} className="landing-page__main">
         <section className="landing-hero" aria-labelledby="landing-title">
           <div className="landing-hero__copy">
-            <h1 id="landing-title" className="landing-hero__title">
-              {siteName}
-            </h1>
-            <p className="landing-hero__motto">
-              {t("landing.motto")}
-            </p>
-
+            <div className="landing-hero__identity">
+              {siteLogoUrl ? (
+                <img className="landing-hero__logo" src={siteLogoUrl} alt="" aria-hidden="true" />
+              ) : null}
+              <h1 id="landing-title" className="landing-hero__title">
+                {siteName}
+              </h1>
+            </div>
             <Link
               to="/dashboard"
               className={cn(buttonVariants({ size: "lg" }), "landing-hero__action")}

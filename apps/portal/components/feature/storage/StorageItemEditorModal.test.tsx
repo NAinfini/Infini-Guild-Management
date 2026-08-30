@@ -31,6 +31,7 @@ const storage: Storage = {
   name: "Main vault",
   description: null,
   created_at: "2026-07-28T00:00:00.000Z",
+  structure_revision: 0,
   categories: [],
 };
 
@@ -40,6 +41,8 @@ const item: StorageItem = {
   category_id: null,
   name: "Crystal",
   description: null,
+  rarity: "common",
+  unit: null,
   quantity: 10,
   allow_member_deposit: true,
   allow_member_withdraw: true,
@@ -91,7 +94,11 @@ describe("StorageItemEditorModal", () => {
     expect(secondDeleteButton).not.toHaveAttribute("data-loading", "true");
     await user.click(firstDeleteButton);
     expect(onDeleteImage).toHaveBeenCalledTimes(1);
-    expect(onDeleteImage).toHaveBeenCalledWith("item-1", "image1234567890abcdef");
+    expect(onDeleteImage).toHaveBeenCalledWith(
+      "item-1",
+      "image1234567890abcdef",
+      item.updated_at,
+    );
 
     finishDelete();
     await waitFor(() => expect(firstDeleteButton).not.toHaveAttribute("data-loading", "true"));
@@ -171,8 +178,59 @@ describe("StorageItemEditorModal", () => {
     await user.click(screen.getByRole("button", { name: "common:action.cancel" }));
 
     expect(onUpdateItem).toHaveBeenCalledOnce();
+    expect(onUpdateItem).toHaveBeenCalledWith(
+      item.id,
+      expect.objectContaining({
+        name: "Updated crystal",
+        expected_updated_at: item.updated_at,
+      }),
+      expect.any(Function),
+    );
     expect(confirmMock).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a dirty item draft and its form-open revision across a background refresh", async () => {
+    const user = userEvent.setup();
+    const onUpdateItem = vi.fn();
+    const props = {
+      opened: true,
+      selectedStorage: storage,
+      categories: [],
+      isSaving: false,
+      isDeleting: false,
+      isUploading: false,
+      onClose: vi.fn(),
+      onCreateItem: vi.fn(),
+      onUpdateItem,
+      onDeleteItem: vi.fn(),
+      onUploadImages: vi.fn(),
+      onDeleteImage: vi.fn(),
+    };
+    const view = render(<StorageItemEditorModal {...props} item={item} />);
+    const nameInput = screen.getByRole("textbox", { name: "field.itemName" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "Local crystal");
+
+    view.rerender(<StorageItemEditorModal
+      {...props}
+      item={{
+        ...item,
+        name: "Server crystal",
+        updated_at: "2026-07-28T00:00:05.000Z",
+      }}
+    />);
+
+    expect(nameInput).toHaveValue("Local crystal");
+    await user.click(screen.getByRole("button", { name: "action.saveItem" }));
+    expect(onUpdateItem).toHaveBeenCalledWith(
+      item.id,
+      expect.objectContaining({
+        name: "Local crystal",
+        expected_updated_at: item.updated_at,
+      }),
+      expect.any(Function),
+    );
   });
 
   it("routes the close button through the same discard confirmation", async () => {
@@ -232,4 +290,5 @@ describe("StorageItemEditorModal", () => {
     expect(confirmMock).toHaveBeenCalledOnce();
     expect(onClose).not.toHaveBeenCalled();
   });
+
 });

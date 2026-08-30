@@ -14,15 +14,13 @@ export const RATE_LIMIT_EXPECTATIONS = {
   AUTH_RATE_LIMITER: LIMITS.rateLimit.auth,
   AUTH_IP_RATE_LIMITER: LIMITS.rateLimit.authIp,
   READ_RATE_LIMITER: LIMITS.rateLimit.reads,
+  CONTENT_VIEW_RATE_LIMITER: LIMITS.rateLimit.contentViews,
   EXPENSIVE_READ_RATE_LIMITER: LIMITS.rateLimit.expensiveReads,
   MUTATION_RATE_LIMITER: LIMITS.rateLimit.mutations,
   UPLOAD_RATE_LIMITER: LIMITS.rateLimit.uploads,
   WEBSOCKET_RATE_LIMITER: LIMITS.websocket.handshakes,
 };
-const REQUIRED_SECRET_KEYS = ["IG_INVITE_TOKEN_SECRET", "IG_AUDIT_DOWNLOAD_SECRET"];
 const SENSITIVE_ENV_KEYS = [
-  "IG_INVITE_TOKEN_SECRET",
-  "IG_AUDIT_DOWNLOAD_SECRET",
   "IG_OAUTH_GOOGLE_CLIENT_ID",
   "IG_OAUTH_GOOGLE_CLIENT_SECRET",
   "IG_OAUTH_DISCORD_CLIENT_ID",
@@ -41,6 +39,12 @@ const OPTIONAL_CREDENTIAL_PAIRS = [
   ["IG_EMAIL_FROM", "IG_CLOUDFLARE_EMAIL_ACCOUNT_ID", "IG_CLOUDFLARE_EMAIL_API_TOKEN"],
 ];
 const SHARED_MIGRATIONS_DIRECTORY = "../../packages/persistence-sqlite/src/migrations/generated";
+const MAINTENANCE_REASON_MAX_LENGTH = 500;
+const STRICT_ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const REQUIRED_DURABLE_OBJECTS = Object.freeze([
+  ["NOTIFICATIONS", "CloudflareNotificationDurableObject"],
+  ["AUTH_LOGIN_RATE_LIMITER", "AuthRateLimitDO"],
+]);
 
 export function parseJsonc(source) {
   source = source.replace(/^\uFEFF/, "");
@@ -220,14 +224,16 @@ export function validateCloudflareConfig(config, options = {}) {
   const durableBindings = isObject(config.durable_objects) && Array.isArray(config.durable_objects.bindings)
     ? config.durable_objects.bindings
     : [];
-  if (!durableBindings.some((entry) => isObject(entry)
-    && entry.name === "NOTIFICATIONS" && entry.class_name === "CloudflareNotificationDurableObject")) {
-    errors.push('Cloudflare Durable Object binding "NOTIFICATIONS" is missing or targets the wrong class.');
-  }
-  if (!Array.isArray(config.migrations) || !config.migrations.some((entry) => isObject(entry)
-    && Array.isArray(entry.new_sqlite_classes)
-    && entry.new_sqlite_classes.includes("CloudflareNotificationDurableObject"))) {
-    errors.push("Cloudflare Durable Object SQLite migration is missing.");
+  for (const [binding, className] of REQUIRED_DURABLE_OBJECTS) {
+    if (!durableBindings.some((entry) => isObject(entry)
+      && entry.name === binding && entry.class_name === className)) {
+      errors.push(`Cloudflare Durable Object binding "${binding}" is missing or targets the wrong class.`);
+    }
+    if (!Array.isArray(config.migrations) || !config.migrations.some((entry) => isObject(entry)
+      && Array.isArray(entry.new_sqlite_classes)
+      && entry.new_sqlite_classes.includes(className))) {
+      errors.push(`Cloudflare Durable Object SQLite migration for ${className} is missing.`);
+    }
   }
 
   const rateLimits = Array.isArray(config.ratelimits) ? config.ratelimits : [];
@@ -250,7 +256,13 @@ export function validateCloudflareConfig(config, options = {}) {
   const crons = isObject(config.triggers) && Array.isArray(config.triggers.crons)
     ? config.triggers.crons
     : [];
-  for (const cron of ["*/15 * * * *", "0 0 * * *"]) {
+  for (const cron of [
+    "*/15 * * * *",
+    "7,37 * * * *",
+    "12 * * * *",
+    "42 * * * *",
+    "27 0 * * *",
+  ]) {
     if (!crons.includes(cron)) errors.push(`Cloudflare cron schedule ${cron} is missing.`);
   }
 
@@ -263,6 +275,7 @@ export function validateCloudflareConfig(config, options = {}) {
     if (Object.hasOwn(vars, key)) errors.push(`cloudflare.vars.${key} must use Wrangler secret storage, not vars.`);
   }
   validateIterations(vars.IG_PBKDF2_ITERATIONS, "cloudflare.vars", errors);
+  validateMaintenanceConfig(vars, "cloudflare.vars", errors, settings);
   const emailBindings = Array.isArray(config.send_email) ? config.send_email : [];
   const hasEmailBinding = emailBindings.some((entry) => isObject(entry) && entry.name === "EMAIL");
   const hasEmailFrom = Boolean(optionalString(vars, "IG_EMAIL_FROM", settings));
@@ -284,16 +297,11 @@ export function validateVpsConfig(config, options = {}) {
   if (publicUrl && !validOrigin(publicUrl, true)) {
     errors.push("vps.IG_PUBLIC_URL must be a root HTTPS origin, except for loopback local development.");
   }
-  for (const key of REQUIRED_SECRET_KEYS) {
-    const value = requiredString(config, key, "vps", errors, settings);
-    if (value && !settings.allowPlaceholders && new TextEncoder().encode(value).byteLength < 32) {
-      errors.push(`vps.${key} must contain at least 32 UTF-8 bytes.`);
-    }
-  }
   for (const key of ["IG_DATABASE_PATH", "IG_BLOB_PATH", "IG_STATIC_PATH"]) {
     requiredString(config, key, "vps", errors, settings);
   }
   validateIterations(config.IG_PBKDF2_ITERATIONS, "vps", errors);
+  validateMaintenanceConfig(config, "vps", errors, settings);
   validateCredentialPairs(config, "vps", errors, settings);
   if (config.IG_PORT !== undefined) {
     const port = Number(config.IG_PORT);
@@ -309,6 +317,23 @@ function validateCredentialPairs(config, label, errors, settings) {
       errors.push(`${label}.${keys.join(", ")} must be configured together.`);
     }
   }
+}
+
+function validateMaintenanceConfig(config, label, errors, settings) {
+  const reason = optionalString(config, "IG_MAINTENANCE_REASON", settings);
+  if (reason && reason.length > MAINTENANCE_REASON_MAX_LENGTH) {
+    errors.push(`${label}.IG_MAINTENANCE_REASON must be at most ${MAINTENANCE_REASON_MAX_LENGTH} characters.`);
+  }
+  const until = optionalString(config, "IG_MAINTENANCE_UNTIL", settings);
+  if (until && !isStrictIsoDatetime(until)) {
+    errors.push(`${label}.IG_MAINTENANCE_UNTIL must be a canonical ISO datetime in UTC (YYYY-MM-DDTHH:mm:ss.sssZ).`);
+  }
+}
+
+function isStrictIsoDatetime(value) {
+  if (!STRICT_ISO_DATETIME.test(value)) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString() === value;
 }
 
 function optionalString(config, key, settings) {

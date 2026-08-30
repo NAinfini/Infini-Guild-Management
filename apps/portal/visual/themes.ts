@@ -2,30 +2,68 @@ export const VISUAL_PAGE_SCENE_IDS = [
   "dashboard",
   "announcements",
   "events",
+  "events-recurring",
   "roster",
   "gallery",
   "wiki",
   "guild-war",
+  "guild-war-history",
+  "guild-war-analytics",
   "storage",
   "tools",
   "profile",
+  "profile-availability",
+  "profile-account",
   "settings",
   "admin",
+  "admin-invite",
+  "admin-roles",
+  "admin-classes",
+  "admin-badges",
+  "admin-site-config",
+  "admin-important-notices",
+  "admin-operations",
+  "admin-diagnostics",
+  "admin-audit",
 ] as const;
 
 export type VisualPageSceneId = (typeof VISUAL_PAGE_SCENE_IDS)[number];
+
+export const VISUAL_ACCESS_SCENE_IDS = ["login", "register"] as const;
+
+export type VisualAccessSceneId = (typeof VISUAL_ACCESS_SCENE_IDS)[number];
+
+export const VISUAL_STATUS_SCENE_IDS = [
+  "not-found",
+  "error",
+  "forbidden",
+  "maintenance",
+] as const;
+
+export type VisualStatusSceneId = (typeof VISUAL_STATUS_SCENE_IDS)[number];
 
 export const VISUAL_THEME_IDS = ["forged"] as const;
 
 export type VisualThemeId = (typeof VISUAL_THEME_IDS)[number];
 
-export type VisualThemeAsset = Readonly<{
+export const VISUAL_COLOR_MODES = ["light", "dark"] as const;
+
+export type VisualColorMode = (typeof VISUAL_COLOR_MODES)[number];
+
+export type VisualThemeAssetSource = Readonly<{
   src: string;
+}>;
+
+export type VisualThemeAsset = Readonly<{
+  sources: Readonly<Record<VisualColorMode, VisualThemeAssetSource>>;
   width: number;
   height: number;
-  bytes: number;
   objectPosition: string;
-  safeArea: "center" | "top" | "left" | "right";
+}>;
+
+export type ResponsiveVisualThemeAsset = Readonly<{
+  desktop: VisualThemeAsset;
+  mobile: VisualThemeAsset;
 }>;
 
 export type PortalVisualTheme = Readonly<{
@@ -35,40 +73,40 @@ export type PortalVisualTheme = Readonly<{
   provenance: "source-owned-generated-art";
   mark: Readonly<{ src: string }>;
   scenes: Readonly<{
-    landing: VisualThemeAsset;
-    access: Readonly<{
-      desktop: VisualThemeAsset;
-      mobile: VisualThemeAsset;
-    }>;
-    status: VisualThemeAsset;
+    landing: ResponsiveVisualThemeAsset;
+    access: Readonly<Record<VisualAccessSceneId, ResponsiveVisualThemeAsset>>;
+    status: Readonly<Record<VisualStatusSceneId, ResponsiveVisualThemeAsset>>;
     navigation: VisualThemeAsset;
     routes: Readonly<Record<VisualPageSceneId, VisualThemeAsset>>;
   }>;
 }>;
 
-const routeAssetBytes: Readonly<Record<VisualPageSceneId, number>> = {
-  dashboard: 110_728,
-  announcements: 105_418,
-  events: 104_744,
-  roster: 146_626,
-  gallery: 114_290,
-  wiki: 104_744,
-  "guild-war": 75_574,
-  storage: 122_394,
-  tools: 134_798,
-  profile: 98_164,
-  settings: 134_166,
-  admin: 92_812,
-};
+function assetSources(
+  darkSrc: string,
+  lightSrc: string,
+): VisualThemeAsset["sources"] {
+  return {
+    dark: { src: darkSrc },
+    light: { src: lightSrc },
+  };
+}
+
+export function resolveVisualThemeAssetSource(
+  asset: VisualThemeAsset,
+  colorMode: VisualColorMode,
+): VisualThemeAssetSource {
+  return asset.sources[colorMode];
+}
 
 function routeAsset(sceneId: VisualPageSceneId): VisualThemeAsset {
   return {
-    src: `/visual-themes/forged/routes/${sceneId}.webp`,
-    width: 1672,
-    height: 941,
-    bytes: routeAssetBytes[sceneId],
+    sources: assetSources(
+      `/visual-themes/forged/routes/${sceneId}.webp`,
+      `/visual-themes/forged/routes/light/${sceneId}.webp`,
+    ),
+    width: 3840,
+    height: 2160,
     objectPosition: "center",
-    safeArea: "center",
   };
 }
 
@@ -76,41 +114,68 @@ const forgedRoutes = Object.fromEntries(
   VISUAL_PAGE_SCENE_IDS.map((sceneId) => [sceneId, routeAsset(sceneId)]),
 ) as Record<VisualPageSceneId, VisualThemeAsset>;
 
+function publicAsset(
+  name: string,
+  width: number,
+  height: number,
+  objectPosition = "center",
+): VisualThemeAsset {
+  return {
+    sources: assetSources(
+      `/visual-themes/forged/public/${name}.webp`,
+      `/visual-themes/forged/public/light/${name}.webp`,
+    ),
+    width,
+    height,
+    objectPosition,
+  };
+}
+
 const forgedTheme: PortalVisualTheme = {
   id: "forged",
-  label: "Forged Guildhall",
-  version: 1,
+  label: "Zhonghua Wuxia Guildhall",
+  version: 6,
   provenance: "source-owned-generated-art",
   mark: { src: "/guild-logo.svg" },
   scenes: {
     landing: {
-      src: "/visual-themes/forged/public/landing.webp",
-      width: 1672,
-      height: 941,
-      bytes: 84_362,
-      objectPosition: "center",
-      safeArea: "center",
+      desktop: publicAsset("landing", 3840, 2160),
+      mobile: publicAsset("landing-mobile", 2160, 3840),
     },
     access: {
-      desktop: {
-        src: "/visual-themes/forged/public/access-desktop.webp",
-        width: 1672,
-        height: 941,
-        bytes: 67_224,
-        objectPosition: "center",
-        safeArea: "center",
+      login: {
+        desktop: publicAsset("login-desktop", 3840, 2160),
+        mobile: publicAsset("login-mobile", 2160, 3840),
       },
-      mobile: {
-        src: "/visual-themes/forged/public/access-mobile.webp",
-        width: 1122,
-        height: 1402,
-        bytes: 71_110,
-        objectPosition: "center",
-        safeArea: "center",
+      register: {
+        desktop: publicAsset("register-desktop", 3840, 2160),
+        mobile: publicAsset("register-mobile", 2160, 3840),
       },
     },
-    status: forgedRoutes.admin,
-    navigation: forgedRoutes.dashboard,
+    status: {
+      "not-found": {
+        desktop: publicAsset("status-not-found-desktop", 3840, 2160),
+        mobile: publicAsset("status-not-found-mobile", 2160, 3840),
+      },
+      error: {
+        desktop: publicAsset("status-error-desktop", 3840, 2160),
+        mobile: publicAsset("status-error-mobile", 2160, 3840),
+      },
+      forbidden: {
+        desktop: publicAsset("status-forbidden-desktop", 3840, 2160),
+        mobile: publicAsset("status-forbidden-mobile", 2160, 3840),
+      },
+      maintenance: {
+        desktop: publicAsset("status-maintenance-desktop", 3840, 2160),
+        mobile: publicAsset("status-maintenance-mobile", 2160, 3840),
+      },
+    },
+    navigation: publicAsset(
+      "navigation-sidebar",
+      2160,
+      3840,
+      "center bottom",
+    ),
     routes: forgedRoutes,
   },
 };

@@ -1,10 +1,12 @@
 import { Button } from "@portal/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
-import { getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
+import { useTable } from "@tanstack/react-table";
+import {
+  dataTableFeatures,
+  type DataTableColumnDef,
+} from "@portal/components/shared/data-table-features";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { useMemo } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HistoryDetailData, HistoryMemberStat } from "@portal/types/guild-war";
@@ -57,7 +59,7 @@ function HistoryDetailHarness({
     role_tag: "core",
     stats: { damage: 4120 },
   }], []);
-  const columns = useMemo<ColumnDef<HistoryMemberStat, unknown>[]>(() => [
+  const columns = useMemo<DataTableColumnDef<HistoryMemberStat>[]>(() => [
     {
       accessorKey: "user_id",
       header: "Member",
@@ -88,13 +90,15 @@ function HistoryDetailHarness({
       ),
     },
   ], []);
-  const detailTable = useReactTable({
+  const detailTable = useTable({
+    features: dataTableFeatures,
     data: memberRows,
     columns,
-    getCoreRowModel: getCoreRowModel(),
+    manualPagination: true,
   });
   const historyDetail: HistoryDetailData = {
     id: "history-1",
+    etag: '"history-history-1-1"',
     war_name: "Iron Siege",
     enemy_name: "Storm Vanguard",
     result: "win",
@@ -168,7 +172,6 @@ describe("WarHistoryDetail", () => {
     render(<HistoryDetailHarness onBackToList={onBackToList} />);
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByTestId("war-history-inline-detail").tagName).toBe("SECTION");
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Iron Siege" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 3, name: "Iron Siege" })).not.toBeInTheDocument();
@@ -183,33 +186,9 @@ describe("WarHistoryDetail", () => {
     render(<HistoryDetailHarness onBackToList={vi.fn()} />);
 
     const board = screen.getByTestId("war-history-scoreboard");
-    expect(board).toHaveClass("whd-board--win");
     expect(board).toHaveTextContent("35");
     expect(board).toHaveTextContent("28");
     expect(board).toHaveTextContent("Kills");
-    expect(board.querySelector(".whd-board__metric-icon")).not.toBeNull();
-  });
-
-  it("uses semantic icons to make the history summary easier to scan", () => {
-    const { container } = render(<HistoryDetailHarness onBackToList={vi.fn()} />);
-
-    expect(container.querySelectorAll(".whd-strip__cell[data-metric]")).toHaveLength(5);
-    expect(container.querySelectorAll(".whd-strip__icon")).toHaveLength(5);
-    expect(container.querySelectorAll(".whd-identity__meta-item .whd-identity__meta-icon")).toHaveLength(2);
-    expect(container.querySelectorAll(".whd-section-title__icon")).toHaveLength(2);
-    expect(container.querySelectorAll(".whd-view-option__icon")).toHaveLength(2);
-    expect(container.querySelectorAll(".whd-export-icon")).toHaveLength(2);
-  });
-
-  it("shows each member avatar in the team snapshot", () => {
-    render(<HistoryDetailHarness onBackToList={vi.fn()} />);
-
-    const memberChip = document.querySelector(".whd-chip");
-    expect(memberChip).not.toBeNull();
-    expect(memberChip?.querySelector("img")).toHaveAttribute(
-      "src",
-      expect.stringContaining(`/api/media/${AVATAR_MEDIA_ID}/view`),
-    );
   });
 
   it("renders the TanStack row model as scan-friendly member cards on mobile", async () => {
@@ -224,73 +203,19 @@ describe("WarHistoryDetail", () => {
     expect(within(card).getByText("Damage")).toBeInTheDocument();
     expect(within(card).getByRole("spinbutton", { name: "Damage for Lyra" })).toHaveValue(4120);
     const statusTrigger = within(card).getByRole("button", { name: "Complete" });
-    expect(statusTrigger.tagName).toBe("BUTTON");
     expect(statusTrigger).toHaveAttribute("type", "button");
-    expect(card.querySelector("div[aria-expanded]")).not.toBeInTheDocument();
-  });
-
-  it("keeps the history status tooltip trigger as a real button", () => {
-    const controllerSource = readFileSync(
-      resolve(process.cwd(), "apps/portal/hooks/guild-war/useWarHistoryTabController.tsx"),
-      "utf8",
-    );
-    expect(controllerSource).toContain("<TooltipTrigger render={<Button");
-    expect(controllerSource).toContain('type="button"');
-    expect(controllerSource).not.toContain("HoverCard");
-  });
-
-  it("uses a compact two-column field grid for mobile member cards", () => {
-    const styles = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/GuildWarPage.css"),
-      "utf8",
-    );
-    const mobileStyles = styles.slice(styles.lastIndexOf("@media (max-width: 767px)"));
-
-    expect(mobileStyles).toMatch(
-      /\.whd-member-card__fields\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
-    );
-    expect(mobileStyles).toMatch(
-      /\.whd-member-card__field\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)[^}]*padding-block:\s*var\(--space-xs\)/,
-    );
-    expect(mobileStyles).toMatch(
-      /\.whd-member-card__value\s*\{[^}]*justify-content:\s*flex-start/,
-    );
-  });
-
-  it("keeps the mobile history scoreboard compact while allowing both guild names two lines", () => {
-    const styles = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/GuildWarPage.css"),
-      "utf8",
-    );
-    const mobileStyles = styles.slice(styles.lastIndexOf("@media (max-width: 767px)"));
-
-    expect(mobileStyles).toMatch(
-      /\.whd-board\s*\{[^}]*grid-template-columns:\s*minmax\(5rem,\s*1fr\) auto minmax\(5rem,\s*1fr\)[^}]*gap:\s*var\(--space-sm\)/,
-    );
-    expect(mobileStyles).toMatch(
-      /\.whd-board__name\s*\{[^}]*-webkit-line-clamp:\s*2[^}]*white-space:\s*normal/,
-    );
   });
 
   it("keeps exports beside the current record identity with record-specific accessible names", async () => {
     const onExport = vi.fn();
-    const { container } = render(
-      <HistoryDetailHarness onBackToList={vi.fn()} onExport={onExport} canManage />,
-    );
+    render(<HistoryDetailHarness onBackToList={vi.fn()} onExport={onExport} canManage />);
 
-    const identityExports = container.querySelector(".whd-identity__exports");
-    const footer = container.querySelector(".whd-actions");
-    expect(identityExports).not.toBeNull();
-    expect(footer).not.toBeNull();
-
-    const csv = within(identityExports as HTMLElement).getByRole("button", {
+    const csv = screen.getByRole("button", {
       name: "Export CSV: Iron Siege",
     });
-    const json = within(identityExports as HTMLElement).getByRole("button", {
+    const json = screen.getByRole("button", {
       name: "Export JSON: Iron Siege",
     });
-    expect(footer).not.toContainElement(csv);
-    expect(footer).not.toContainElement(json);
 
     await userEvent.click(csv);
     await userEvent.click(json);

@@ -1,5 +1,6 @@
 export {
   batchUpdateWikiCategories,
+  archiveWikiArticle,
   createWikiArticle,
   createWikiCategory,
   deleteWikiArticle,
@@ -13,10 +14,12 @@ export type {
   CreateWikiCategoryPayload,
   UpdateWikiArticlePayload,
 } from "../api/mutations/wiki";
+export { isApiRequestError } from "../api/client";
 export {
   fetchWikiArticleBySlug,
   fetchWikiArticleRevision,
   fetchWikiArticleRevisions,
   fetchWikiArticles,
   fetchWikiCategories,
+  recordWikiArticleView,
 } from "../api/queries/wiki";

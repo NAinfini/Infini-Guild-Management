@@ -1,4 +1,4 @@
-import type { MemberProfile, Permission } from "@guild/shared";
+import type { MemberAvailability, MemberProfile, Permission } from "@guild/shared";
 import type { AuditEventWrite } from "../audit/public.js";
 
 export type AuthUserRecord = Readonly<{
@@ -53,6 +53,7 @@ export type RoleRecord = Readonly<{
 
 export type InviteRecord = Readonly<{
   id: string;
+  code: string;
   createdBy: string;
   roleId: string;
   roleName: string;
@@ -79,18 +80,6 @@ export type ManagedUserTarget = Readonly<{
   deletedAt: string | null;
 }>;
 
-export type LoginFailureRecord = Readonly<{
-  failCount: number;
-  lockedUntil: string | null;
-}>;
-
-export type LoginLockState = Readonly<{
-  failCount: number;
-  lockedUntil: string | null;
-  isLocked: boolean;
-  retryAfterSeconds: number;
-}>;
-
 export type InviteVisibility = "active" | "expired" | "revoked";
 
 export type InviteCursor = Readonly<{ createdAt: string; id: string }>;
@@ -109,6 +98,14 @@ export type RolePermissionDelta = Readonly<{
 }>;
 
 export type GuardedAuthMutationResult = "updated" | "conflict" | "last_role_manager";
+
+export type RoleCreateMutationResult =
+  | Readonly<{ status: "created"; role: RoleRecord }>
+  | Readonly<{ status: "conflict" }>;
+
+export type RoleUpdateMutationResult =
+  | Readonly<{ status: "updated"; role: RoleRecord }>
+  | Readonly<{ status: "conflict" | "last_role_manager" }>;
 
 export type AuthSessionResult = Readonly<{
   user: AuthUserRecord;
@@ -134,7 +131,7 @@ export interface AuthProfileReader {
 export interface AccountProvisioningStore {
   redeemInviteAndCreateMember(input: Readonly<{
     inviteId: string;
-    tokenDigest: string;
+    inviteCode: string;
     userId: string;
     loginName: string;
     displayName: string;
@@ -149,8 +146,26 @@ export interface AccountProvisioningStore {
     passwordHash: string;
     temporaryPasswordExpiresAt: string;
     destinationRole: RoleRecord;
+    notes: string | null;
     now: string;
   }>, audit: AuditEventWrite): Promise<"created" | "login_name_taken" | "display_name_taken" | "conflict">;
+  updateManagedMember(input: Readonly<{
+    target: ManagedUserTarget;
+    expectedUserRevisionToken: string;
+    expectedProfileRevisionToken: string;
+    displayName?: string;
+    destinationRole?: RoleRecord;
+    active?: boolean;
+    profile?: Readonly<{
+      power: number;
+      classes: readonly string[];
+      titleHtml: string | null;
+      bio: string | null;
+      availability: MemberAvailability | null;
+      notes: string | null;
+    }>;
+    now: string;
+  }>, audit: AuditEventWrite): Promise<"updated" | "conflict" | "last_role_manager" | "display_name_taken">;
 }
 
 export interface AuthStore {
@@ -159,15 +174,9 @@ export interface AuthStore {
   findLoginName(userId: string): Promise<string | null>;
   findUser(userId: string): Promise<AuthUserRecord | null>;
   findSessionAuthorization(tokenDigest: string): Promise<SessionAuthorizationRecord | null>;
-  readLoginFailure(normalizedLoginName: string): Promise<LoginFailureRecord | null>;
-  recordLoginFailure(input: Readonly<{
-    normalizedLoginName: string;
-    now: string;
-    freeAttempts: number;
-    lockSeconds: readonly number[];
-  }>): Promise<LoginFailureRecord>;
-  clearLoginFailures(normalizedLoginName: string): Promise<void>;
-  pruneLoginFailures(before: string, now: string, limit: number): Promise<void>;
+  findSessionAuthorizations?(
+    tokenDigests: readonly string[],
+  ): Promise<ReadonlyMap<string, SessionAuthorizationRecord>>;
   rehashPassword(input: Readonly<{
     userId: string;
     expectedPasswordHash: string;
@@ -188,7 +197,7 @@ export interface AuthStore {
   recordLastLogin(userId: string, at: string): Promise<void>;
   deleteSession(tokenDigest: string): Promise<void>;
   deleteSessionsForUsers(userIds: readonly string[]): Promise<void>;
-  findActiveInvite(tokenDigest: string, now: string): Promise<InviteRecord | null>;
+  findActiveInvite(code: string, now: string): Promise<InviteRecord | null>;
   changeOwnPassword(input: Readonly<{
     userId: string;
     expectedAuthRevision: number;
@@ -242,14 +251,13 @@ export interface AuthStore {
     limit: number;
     cursor: InviteCursor | null;
     search: string;
-    exactTokenDigest?: string;
     now: string;
   }>): Promise<InvitePage>;
   getInviteStats(now: string): Promise<InviteStats>;
   findInvite(id: string): Promise<InviteRecord | null>;
   createInvite(input: Readonly<{
     id: string;
-    tokenDigest: string;
+    code: string;
     createdBy: string;
     roleId: string;
     maxUses: number;
@@ -276,10 +284,6 @@ export interface AuthStore {
     targets: readonly ManagedUserTarget[];
     now: string;
   }>, audit: AuditEventWrite): Promise<GuardedAuthMutationResult>;
-  resetUserLoginLock(target: ManagedUserTarget, audit: AuditEventWrite): Promise<
-    | Readonly<{ outcome: "updated"; previous: LoginFailureRecord | null }>
-    | Readonly<{ outcome: "conflict" }>
-  >;
 
   listRoles(): Promise<readonly RoleRecord[]>;
   findRole(roleId: string): Promise<RoleRecord | null>;
@@ -290,7 +294,7 @@ export interface AuthStore {
     color: string | null;
     permissions: readonly Permission[];
     now: string;
-  }>, audit: AuditEventWrite): Promise<"created" | "conflict">;
+  }>, audit: AuditEventWrite): Promise<RoleCreateMutationResult>;
   updateRole(input: Readonly<{
     id: string;
     name?: string;
@@ -300,6 +304,6 @@ export interface AuthStore {
     expectedRevisionToken: string;
     expectedPermissions: readonly Permission[];
     now: string;
-  }>, audit: AuditEventWrite): Promise<GuardedAuthMutationResult>;
+  }>, audit: AuditEventWrite): Promise<RoleUpdateMutationResult>;
   deleteRole(role: RoleRecord, audit: AuditEventWrite): Promise<"deleted" | "referenced" | "not_found" | "conflict" | "last_role_manager">;
 }

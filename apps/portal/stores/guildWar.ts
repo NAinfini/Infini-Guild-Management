@@ -81,7 +81,7 @@ const defaultTeamStat = DEFAULT_GAME_RULES.guild_war.team_stats.find((definition
 export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   selectedEventId: undefined,
   selectedHistoryId: null,
-  analyticsMode: "player",
+  analyticsMode: "wars",
   analyticsSelectedMetrics: [defaultMetric],
   analyticsOnlyParticipated: true,
   analyticsDatePreset: "10",
@@ -134,7 +134,7 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   resetSessionState: () => set({
     selectedEventId: undefined,
     selectedHistoryId: null,
-    analyticsMode: "player",
+    analyticsMode: "wars",
     analyticsSelectedMetrics: [defaultMetric],
     analyticsOnlyParticipated: true,
     analyticsDatePreset: "10",

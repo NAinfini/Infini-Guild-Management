@@ -50,6 +50,10 @@ export function GuildWarAnalyticsTabWrapper({
         chartThemeName={chartThemeName}
         chartThemeConfig={chartThemeConfig}
         loadErrorMessage={t("common:loadError")}
+        onRetry={() => {
+          void analytics.analyticsQuery.refetch();
+          void analytics.analyticsDetailsQuery.refetch();
+        }}
         canManageWeights={canManageWeights}
       />
     </Suspense>

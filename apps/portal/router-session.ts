@@ -13,6 +13,15 @@ type RouteSessionDependencies = {
   transitionSession: (session: RouteSession | null) => void;
 };
 
+type RouteSessionResolverDependencies = RouteSessionDependencies & {
+  isSessionResolved: () => boolean;
+  markSessionResolved: () => void;
+};
+
+export type RouteSessionResolver = {
+  resolve: () => Promise<RouteSession | null>;
+};
+
 export async function resolveRouteSession({
   getCachedSession,
   requestSession,
@@ -32,4 +41,32 @@ export async function resolveRouteSession({
     transitionSession(null);
     return null;
   }
+}
+
+export function createRouteSessionResolver(
+  dependencies: RouteSessionResolverDependencies,
+): RouteSessionResolver {
+  let inFlight: Promise<RouteSession | null> | null = null;
+
+  return {
+    resolve: () => {
+      const cached = dependencies.getCachedSession();
+      if (cached) {
+        if (!dependencies.isSessionResolved()) dependencies.markSessionResolved();
+        return Promise.resolve(cached);
+      }
+      if (dependencies.isSessionResolved()) {
+        return Promise.resolve(null);
+      }
+      inFlight ??= resolveRouteSession(dependencies)
+        .then((session) => {
+          if (!dependencies.isSessionResolved()) dependencies.markSessionResolved();
+          return session;
+        })
+        .finally(() => {
+          inFlight = null;
+        });
+      return inFlight;
+    },
+  };
 }

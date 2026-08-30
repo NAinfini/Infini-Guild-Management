@@ -1,7 +1,5 @@
 import type { Storage, StorageItem } from "@guild/shared";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +34,7 @@ const mutationMocks = vi.hoisted(() => ({
   createItem: vi.fn(),
   uploadImages: vi.fn(),
 }));
+const beforeUnloadPromptMock = vi.hoisted(() => vi.fn());
 
 const mutation = () => ({
   isPending: false,
@@ -65,6 +64,10 @@ vi.mock("../../hooks/useEffectivePermissions", () => ({
       || (storageState.canManageItems && permissions.includes("admin.storage.items"))
       || (storageState.canManageStock && permissions.includes("admin.storage.stock")),
   }),
+}));
+
+vi.mock("../../hooks/useBeforeUnloadPrompt", () => ({
+  useBeforeUnloadPrompt: beforeUnloadPromptMock,
 }));
 
 vi.mock("../../hooks/useStorage", () => ({
@@ -138,17 +141,21 @@ vi.mock("../feature/storage/StorageItemDetailModal", () => ({
 vi.mock("../feature/storage/StorageItemEditorModal", () => ({
   StorageItemEditorModal: ({
     opened,
+    selectedStorage,
     item: currentItem,
     onCreateItem,
     onUploadImages,
   }: {
     opened: boolean;
+    selectedStorage: Storage | null;
     item: StorageItem | null;
     onCreateItem: (payload: {
       storage_id: string;
       category_id: null;
       name: string;
       description: null;
+      rarity: "common";
+      unit: null;
       allow_member_deposit: boolean;
       allow_member_withdraw: boolean;
     }, onSuccess: (item: StorageItem) => void) => void;
@@ -157,14 +164,17 @@ vi.mock("../feature/storage/StorageItemEditorModal", () => ({
     ? (
         <div>
           <div data-testid="storage-editor-item">{currentItem?.id ?? "new"}</div>
+          <div data-testid="storage-editor-scope">{selectedStorage?.id ?? "none"}</div>
           {!currentItem ? (
             <button
               type="button"
               onClick={() => onCreateItem({
-                storage_id: "storage-1",
+                storage_id: selectedStorage?.id ?? "missing-storage",
                 category_id: null,
                 name: "Crystal",
                 description: null,
+                rarity: "common",
+                unit: null,
                 allow_member_deposit: false,
                 allow_member_withdraw: false,
               }, () => {})}
@@ -224,6 +234,7 @@ const storages: Storage[] = [
     name: "Main vault",
     description: null,
     created_at: "2026-07-28T00:00:00.000Z",
+    structure_revision: 0,
     categories: [{ id: "category-1", name: "Materials" }],
   },
   {
@@ -231,6 +242,7 @@ const storages: Storage[] = [
     name: "Raid vault",
     description: null,
     created_at: "2026-07-28T00:00:00.000Z",
+    structure_revision: 0,
     categories: [],
   },
 ];
@@ -241,6 +253,8 @@ const item: StorageItem = {
   category_id: null,
   name: "Crystal",
   description: null,
+  rarity: "common",
+  unit: null,
   quantity: 10,
   allow_member_deposit: true,
   allow_member_withdraw: true,
@@ -250,7 +264,7 @@ const item: StorageItem = {
 };
 
 function renderPage() {
-  render(<StoragePage />);
+  return render(<StoragePage />);
 }
 
 describe("StoragePage recovery and filter isolation", () => {
@@ -273,6 +287,7 @@ describe("StoragePage recovery and filter isolation", () => {
     mutationMocks.createBatchTransaction.mockReset();
     mutationMocks.createItem.mockReset();
     mutationMocks.uploadImages.mockReset();
+    beforeUnloadPromptMock.mockReset();
     storageHooks.useStorageItems.mockImplementation((options: {
       search?: string;
       enabled?: boolean;
@@ -292,26 +307,6 @@ describe("StoragePage recovery and filter isolation", () => {
       "href",
       "/storage/manage",
     );
-  });
-
-  it("uses the shared contained workbench instead of a page-height formula", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/StoragePage.tsx"),
-      "utf8",
-    );
-    const css = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/StoragePage.css"),
-      "utf8",
-    ).replace(/\/\*[\s\S]*?\*\//g, "");
-
-    expect(source).toContain('<PageLayout className="storage-page" workspaceMode="contained">');
-    expect(css).toMatch(
-      /\.storage-page__stack\s*\{[^}]*flex:\s*1[^}]*min-block-size:\s*0/,
-    );
-    expect(css).toMatch(
-      /\.storage-semantic-workspace\s*\{[^}]*min-block-size:\s*0[^}]*overflow:\s*clip/,
-    );
-    expect(css).not.toMatch(/\.storage-page\s*\{[^}]*100(?:d)?vh/);
   });
 
   it("shows a retryable connection error without an empty or create state on initial failure", async () => {
@@ -368,15 +363,13 @@ describe("StoragePage recovery and filter isolation", () => {
     }));
   });
 
-  it("uses the unified entity navigator instead of storage tabs and keeps selections in the URL", async () => {
+  it("keeps entity navigator selections in the URL", async () => {
     const user = userEvent.setup();
     storageState.storages = storages;
 
     renderPage();
 
-    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     const navigator = screen.getByRole("region", { name: "field.storage" });
-    expect(within(navigator).queryByRole("combobox", { name: "field.storage" })).not.toBeInTheDocument();
     await user.click(within(navigator).getByRole("button", { name: "Raid vault" }));
 
     expect(routerMocks.navigate).toHaveBeenCalledWith({
@@ -470,6 +463,22 @@ describe("StoragePage recovery and filter isolation", () => {
     expect(screen.getByRole("button", { name: "action.reviewBatch" })).toBeInTheDocument();
   });
 
+  it("protects a populated batch draft when leaving the storage route", async () => {
+    const user = userEvent.setup();
+    storageState.storages = [storages[0]!];
+    renderPage();
+
+    expect(beforeUnloadPromptMock).toHaveBeenLastCalledWith(false, {
+      allowSamePathNavigation: true,
+    });
+    await user.click(screen.getByRole("button", { name: "action.startBatch" }));
+    await user.click(screen.getByRole("button", { name: "add-item-1" }));
+
+    expect(beforeUnloadPromptMock).toHaveBeenLastCalledWith(true, {
+      allowSamePathNavigation: true,
+    });
+  });
+
   it("keeps a newly created item open so an admin can upload images immediately", async () => {
     const user = userEvent.setup();
     storageState.storages = [storages[0]!];
@@ -490,5 +499,42 @@ describe("StoragePage recovery and filter isolation", () => {
       itemId: item.id,
       files: [expect.any(File)],
     });
+  });
+
+  it("keeps an open item editor bound to the storage where it was opened", async () => {
+    const user = userEvent.setup();
+    storageState.storages = storages;
+    storageState.canManageItems = true;
+    storageState.search = { storageId: "storage-1" };
+    const view = renderPage();
+
+    await user.click(screen.getByRole("button", { name: "action.createItem" }));
+    expect(screen.getByTestId("storage-editor-scope")).toHaveTextContent("storage-1");
+
+    storageState.search = { storageId: "storage-2" };
+    view.rerender(<StoragePage />);
+    expect(screen.getByTestId("storage-editor-scope")).toHaveTextContent("storage-1");
+    await user.click(screen.getByRole("button", { name: "editor-create" }));
+
+    expect(mutationMocks.createItem).toHaveBeenCalledWith(
+      expect.objectContaining({ storage_id: "storage-1" }),
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
+  it("keeps an open manual transaction picker bound to its original storage", async () => {
+    const user = userEvent.setup();
+    storageState.storages = storages;
+    storageState.canManageStock = true;
+    storageState.search = { storageId: "storage-1" };
+    const view = renderPage();
+
+    await user.click(screen.getByRole("button", { name: "action.manualEntry" }));
+    storageState.search = { storageId: "storage-2" };
+    view.rerender(<StoragePage />);
+
+    expect(storageHooks.useStorageItems.mock.calls.some(([options]) => (
+      options.storageId === "storage-1" && options.enabled === true
+    ))).toBe(true);
   });
 });

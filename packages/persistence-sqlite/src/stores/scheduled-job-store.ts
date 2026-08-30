@@ -49,12 +49,6 @@ function rows(result: SqlResult): readonly (readonly SqlValue[])[] {
   return result.rows as readonly (readonly SqlValue[])[];
 }
 
-function firstCell(result: SqlResult): SqlValue | undefined {
-  return Array.isArray(result.rows) && !Array.isArray(result.rows[0])
-    ? result.rows[0]
-    : undefined;
-}
-
 function assertLimit(limit: number, maximum: number, job: string): void {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > maximum) {
     throw new RangeError(`${job} limit must be between 1 and ${maximum}`);
@@ -66,20 +60,8 @@ export class SqliteEventAutoArchiveStore implements BoundedEventAutoArchiveStore
 
   async archiveDue(input: Parameters<BoundedEventAutoArchiveStore["archiveDue"]>[0]) {
     assertLimit(input.limit, 50, "Event auto-archive");
-    const selected = rows(await this.sql.execute({
-      method: "all",
-      sql: `SELECT id, title FROM events
-        WHERE ${dueEventWhere}
-        ORDER BY COALESCE(end_at, start_at), id
-        LIMIT ?`,
-      params: [input.now, input.now, input.limit],
-    })).map((row) => {
-      const [id, title] = row;
-      if (typeof id !== "string" || typeof title !== "string") {
-        throw new TypeError("SQLite returned an invalid event auto-archive row");
-      }
-      return { id, title };
-    });
+    const due = await this.selectDue(input.now, input.limit + 1);
+    const selected = due.slice(0, input.limit);
 
     const audits = selected.map(({ id, title }) => input.audit({
         subjectType: "event",
@@ -132,29 +114,69 @@ export class SqliteEventAutoArchiveStore implements BoundedEventAutoArchiveStore
         if (typeof id !== "string") throw new TypeError("SQLite returned an invalid archived event id");
         return id;
       });
-    const hasMore = firstCell(await this.sql.execute({
-      method: "get",
-      sql: `SELECT 1 FROM events WHERE ${dueEventWhere} LIMIT 1`,
-      params: [input.now, input.now],
-    })) === 1;
-    return { eventIds, hasMore };
+    return { eventIds, hasMore: due.length > input.limit };
   }
 
   async inspectBacklog(now: string) {
-    const pendingAt = rows(await this.sql.execute({
-      method: "all",
-      columns: ["pending_at"],
-      sql: `SELECT COALESCE(end_at, start_at) AS pending_at FROM events
-        WHERE ${dueEventWhere}
-        ORDER BY COALESCE(end_at, start_at), id
-        LIMIT ?`,
-      params: [now, now, SCHEDULED_BACKLOG_READ_LIMIT],
-    })).map((row) => {
-      const value = row[0];
-      if (typeof value !== "string") throw new TypeError("SQLite returned an invalid event backlog row");
-      return value;
-    });
+    const pendingAt = (await this.selectDue(now, SCHEDULED_BACKLOG_READ_LIMIT))
+      .map((candidate) => candidate.pendingAt);
     return observedBacklog(pendingAt);
+  }
+
+  private async selectDue(now: string, limit: number): Promise<readonly Readonly<{
+    id: string;
+    title: string;
+    pendingAt: string;
+  }>[]> {
+    const [ended, started] = await this.sql.batch([
+      {
+        method: "all",
+        columns: ["id", "title", "pending_at"],
+        sql: `SELECT id, title, end_at AS pending_at
+          FROM events INDEXED BY idx_events_auto_archive_end_due
+          WHERE archived_at IS NULL
+            AND auto_archive = 1
+            AND auto_archived = 0
+            AND end_at IS NOT NULL
+            AND end_at < ?
+            AND NOT (
+              type = 'raffle'
+              AND NOT EXISTS (SELECT 1 FROM event_raffle_winners WHERE event_id = events.id)
+            )
+          ORDER BY end_at, id
+          LIMIT ?`,
+        params: [now, limit],
+      },
+      {
+        method: "all",
+        columns: ["id", "title", "pending_at"],
+        sql: `SELECT id, title, start_at AS pending_at
+          FROM events INDEXED BY idx_events_auto_archive_start_due
+          WHERE archived_at IS NULL
+            AND auto_archive = 1
+            AND auto_archived = 0
+            AND end_at IS NULL
+            AND start_at < ?
+            AND NOT (
+              type = 'raffle'
+              AND NOT EXISTS (SELECT 1 FROM event_raffle_winners WHERE event_id = events.id)
+            )
+          ORDER BY start_at, id
+          LIMIT ?`,
+        params: [now, limit],
+      },
+    ]);
+    if (!ended || !started) throw new TypeError("SQLite omitted an event auto-archive result set");
+    return [...rows(ended), ...rows(started)]
+      .map((row) => {
+        const [id, title, pendingAt] = row;
+        if (typeof id !== "string" || typeof title !== "string" || typeof pendingAt !== "string") {
+          throw new TypeError("SQLite returned an invalid event auto-archive row");
+        }
+        return { id, title, pendingAt };
+      })
+      .sort((left, right) => left.pendingAt.localeCompare(right.pendingAt) || left.id.localeCompare(right.id))
+      .slice(0, limit);
   }
 }
 
@@ -289,20 +311,20 @@ export class SqliteRaffleAutoDrawStore implements BoundedRaffleAutoDrawStore {
     assertLimit(limit, 25, "Raffle auto-draw");
     const selected = rows(await this.sql.execute({
       method: "all",
-      columns: ["id", "title", "winner_count", "created_by"],
-      sql: `SELECT id, title, winner_count, created_by FROM events INDEXED BY idx_events_raffle_due
+      columns: ["id", "title", "winner_count", "created_by", "updated_at"],
+      sql: `SELECT id, title, winner_count, created_by, updated_at FROM events INDEXED BY idx_events_raffle_due
         WHERE ${dueRaffleWhere}
         ORDER BY end_at, id
         LIMIT ?`,
       params: [now, limit + 1],
     })).map((row) => {
-      const [eventId, title, winnerCount, drawnByUserId] = row;
+      const [eventId, title, winnerCount, drawnByUserId, updatedAt] = row;
       if (
         typeof eventId !== "string" || typeof title !== "string"
         || typeof winnerCount !== "number" || !Number.isSafeInteger(winnerCount) || winnerCount < 1
-        || typeof drawnByUserId !== "string"
+        || typeof drawnByUserId !== "string" || typeof updatedAt !== "string"
       ) throw new TypeError("SQLite returned an invalid due raffle row");
-      return { eventId, title, winnerCount, drawnByUserId };
+      return { eventId, title, winnerCount, drawnByUserId, updatedAt };
     });
     const candidates = selected.slice(0, limit);
     if (candidates.length === 0) return { raffles: [], hasMore: false };
@@ -349,14 +371,16 @@ export class SqliteRaffleAutoDrawStore implements BoundedRaffleAutoDrawStore {
   }
 
   async drawRaffle(input: Parameters<BoundedRaffleAutoDrawStore["drawRaffle"]>[0]): Promise<void> {
-    await this.draws.drawRaffle(
-      input.eventId,
-      input.winnerIds,
-      input.winnerRowIds,
-      input.now,
-      input.drawnByUserId,
-      input.audit,
-    );
+    await this.draws.drawRaffle({
+      eventId: input.eventId,
+      winnerIds: input.winnerIds,
+      winnerRowIds: input.winnerRowIds,
+      now: input.now,
+      actorUserId: input.drawnByUserId,
+      expectedUpdatedAt: input.expectedUpdatedAt,
+      updatedAt: input.updatedAt,
+      audit: input.audit,
+    });
   }
 
   async inspectBacklog(now: string) {
@@ -383,52 +407,63 @@ export class SqliteSessionCleanupJob implements SessionCleanupJob {
   async run(input: Parameters<SessionCleanupJob["run"]>[0]) {
     assertLimit(input.limit, 500, "Session cleanup");
     const cutoffs = maintenanceCutoffs(input.expiresBefore);
+    const windowLimit = input.limit + 1;
     const selected = await this.sql.batch([
       {
         method: "all",
         columns: ["candidate_key", "pending_at"],
         sql: SESSION_CLEANUP_EXPIRES_CANDIDATES_SQL,
-        params: [input.expiresBefore, input.limit],
+        params: [input.expiresBefore, windowLimit],
       },
       {
         method: "all",
         columns: ["candidate_key", "pending_at"],
         sql: SESSION_CLEANUP_CREATED_CANDIDATES_SQL,
-        params: [input.createdBefore, input.limit],
+        params: [input.createdBefore, windowLimit],
       },
       {
         method: "all",
         columns: ["candidate_key", "pending_at"],
         sql: `SELECT id AS candidate_key, occurred_at AS pending_at FROM notification_inbox
           WHERE occurred_at < ? ORDER BY occurred_at, id LIMIT ?`,
-        params: [cutoffs.notificationInbox, input.limit],
+        params: [cutoffs.notificationInbox, windowLimit],
       },
       {
         method: "all",
         columns: ["candidate_key", "pending_at"],
-        sql: `SELECT state_digest AS candidate_key, created_at AS pending_at FROM oauth_challenges
-          WHERE expires_at <= ? OR consumed_at <= ?
-          ORDER BY created_at, state_digest LIMIT ?`,
-        params: [cutoffs.transientAuth, cutoffs.transientAuth, input.limit],
+        sql: `SELECT state_digest AS candidate_key, expires_at AS pending_at
+          FROM oauth_challenges INDEXED BY idx_oauth_challenges_cleanup_expiry
+          WHERE expires_at <= ? ORDER BY expires_at, state_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, windowLimit],
       },
       {
         method: "all",
         columns: ["candidate_key", "pending_at"],
-        sql: `SELECT token_digest AS candidate_key, created_at AS pending_at FROM email_verification_challenges
-          WHERE expires_at <= ? OR consumed_at <= ?
-          ORDER BY created_at, token_digest LIMIT ?`,
-        params: [cutoffs.transientAuth, cutoffs.transientAuth, input.limit],
+        sql: `SELECT state_digest AS candidate_key, consumed_at AS pending_at
+          FROM oauth_challenges INDEXED BY idx_oauth_challenges_cleanup_consumed
+          WHERE consumed_at IS NOT NULL AND consumed_at <= ?
+          ORDER BY consumed_at, state_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, windowLimit],
       },
       {
         method: "all",
         columns: ["candidate_key", "pending_at"],
-        sql: `SELECT login_name AS candidate_key, last_failed_at AS pending_at FROM login_failures
-          WHERE last_failed_at < ? AND (locked_until IS NULL OR locked_until < ?)
-          ORDER BY last_failed_at, login_name LIMIT ?`,
-        params: [cutoffs.transientAuth, input.expiresBefore, input.limit],
+        sql: `SELECT token_digest AS candidate_key, expires_at AS pending_at
+          FROM email_verification_challenges INDEXED BY idx_email_verification_cleanup_expiry
+          WHERE expires_at <= ? ORDER BY expires_at, token_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, windowLimit],
+      },
+      {
+        method: "all",
+        columns: ["candidate_key", "pending_at"],
+        sql: `SELECT token_digest AS candidate_key, consumed_at AS pending_at
+          FROM email_verification_challenges INDEXED BY idx_email_verification_cleanup_consumed
+          WHERE consumed_at IS NOT NULL AND consumed_at <= ?
+          ORDER BY consumed_at, token_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, windowLimit],
       },
     ]);
-    const kinds = ["session", "session", "notification", "oauth", "email", "login_failure"] as const;
+    const kinds = ["session", "session", "notification", "oauth", "oauth", "email", "email"] as const;
     type Candidate = Readonly<{ kind: (typeof kinds)[number]; key: string; pendingAt: string }>;
     const candidatesByIdentity = new Map<string, Candidate>();
     selected.forEach((result, index) => {
@@ -451,6 +486,8 @@ export class SqliteSessionCleanupJob implements SessionCleanupJob {
         || left.kind.localeCompare(right.kind)
         || left.key.localeCompare(right.key))
       .slice(0, input.limit);
+    const hasMore = candidatesByIdentity.size > input.limit;
+    if (candidates.length === 0) return { processed: 0, hasMore: false };
     const candidateKeys = (kind: Candidate["kind"]): string => JSON.stringify(
       candidates.filter((candidate) => candidate.kind === kind).map((candidate) => candidate.key),
     );
@@ -492,57 +529,9 @@ export class SqliteSessionCleanupJob implements SessionCleanupJob {
           RETURNING token_digest`,
         params: [candidateKeys("email"), cutoffs.transientAuth, cutoffs.transientAuth],
       },
-      {
-        method: "all",
-        columns: ["login_name"],
-        sql: `DELETE FROM login_failures
-          WHERE login_name IN (SELECT CAST(value AS TEXT) FROM json_each(?))
-            AND last_failed_at < ? AND (locked_until IS NULL OR locked_until < ?)
-          RETURNING login_name`,
-        params: [candidateKeys("login_failure"), cutoffs.transientAuth, input.expiresBefore],
-      },
     ]);
     const processed = mutation.reduce((total, result) => total + returnedRows(result).length, 0);
 
-    const remaining = await this.sql.batch([
-      {
-        method: "get",
-        columns: ["present"],
-        sql: "SELECT 1 AS present FROM sessions WHERE expires_at <= ? ORDER BY expires_at, token_digest LIMIT 1",
-        params: [input.expiresBefore],
-      },
-      {
-        method: "get",
-        columns: ["present"],
-        sql: "SELECT 1 AS present FROM sessions WHERE created_at <= ? ORDER BY created_at, token_digest LIMIT 1",
-        params: [input.createdBefore],
-      },
-      {
-        method: "get",
-        columns: ["present"],
-        sql: "SELECT 1 AS present FROM notification_inbox WHERE occurred_at < ? ORDER BY occurred_at, id LIMIT 1",
-        params: [cutoffs.notificationInbox],
-      },
-      {
-        method: "get",
-        columns: ["present"],
-        sql: "SELECT 1 AS present FROM oauth_challenges WHERE expires_at <= ? OR consumed_at <= ? LIMIT 1",
-        params: [cutoffs.transientAuth, cutoffs.transientAuth],
-      },
-      {
-        method: "get",
-        columns: ["present"],
-        sql: "SELECT 1 AS present FROM email_verification_challenges WHERE expires_at <= ? OR consumed_at <= ? LIMIT 1",
-        params: [cutoffs.transientAuth, cutoffs.transientAuth],
-      },
-      {
-        method: "get",
-        columns: ["present"],
-        sql: "SELECT 1 AS present FROM login_failures WHERE last_failed_at < ? AND (locked_until IS NULL OR locked_until < ?) LIMIT 1",
-        params: [cutoffs.transientAuth, input.expiresBefore],
-      },
-    ]);
-    const hasMore = remaining.some((result) => firstCell(result) === 1);
     return { processed, hasMore };
   }
 
@@ -573,24 +562,36 @@ export class SqliteSessionCleanupJob implements SessionCleanupJob {
       {
         method: "all",
         columns: ["token_digest", "pending_at"],
-        sql: `SELECT 'oauth:' || state_digest AS token_digest, created_at AS pending_at FROM oauth_challenges
-          WHERE expires_at <= ? OR consumed_at <= ? ORDER BY created_at, state_digest LIMIT ?`,
-        params: [cutoffs.transientAuth, cutoffs.transientAuth, SCHEDULED_BACKLOG_READ_LIMIT],
+        sql: `SELECT 'oauth:' || state_digest AS token_digest, expires_at AS pending_at
+          FROM oauth_challenges INDEXED BY idx_oauth_challenges_cleanup_expiry
+          WHERE expires_at <= ? ORDER BY expires_at, state_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, SCHEDULED_BACKLOG_READ_LIMIT],
       },
       {
         method: "all",
         columns: ["token_digest", "pending_at"],
-        sql: `SELECT 'email:' || token_digest AS token_digest, created_at AS pending_at FROM email_verification_challenges
-          WHERE expires_at <= ? OR consumed_at <= ? ORDER BY created_at, token_digest LIMIT ?`,
-        params: [cutoffs.transientAuth, cutoffs.transientAuth, SCHEDULED_BACKLOG_READ_LIMIT],
+        sql: `SELECT 'oauth:' || state_digest AS token_digest, consumed_at AS pending_at
+          FROM oauth_challenges INDEXED BY idx_oauth_challenges_cleanup_consumed
+          WHERE consumed_at IS NOT NULL AND consumed_at <= ?
+          ORDER BY consumed_at, state_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, SCHEDULED_BACKLOG_READ_LIMIT],
       },
       {
         method: "all",
         columns: ["token_digest", "pending_at"],
-        sql: `SELECT 'login-failure:' || login_name AS token_digest, last_failed_at AS pending_at FROM login_failures
-          WHERE last_failed_at < ? AND (locked_until IS NULL OR locked_until < ?)
-          ORDER BY last_failed_at, login_name LIMIT ?`,
-        params: [cutoffs.transientAuth, input.expiresBefore, SCHEDULED_BACKLOG_READ_LIMIT],
+        sql: `SELECT 'email:' || token_digest AS token_digest, expires_at AS pending_at
+          FROM email_verification_challenges INDEXED BY idx_email_verification_cleanup_expiry
+          WHERE expires_at <= ? ORDER BY expires_at, token_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, SCHEDULED_BACKLOG_READ_LIMIT],
+      },
+      {
+        method: "all",
+        columns: ["token_digest", "pending_at"],
+        sql: `SELECT 'email:' || token_digest AS token_digest, consumed_at AS pending_at
+          FROM email_verification_challenges INDEXED BY idx_email_verification_cleanup_consumed
+          WHERE consumed_at IS NOT NULL AND consumed_at <= ?
+          ORDER BY consumed_at, token_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, SCHEDULED_BACKLOG_READ_LIMIT],
       },
     ]);
     const pendingBySession = new Map<string, string>();

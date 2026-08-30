@@ -3,9 +3,9 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAdminMutations } from "./useAdminMutations";
+import { localDayStartIso } from "../utils/datetime";
 
 const serviceMocks = vi.hoisted(() => ({
-  adminUpdateProfile: vi.fn(),
   batchDeactivateAdminUsers: vi.fn(),
   batchDeleteAdminUsers: vi.fn(),
   batchReactivateAdminUsers: vi.fn(),
@@ -18,9 +18,9 @@ const serviceMocks = vi.hoisted(() => ({
   deleteRole: vi.fn(),
   downloadAdminAuditLogExport: vi.fn(),
   reactivateAdminUser: vi.fn(),
-  resetAdminUserLoginLock: vi.fn(),
   resetAdminUserPassword: vi.fn(),
   revokeAdminInviteLink: vi.fn(),
+  updateAdminMember: vi.fn(),
   updateAdminUserRole: vi.fn(),
   updateRole: vi.fn(),
 }));
@@ -63,9 +63,16 @@ function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
   );
 }
 
-function renderMutations() {
+function renderMutations(auditFilter = {
+  search: "",
+  dateFrom: "",
+  dateTo: "",
+  entityType: "",
+  entityId: "",
+  actorId: "",
+}) {
   return renderHook(() => useAdminMutations({
-    auditFilter: { search: "", dateFrom: "", dateTo: "", entityType: "", entityId: "", actorId: "" },
+    auditFilter,
     batchSelectionLimit: 50,
     showError: showErrorMock,
     resolveUsername: (id) => id,
@@ -99,39 +106,95 @@ describe("useAdminMutations session revalidation", () => {
       await result.current.batchReactivateMutation.mutateAsync(["user-1"]);
       await result.current.updateMemberProfileMutation.mutateAsync({
         userId: "user-1",
+        expectedUserRevisionToken: "user-v1",
+        expectedProfileRevisionToken: "profile-v1",
+        displayName: "RenamedMember",
         profile: {
           power: 10,
           classes: ["warrior"],
           titleHtml: "",
           bio: "",
+          availability: null,
           notes: "",
         },
         role: "member",
         isActive: true,
       });
       await result.current.createRoleMutation.mutateAsync({ name: "Raid Lead", level: 200 });
-      await result.current.updateRoleConfigMutation.mutateAsync({ id: "raid-lead", payload: { level: 201 } });
+      await result.current.updateRoleConfigMutation.mutateAsync({
+        id: "raid-lead",
+        payload: { expected_revision_token: "role-v1", level: 201 },
+      });
       await result.current.deleteRoleMutation.mutateAsync("raid-lead");
     });
 
     expect(revalidateSessionSnapshotMock).toHaveBeenCalledTimes(10);
     expect(revalidateSessionSnapshotMock.mock.calls.every(([client]) => client instanceof QueryClient)).toBe(true);
+    expect(serviceMocks.updateAdminMember).toHaveBeenCalledWith("user-1", {
+      expected_user_revision_token: "user-v1",
+      expected_profile_revision_token: "profile-v1",
+      display_name: "RenamedMember",
+      profile: {
+        power: 10,
+        classes: ["warrior"],
+        title_html: null,
+        bio: null,
+        availability: null,
+        notes: null,
+      },
+      role_id: "member",
+      is_active: true,
+    });
   });
 
-  it("calls only the member endpoint represented by the submitted change", async () => {
+  it("sends one composite member command for the submitted change", async () => {
     const { result } = renderMutations();
 
     await act(async () => {
       await result.current.updateMemberProfileMutation.mutateAsync({
         userId: "user-1",
+        expectedUserRevisionToken: "user-v1",
+        expectedProfileRevisionToken: "profile-v1",
         role: "raid-lead",
       });
     });
 
-    expect(serviceMocks.updateAdminUserRole).toHaveBeenCalledWith("user-1", "raid-lead");
-    expect(serviceMocks.adminUpdateProfile).not.toHaveBeenCalled();
+    expect(serviceMocks.updateAdminMember).toHaveBeenCalledWith("user-1", {
+      expected_user_revision_token: "user-v1",
+      expected_profile_revision_token: "profile-v1",
+      role_id: "raid-lead",
+    });
+    expect(serviceMocks.updateAdminUserRole).not.toHaveBeenCalled();
     expect(serviceMocks.reactivateAdminUser).not.toHaveBeenCalled();
     expect(serviceMocks.deactivateAdminUser).not.toHaveBeenCalled();
+  });
+
+  it("creates a member and its private notes with one atomic request", async () => {
+    serviceMocks.createAdminMember.mockResolvedValueOnce({
+      ok: true,
+      user_id: "user-2",
+      display_name: "New Member",
+      temporary_login_name: "new-member",
+      temporary_password: "temporary-password",
+    });
+    const { result } = renderMutations();
+
+    await act(async () => {
+      await result.current.createMemberMutation.mutateAsync({
+        login_name: "new-member",
+        display_name: "New Member",
+        notes: "Initial officer note",
+        roleId: "member",
+      });
+    });
+
+    expect(serviceMocks.createAdminMember).toHaveBeenCalledWith({
+      login_name: "new-member",
+      display_name: "New Member",
+      role_id: "member",
+      notes: "Initial officer note",
+    });
+    expect(serviceMocks.updateAdminMember).not.toHaveBeenCalled();
   });
 
   it("does not revalidate failed or unrelated invite and audit mutations", async () => {
@@ -144,12 +207,37 @@ describe("useAdminMutations session revalidation", () => {
     await act(async () => {
       await expect(result.current.updateRoleMutation.mutateAsync({ userId: "user-1", role: "member" })).rejects.toThrow("role failed");
       await expect(result.current.deactivateMutation.mutateAsync("user-1")).rejects.toThrow("status failed");
-      await expect(result.current.updateRoleConfigMutation.mutateAsync({ id: "member", payload: { level: 2 } })).rejects.toThrow("config failed");
+      await expect(result.current.updateRoleConfigMutation.mutateAsync({
+        id: "member",
+        payload: { expected_revision_token: "role-v1", level: 2 },
+      })).rejects.toThrow("config failed");
       await result.current.createInviteMutation.mutateAsync({ roleId: "member", maxUses: 1, expiresAt: "" });
       await result.current.exportAuditLogMutation.mutateAsync("csv");
     });
 
     expect(revalidateSessionSnapshotMock).not.toHaveBeenCalled();
+  });
+
+  it("forwards a one-sided audit export date for server-side validation", async () => {
+    serviceMocks.downloadAdminAuditLogExport.mockResolvedValueOnce(new Blob(["audit"]));
+    const { result } = renderMutations({
+      search: "",
+      dateFrom: "2026-03-08",
+      dateTo: "",
+      entityType: "",
+      entityId: "",
+      actorId: "",
+    });
+
+    await act(async () => {
+      await result.current.exportAuditLogMutation.mutateAsync("csv");
+    });
+
+    expect(serviceMocks.downloadAdminAuditLogExport).toHaveBeenCalledWith(expect.objectContaining({
+      format: "csv",
+      start_at: localDayStartIso("2026-03-08"),
+      end_at: undefined,
+    }));
   });
 
   it("keeps a saved mutation successful when only session refresh fails", async () => {
@@ -169,29 +257,4 @@ describe("useAdminMutations session revalidation", () => {
     });
   });
 
-  it("confirms the current lock duration and reports the duration returned by reset", async () => {
-    serviceMocks.resetAdminUserLoginLock.mockResolvedValueOnce({
-      ok: true,
-      fail_count: 5,
-      locked_until: "2026-08-09T12:01:00.000Z",
-      is_locked: true,
-      retry_after_seconds: 60,
-    });
-    const { result } = renderMutations();
-
-    await act(async () => {
-      await result.current.resetUserLoginLock("user-1", {
-        fail_count: 4,
-        locked_until: "2026-08-09T12:00:45.000Z",
-        is_locked: true,
-        retry_after_seconds: 45,
-      });
-    });
-
-    expect(confirmMock).toHaveBeenCalledWith(expect.objectContaining({
-      description: "confirm.loginLockDescription:45",
-    }));
-    expect(serviceMocks.resetAdminUserLoginLock).toHaveBeenCalledWith("user-1");
-    expect(notifySuccessMock).toHaveBeenCalledWith("message.loginLockCleared:60");
-  });
 });

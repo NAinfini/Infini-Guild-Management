@@ -1,7 +1,5 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Button } from "@portal/components/ui/button";
@@ -87,7 +85,7 @@ describe("ContentFilterToolbar", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps search, view, summary, and page actions visible while filters use one entry", async () => {
+  it("opens hidden filters from an accessible filter control", async () => {
     const user = userEvent.setup();
     renderToolbar();
 
@@ -105,14 +103,8 @@ describe("ContentFilterToolbar", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     const dialog = await screen.findByRole("dialog", { name: /Filter & sort/ });
     expect(dialog).toBeInTheDocument();
-    expect(dialog.querySelector(".content-filter-toolbar__panel-heading")).toHaveTextContent("Filter & sort");
-    expect(dialog.querySelector(".content-filter-toolbar__panel-heading")).toHaveTextContent("2");
-    expect(within(dialog).getByRole("button", { name: "Status" }).closest(
-      ".content-filter-toolbar__panel-controls",
-    )).not.toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Pinned only" }).closest(
-      ".content-filter-toolbar__panel-action-rail",
-    )).not.toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Status" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Pinned only" })).toBeInTheDocument();
   });
 
   it("omits the filter count when no hidden filter differs from its default", () => {
@@ -153,8 +145,23 @@ describe("ContentFilterToolbar", () => {
     await user.click(toggle);
 
     const dialog = await screen.findByRole("dialog", { name: "Filter & sort" });
-    expect(dialog.querySelector(".content-filter-toolbar__panel-heading")).toHaveTextContent("Filter & sort");
-    expect(dialog.querySelector(".content-filter-toolbar__panel")).not.toBeNull();
+    expect(dialog).toBeVisible();
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(toggle).toHaveFocus();
+    });
+  });
+
+  it("closes the desktop filter panel with Escape and returns focus", async () => {
+    const user = userEvent.setup();
+    renderToolbar();
+
+    const toggle = screen.getByRole("button", { name: "Filter & sort (2)" });
+    await user.click(toggle);
+    expect(await screen.findByRole("dialog", { name: /Filter & sort/ })).toBeVisible();
+
     await user.keyboard("{Escape}");
 
     await waitFor(() => {
@@ -192,35 +199,23 @@ describe("ContentFilterToolbar", () => {
     await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
   });
 
-  it("uses only the final Base UI slots and container-sized wrapping", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/shared/ContentFilterToolbar.tsx"),
-      "utf8",
-    );
-    const css = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/shared/ContentFilterToolbar.css"),
-      "utf8",
-    );
+  it("closes the desktop panel from both the trigger and its explicit close action", async () => {
+    const user = userEvent.setup();
+    renderToolbar();
 
-    expect(source).toContain("filterControls");
-    expect(source).toContain("filterActions");
-    expect(source).toContain("<PopoverTrigger");
-    expect(source).toContain("<DrawerTrigger");
-    expect(source).toContain("<ScrollArea");
-    const deprecatedUiName = ["man", "tine"].join("");
-    expect(source.toLowerCase()).not.toContain(deprecatedUiName);
-    expect(source).not.toMatch(/flattenFilterNodes|isAuxiliaryFilter|ActionIcon|HoverCard|Tooltip|isValidElement|Children/);
-    expect(source).not.toMatch(/\bfilters[?:]/);
-    expect(source).not.toMatch(/\bwithBorder\b|\bpadding\b/);
-    expect(css.toLowerCase()).not.toContain(deprecatedUiName);
-    expect(css).toMatch(/container-type:\s*inline-size/);
-    expect(css).toMatch(/grid-template-areas:\s*"search filter view summary actions"/);
-    expect(css).toContain("content-filter-toolbar__panel-action-rail");
-    expect(css).toMatch(/@container content-filter-toolbar \(max-width:\s*58rem\)/);
-    expect(css).toMatch(/@container content-filter-toolbar \(max-width:\s*32rem\)/);
-    expect(css).toMatch(/"search filter view actions"/);
-    expect(css).toMatch(/"search filter"/);
-    expect(css).toMatch(/content-filter-toolbar__toggle[\s\S]*?min-height:\s*var\(--control-hit-area\)/);
-    expect(css).toMatch(/content-filter-toolbar__actions[\s\S]*?grid-area:\s*actions/);
+    const toggle = screen.getByRole("button", { name: "Filter & sort (2)" });
+    await user.click(toggle);
+    await user.click(toggle);
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
+
+    await user.click(toggle);
+    const dialog = await screen.findByRole("dialog", { name: /Filter & sort/ });
+    await user.click(within(dialog).getByRole("button", { name: "action.close" }));
+
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(toggle).toHaveFocus();
+    });
   });
+
 });

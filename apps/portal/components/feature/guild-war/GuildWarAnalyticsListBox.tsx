@@ -1,11 +1,13 @@
-import { Avatar, AvatarFallback } from "@portal/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@portal/components/ui/avatar";
 import { Input } from "@portal/components/ui/input";
 import { CheckIcon, SearchIcon } from "@portal/components/icons";
+import { resolveMediaUrl } from "@portal/utils/media";
 import { useMemo, useState, type ComponentType, type ReactNode } from "react";
 
 export type AnalyticsListBoxItem = {
   value: string;
   label: string;
+  avatarMediaId?: string | null;
   Icon?: ComponentType<{ size?: number }>;
 };
 
@@ -114,8 +116,16 @@ export function UserListBoxItem({ item, checked }: UserListBoxItemProps) {
     <span className="gwa-listbox__item-layout">
       <span className="gwa-listbox__item-main">
         <Avatar className="size-5">
+          {item.avatarMediaId ? (
+            <AvatarImage
+              src={resolveMediaUrl(item.avatarMediaId)}
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
+          ) : null}
           <AvatarFallback>
-          {item.label.slice(0, 2).toUpperCase()}
+            {item.label.slice(0, 2).toUpperCase()}
           </AvatarFallback>
         </Avatar>
         <span className="gwa-listbox__item-label">{item.label}</span>

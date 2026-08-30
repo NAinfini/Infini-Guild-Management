@@ -1,4 +1,4 @@
-import { permissionSetToRecord } from "@guild/shared";
+import { permissionSetToRecord, type MemberAvailability } from "@guild/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -7,6 +7,7 @@ import type { AdminUserRow } from "../types/admin";
 import { useAdminMemberDetail } from "./useAdminMemberDetail";
 
 const confirmMock = vi.hoisted(() => vi.fn());
+const memberMediaControllerMock = vi.hoisted(() => vi.fn((_input: unknown) => ({})));
 
 vi.mock("@portal/hooks/useConfirmDialog", () => ({
   useConfirmDialog: () => confirmMock,
@@ -17,7 +18,7 @@ vi.mock("./useBeforeUnloadPrompt", () => ({
 }));
 
 vi.mock("../components/feature/admin/useAdminMemberMediaController", () => ({
-  useAdminMemberMediaController: () => ({}),
+  useAdminMemberMediaController: memberMediaControllerMock,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -60,6 +61,10 @@ function member(id: string, display_name: string, bio: string): AdminUserRow {
       updated_at: timestamp,
     },
     badges: [],
+    edit_revisions: {
+      user_revision_token: `${id}-user-v1`,
+      profile_revision_token: `${id}-profile-v1`,
+    },
   };
 }
 
@@ -76,6 +81,7 @@ describe("useAdminMemberDetail", () => {
   beforeEach(() => {
     confirmMock.mockReset();
     confirmMock.mockResolvedValue(true);
+    memberMediaControllerMock.mockClear();
   });
 
   it("preserves a dirty form when the selected member refetches", async () => {
@@ -122,8 +128,102 @@ describe("useAdminMemberDetail", () => {
 
     act(() => result.current.setMemberDetailForm((current) => ({ ...current, bio: "saved draft" })));
     expect(result.current.isDirty).toBe(true);
-    act(() => result.current.markMemberDetailSaved(alice.user.id, result.current.memberDetailForm));
+    act(() => result.current.markMemberDetailSaved(alice.user.id, result.current.memberDetailForm, {
+      user_revision_token: "alice-id-user-v2",
+      profile_revision_token: "alice-id-profile-v2",
+    }));
     expect(result.current.isDirty).toBe(false);
+    expect(result.current.memberDetailRevisions).toEqual({
+      user_revision_token: "alice-id-user-v2",
+      profile_revision_token: "alice-id-profile-v2",
+    });
+  });
+
+  it("keeps the form-open revisions when an A/B refetch arrives behind a dirty draft", async () => {
+    const alice = member("alice-id", "Alice", "server bio");
+    const { result, rerender } = renderHook(
+      ({ usersData }) => useAdminMemberDetail({ usersData, memberSearchParam: undefined, showError: vi.fn() }),
+      { initialProps: { usersData: [alice] }, wrapper: wrapper() },
+    );
+    await act(async () => {
+      await result.current.setMemberDetailId(alice.user.id);
+    });
+    await waitFor(() => expect(result.current.memberDetailRevisions).toEqual({
+      user_revision_token: "alice-id-user-v1",
+      profile_revision_token: "alice-id-profile-v1",
+    }));
+    act(() => result.current.setMemberDetailForm((current) => ({ ...current, bio: "A draft" })));
+
+    rerender({ usersData: [{
+      ...member("alice-id", "Alice", "B update"),
+      edit_revisions: {
+        user_revision_token: "alice-id-user-v2",
+        profile_revision_token: "alice-id-profile-v2",
+      },
+    }] });
+
+    expect(result.current.memberDetailForm.bio).toBe("A draft");
+    expect(result.current.memberDetailRevisions).toEqual({
+      user_revision_token: "alice-id-user-v1",
+      profile_revision_token: "alice-id-profile-v1",
+    });
+  });
+
+  it("adopts clean self refreshes, ignores a known superseded response, and freezes a dirty draft", async () => {
+    const alice = member("alice-id", "Alice", "server bio");
+    const { result, rerender } = renderHook(
+      ({ usersData }) => useAdminMemberDetail({
+        usersData,
+        memberSearchParam: undefined,
+        currentUserId: "alice-id",
+        showError: vi.fn(),
+      }),
+      { initialProps: { usersData: [alice] }, wrapper: wrapper() },
+    );
+
+    await act(async () => {
+      await result.current.setMemberDetailId(alice.user.id);
+    });
+    await waitFor(() => expect(result.current.memberDetailRevisions?.profile_revision_token).toBe("alice-id-profile-v1"));
+    const controllerInput = memberMediaControllerMock.mock.calls.at(-1)?.[0] as unknown as {
+      currentUserId?: string;
+      profileRevisionToken?: string | null;
+      onProfileRevision?: (memberId: string, profileRevisionToken: string) => void;
+    };
+    expect(controllerInput.currentUserId).toBe("alice-id");
+    expect(controllerInput.profileRevisionToken).toBe("alice-id-profile-v1");
+
+    act(() => controllerInput.onProfileRevision?.("alice-id", "alice-id-profile-v2"));
+    await waitFor(() => expect(result.current.memberDetailRevisions?.profile_revision_token).toBe("alice-id-profile-v2"));
+
+    rerender({ usersData: [{
+      ...member("alice-id", "Alice", "late stale bio"),
+      edit_revisions: {
+        user_revision_token: "alice-id-user-v1",
+        profile_revision_token: "alice-id-profile-v1",
+      },
+    }] });
+    expect(result.current.memberDetailRevisions?.profile_revision_token).toBe("alice-id-profile-v2");
+
+    rerender({ usersData: [{
+      ...member("alice-id", "Alice", "fresh background bio"),
+      edit_revisions: {
+        user_revision_token: "alice-id-user-v3",
+        profile_revision_token: "alice-id-profile-v3",
+      },
+    }] });
+    await waitFor(() => expect(result.current.memberDetailRevisions?.profile_revision_token).toBe("alice-id-profile-v3"));
+
+    act(() => result.current.setMemberDetailForm((current) => ({ ...current, bio: "local draft" })));
+    rerender({ usersData: [{
+      ...member("alice-id", "Alice", "later background bio"),
+      edit_revisions: {
+        user_revision_token: "alice-id-user-v4",
+        profile_revision_token: "alice-id-profile-v4",
+      },
+    }] });
+
+    expect(result.current.memberDetailRevisions?.profile_revision_token).toBe("alice-id-profile-v3");
   });
 
   it("tracks repeated member query changes including clear and reopen", async () => {
@@ -162,4 +262,43 @@ describe("useAdminMemberDetail", () => {
     expect(confirmMock).toHaveBeenCalledTimes(1);
     expect(result.current.memberDetailId).toBe("alice-id");
   });
+
+  it("includes display name and weekly availability in the editable draft", async () => {
+    const alice = member("alice-id", "Alice", "Alice bio");
+    const usersData = [alice];
+    const availability: MemberAvailability = {
+      timezone: "UTC",
+      days: {
+        sunday: [],
+        monday: [{ start_utc: "20:00", end_utc: "22:00" }],
+        tuesday: [],
+        wednesday: [],
+        thursday: [],
+        friday: [],
+        saturday: [],
+      },
+    };
+    const { result } = renderHook(
+      () => useAdminMemberDetail({ usersData, memberSearchParam: undefined, showError: vi.fn() }),
+      { wrapper: wrapper() },
+    );
+
+    await act(async () => {
+      await result.current.setMemberDetailId(alice.user.id);
+    });
+    await waitFor(() => expect(result.current.memberDetailForm.displayName).toBe("Alice"));
+    act(() => result.current.setMemberDetailForm((current) => ({
+      ...current,
+      displayName: "Alicia",
+      availability,
+    })));
+    expect(result.current.isDirty).toBe(true);
+
+    act(() => result.current.resetMemberDetailForm());
+    expect(result.current.memberDetailForm).toMatchObject({
+      displayName: "Alice",
+      availability: null,
+    });
+  });
+
 });

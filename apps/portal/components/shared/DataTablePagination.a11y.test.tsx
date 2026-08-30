@@ -1,11 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import {
-  getCoreRowModel,
-  getPaginationRowModel,
-  useReactTable,
+  useTable,
 } from "@tanstack/react-table";
 import { describe, expect, it, vi } from "vitest";
 import { DataTablePagination } from "./DataTablePagination";
+import { dataTableFeatures } from "./data-table-features";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -21,13 +20,15 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-function PaginationHarness() {
-  const table = useReactTable({
-    data: Array.from({ length: 30 }, (_, id) => ({ id })),
+function PaginationHarness({ rowCount = 30, pageSize = 10 }: {
+  rowCount?: number;
+  pageSize?: number;
+}) {
+  const table = useTable({
+    features: dataTableFeatures,
+    data: Array.from({ length: rowCount }, (_, id) => ({ id })),
     columns: [],
-    initialState: { pagination: { pageIndex: 0, pageSize: 10 } },
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageIndex: 0, pageSize } },
   });
 
   return <DataTablePagination table={table} />;
@@ -43,5 +44,12 @@ describe("DataTablePagination accessibility", () => {
     expect(screen.getByRole("button", { name: "Go to page 2" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next page" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Last page" })).toBeInTheDocument();
+  });
+
+  it("keeps the page-size control available when the selected size leaves one page", () => {
+    render(<PaginationHarness rowCount={30} pageSize={50} />);
+
+    expect(screen.getByRole("combobox", { name: "Per page" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).not.toBeInTheDocument();
   });
 });

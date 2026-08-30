@@ -6,11 +6,14 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@portal/components/ui/input-group";
-import { Label } from "@portal/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
 import { Switch } from "@portal/components/ui/switch";
 import { SearchIcon, XIcon } from "@portal/components/icons";
-import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
+import {
+  ContentFilterGroup,
+  ContentFilterOption,
+  ContentFilterToolbar,
+} from "@portal/components/shared/ContentFilterToolbar";
 import { useTranslation } from "react-i18next";
 import { type EventListViewMode, type EventStatusFilter, type EventTypeFilter } from "../../../utils/event-navigation";
 import { EventsViewSwitcher } from "./EventsViewSwitcher";
@@ -87,19 +90,19 @@ export function EventsFiltersCard({
   const filters = (
         <>
           <ContentFilterGroup label={t("filter.status")}>
-            <div className="events-filter-status" role="group" aria-label={t("filter.status")}>
+            <RadioGroup
+              value={eventStatus}
+              onValueChange={(value) => onEventStatusChange(value as EventStatusFilter)}
+              aria-label={t("filter.status")}
+              className="content-filter-toolbar__option-list content-filter-toolbar__option-list--columns"
+            >
               {(["active", "archived", "all"] as const).map((value) => (
-                <Button
-                  key={value}
-                  size="sm"
-                  variant={eventStatus === value ? "default" : "ghost"}
-                  aria-pressed={eventStatus === value}
-                  onClick={() => onEventStatusChange(value)}
-                >
-                  {t(`filter.status.${value}`)}
-                </Button>
+                <ContentFilterOption key={value}>
+                  <RadioGroupItem value={value} />
+                  <span>{t(`filter.status.${value}`)}</span>
+                </ContentFilterOption>
               ))}
-            </div>
+            </RadioGroup>
           </ContentFilterGroup>
           <ContentFilterGroup label={t("filter.type")}>
             <RadioGroup
@@ -107,20 +110,20 @@ export function EventsFiltersCard({
               onValueChange={(value) => onEventTypeChange(value === "all" || !isEventTypeFilter(value) ? undefined : value)}
               aria-label={t("aria.filterByType")}
             >
-              <div className="events-filter-option-list">
-                <Label className="events-filter-option"><RadioGroupItem value="all" />{t("filter.status.all")}</Label>
+              <div className="content-filter-toolbar__option-list content-filter-toolbar__option-list--columns">
+                <ContentFilterOption><RadioGroupItem value="all" /><span>{t("filter.status.all")}</span></ContentFilterOption>
                 {DEFAULT_GAME_RULES.events.types
                   .filter((definition) => definition.enabled)
                   .map((definition) => (
-                    <Label key={definition.id} className="events-filter-option"><RadioGroupItem value={definition.id} />{getEventTypeLabel(definition.id)}</Label>
+                    <ContentFilterOption key={definition.id}><RadioGroupItem value={definition.id} /><span>{getEventTypeLabel(definition.id)}</span></ContentFilterOption>
                   ))}
               </div>
             </RadioGroup>
           </ContentFilterGroup>
           <ContentFilterGroup label={t("filter.options")}>
-            <div className="events-filter-option-list">
-              <Label className="events-filter-option"><Switch checked={pinnedOnly} onCheckedChange={onPinnedOnlyChange} />{t("filter.pinned")}</Label>
-              <Label className="events-filter-option"><Switch checked={lockedOnly} onCheckedChange={onLockedOnlyChange} />{t("filter.locked")}</Label>
+            <div className="content-filter-toolbar__option-list content-filter-toolbar__option-list--columns">
+              <ContentFilterOption><Switch checked={pinnedOnly} onCheckedChange={onPinnedOnlyChange} /><span>{t("filter.pinned")}</span></ContentFilterOption>
+              <ContentFilterOption><Switch checked={lockedOnly} onCheckedChange={onLockedOnlyChange} /><span>{t("filter.locked")}</span></ContentFilterOption>
             </div>
           </ContentFilterGroup>
         </>

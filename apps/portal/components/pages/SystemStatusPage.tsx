@@ -32,7 +32,7 @@ export function SystemStatusPage({
     >
       <VisualThemeScene
         className="system-status-page__scene"
-        variant="status"
+        variant={`status-${kind}`}
         loading="eager"
         fetchPriority="high"
       />

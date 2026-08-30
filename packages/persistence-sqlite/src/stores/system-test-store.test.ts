@@ -213,9 +213,6 @@ describe("SqliteSystemTestStore", () => {
       INSERT INTO users (id, display_name) VALUES ('user-created', 'created');
       INSERT INTO user_credentials (user_id, login_name, password_hash)
         VALUES ('user-created', 'created-login', 'password-hash');
-      INSERT INTO login_failures (login_name, fail_count, last_failed_at) VALUES
-        ('created-login', 2, '${NOW}'),
-        ('baseline-login', 1, '${NOW}');
       INSERT INTO roles (id) VALUES ('role-created');
       INSERT INTO events (id) VALUES ('event-created');
       INSERT INTO recurring_templates (id) VALUES ('template-created');
@@ -295,7 +292,9 @@ describe("SqliteSystemTestStore", () => {
       .run(owner.requestId, NOW);
 
     await service.endRequest(owner.requestId);
-    expect(await service.cleanupRun(owner, runId)).toEqual({ ok: true, status: "completed", attempts: 1 });
+    let cleanup = await service.cleanupRun(owner, runId);
+    while (cleanup.status === "cleaning") cleanup = await service.cleanupRun(owner, runId);
+    expect(cleanup).toEqual({ ok: true, status: "completed", attempts: 1 });
     await service.finalizeRun(owner, runId);
 
     expect(deleteBlobs).toHaveBeenCalledOnce();
@@ -306,8 +305,6 @@ describe("SqliteSystemTestStore", () => {
     ]);
     expect(database.prepare("SELECT id FROM notification_inbox ORDER BY id").all())
       .toEqual([{ id: "notification-baseline" }]);
-    expect(database.prepare("SELECT login_name FROM login_failures ORDER BY login_name").all())
-      .toEqual([{ login_name: "baseline-login" }]);
     for (const table of [
       "roles", "events", "recurring_templates", "storage_batches", "storage_items",
       "storage_categories", "storages", "storage_ledger_entries", "wiki_articles",
@@ -423,9 +420,11 @@ describe("SqliteSystemTestStore", () => {
     database.prepare("UPDATE member_badges SET sort_order = 0, updated_at = ? WHERE id = 'badge-1'").run(NOW);
     await service.endRequest(owner.requestId);
 
-    expect(await service.cleanupRun(owner, runId)).toEqual({ ok: false, status: "cleaning", attempts: 1 });
-    expect(database.prepare("SELECT count(*) AS count FROM system_test_before_images").get()).toMatchObject({ count: 1 });
-    expect(await service.cleanupRun(owner, runId)).toEqual({ ok: true, status: "completed", attempts: 1 });
+    let cleanup = await service.cleanupRun(owner, runId);
+    expect(cleanup).toEqual({ ok: false, status: "cleaning", attempts: 1 });
+    expect(database.prepare("SELECT count(*) AS count FROM system_test_before_images").get()).toMatchObject({ count: 46 });
+    while (cleanup.status === "cleaning") cleanup = await service.cleanupRun(owner, runId);
+    expect(cleanup).toEqual({ ok: true, status: "completed", attempts: 1 });
     expect(database.prepare("SELECT count(*) AS count FROM class_catalog WHERE sort_order >= 100 AND updated_at = ?").get(beforeAt))
       .toMatchObject({ count: 49 });
     expect(database.prepare("SELECT sort_order, updated_at FROM class_tags WHERE id = 'tag-1'").get())
@@ -504,10 +503,39 @@ describe("SqliteSystemTestStore", () => {
     }
     await service.endRequest(owner.requestId);
 
-    expect(await service.cleanupRun(owner, runId)).toEqual({ ok: false, status: "cleaning", attempts: 1 });
-    expect(database.prepare("SELECT count(*) AS count FROM wiki_categories").get()).toMatchObject({ count: 1 });
-    expect(await service.cleanupRun(owner, runId)).toEqual({ ok: true, status: "completed", attempts: 1 });
+    let cleanup = await service.cleanupRun(owner, runId);
+    expect(cleanup).toEqual({ ok: false, status: "cleaning", attempts: 1 });
+    expect(database.prepare("SELECT count(*) AS count FROM wiki_categories").get()).toMatchObject({ count: 46 });
+    while (cleanup.status === "cleaning") cleanup = await service.cleanupRun(owner, runId);
+    expect(cleanup).toEqual({ ok: true, status: "completed", attempts: 1 });
     expect(database.prepare("SELECT count(*) AS count FROM wiki_categories").get()).toMatchObject({ count: 0 });
+  });
+
+  it("discovers completed expired runs so orphan registry rows can be finalized", async () => {
+    const { database, service, store } = harness();
+    database.prepare(`INSERT INTO system_test_runs
+      (id, actor_user_id, status, cleanup_attempts, expires_at, created_at, updated_at, completed_at)
+      VALUES ('run-completed', 'admin-1', 'completed', 1, ?, ?, ?, ?)`)
+      .run(
+        "2026-08-08T00:00:00.000Z",
+        "2026-08-07T00:00:00.000Z",
+        "2026-08-08T00:00:00.000Z",
+        "2026-08-08T00:00:00.000Z",
+      );
+
+    await expect(store.listExpiredRunIds(NOW, 1)).resolves.toEqual(["run-completed"]);
+    await expect(store.inspectExpiredBacklog(NOW)).resolves.toEqual({
+      status: "known",
+      pendingCount: 1,
+      countPrecision: "exact",
+      oldestPendingAt: "2026-08-08T00:00:00.000Z",
+    });
+    await expect(service.cleanupExpired(NOW, 1)).resolves.toEqual({
+      processed: 1,
+      completed: 1,
+      failed: 0,
+    });
+    expect(database.prepare("SELECT count(*) AS count FROM system_test_runs").get()).toEqual({ count: 0 });
   });
 
   it("bounds expired-run discovery", async () => {
@@ -529,11 +557,6 @@ const SCHEMA = `
     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     login_name TEXT NOT NULL,
     password_hash TEXT NOT NULL
-  );
-  CREATE TABLE login_failures (
-    login_name TEXT PRIMARY KEY,
-    fail_count INTEGER NOT NULL DEFAULT 0,
-    last_failed_at TEXT NOT NULL
   );
   ${AUDIT_LOG_SCHEMA}
   CREATE TABLE error_log (id TEXT PRIMARY KEY, request_id TEXT, created_at TEXT NOT NULL);

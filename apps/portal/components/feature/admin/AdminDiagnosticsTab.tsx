@@ -152,7 +152,7 @@ export function AdminDiagnosticsTab() {
           </div>
         </section>
 
-        <AdminApiDebugConsole logs={debugLogs} onClear={clearDebug} />
+        <AdminApiDebugConsole logs={debugLogs} onClear={clearDebug} clearDisabled={isRunning} />
         <AdminDataIntegrityTool />
       </div>
     </div>

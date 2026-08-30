@@ -15,6 +15,7 @@ blob-report/
 # e2e 的一次性运行状态：会话 cookie 和本次 run id，绝不能进仓库
 apps/portal/e2e/.state/
 apps/portal/e2e/.artifacts/
+apps/portal/e2e/.logs/
 .cache/
 .eslintcache
 *.tsbuildinfo
@@ -45,9 +46,18 @@ id_ed25519*
 *.sqlite3
 *.sqlite-wal
 *.sqlite-shm
+*.sqlite-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
 *.db
 *.db-wal
 *.db-shm
+*.db-journal
+*.db3
+*.db3-wal
+*.db3-shm
+*.db3-journal
 *.dump
 *.bak
 
@@ -56,8 +66,16 @@ id_ed25519*
 backups/
 private-migrations/
 calculators/
+/data/
+/.design/
 docs/plans/
 docs/superpowers/
+/docs/frontend-rework/
+/docs/full-site-review/
+/docs/SITE_DESIGN_AUDIT_*.md
+/docs/SITE_REDESIGN_GOAL_HANDOFF.md
+# Image-generation sidecars are local provenance, not runtime assets.
+/apps/portal/public/visual-themes/**/*.webp.json
 # 本部署自己的公会 logo；仓库只带中性的 guild-logo.svg 模板素材
 apps/portal/public/guild-logo.webp
 

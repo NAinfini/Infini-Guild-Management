@@ -1,10 +1,17 @@
-import type { PaginatedResponse, WikiArticle, WikiCategory, WikiRevision, WikiRevisionListItem } from "@guild/shared";
+import {
+  wikiCategoryCatalogSchema,
+  type PaginatedResponse,
+  type WikiArticle,
+  type WikiCategoryCatalog,
+  type WikiRevision,
+  type WikiRevisionListItem,
+} from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
 export type WikiSort = "curated" | "updated_desc" | "updated_asc";
 
-export function fetchWikiCategories(): Promise<WikiCategory[]> {
-  return apiRequest<WikiCategory[]>("/api/wiki/categories");
+export async function fetchWikiCategories(): Promise<WikiCategoryCatalog> {
+  return wikiCategoryCatalogSchema.parse(await apiRequest("/api/wiki/categories"));
 }
 
 export function fetchWikiArticles(params: {
@@ -35,6 +42,10 @@ export function fetchWikiArticles(params: {
 
 export function fetchWikiArticleBySlug(slug: string): Promise<WikiArticle> {
   return apiRequest<WikiArticle>(`/api/wiki/articles/${slug}`);
+}
+
+export function recordWikiArticleView(slug: string): Promise<{ view_count: number }> {
+  return apiRequest<{ view_count: number }>(`/api/wiki/articles/${slug}/view`, { method: "POST" });
 }
 
 export function fetchWikiArticleRevisions(articleId: string): Promise<WikiRevisionListItem[]> {

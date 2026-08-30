@@ -6,6 +6,10 @@ import {
   MAX_SQL_BATCH_STATEMENTS,
   createAuthorizationContext,
   createRequestContext,
+  type SqlBatchStatement,
+  type SqlExecutor,
+  type SqlResult,
+  type SqlStatement,
 } from "@guild/kernel";
 import { createAuditEvent } from "@guild/server/modules/audit";
 import { MAX_GUILD_WAR_MEMBERS } from "@guild/shared";
@@ -15,6 +19,7 @@ import { SqliteGuildWarStore } from "./guild-war-store.js";
 import { SqliteEventGuildWarLifecycleStore } from "./event-guild-war-lifecycle-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
+const NEXT_EVENT_REVISION = "2026-08-09T12:00:00.001Z";
 const AVATAR_MEDIA_ID = "avatar1234567890abcde";
 const databases: DatabaseSync[] = [];
 
@@ -26,7 +31,11 @@ const BASE_SCHEMA = `
     is_active INTEGER NOT NULL DEFAULT 1,
     deleted_at TEXT
   );
-  CREATE TABLE events (id TEXT PRIMARY KEY);
+  CREATE TABLE events (
+    id TEXT PRIMARY KEY,
+    updated_by TEXT REFERENCES users(id),
+    updated_at TEXT NOT NULL
+  );
   CREATE TABLE event_participants (
     id TEXT PRIMARY KEY,
     event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
@@ -114,7 +123,7 @@ function harness() {
   for (const [id, displayName] of seedUsers) {
     database.prepare("INSERT INTO users (id, display_name) VALUES (?, ?)").run(id, displayName);
   }
-  database.prepare("INSERT INTO events (id) VALUES ('event-1')").run();
+  database.prepare("INSERT INTO events (id, updated_at) VALUES ('event-1', ?)").run(NOW);
   const executor = new SqliteTestExecutor(database);
   return {
     database,
@@ -140,10 +149,10 @@ function context(requestId: string) {
 
 function audit(
   requestId: string,
-  action: "init" | "save_teams" | "move_member" | "set_role_tag" | "conclude" | "batch_update",
+  action: "init" | "save_teams" | "move_member" | "set_role_tag" | "conclude" | "batch_update" | "create" | "update",
 ) {
   return createAuditEvent(context(requestId), {
-    subjectType: action === "conclude"
+    subjectType: action === "conclude" || action === "create" || action === "update"
       ? "guild_war_history"
       : action === "batch_update"
         ? "guild_war_member_stats"
@@ -167,13 +176,18 @@ function seedParticipants(database: DatabaseSync, count: number): string[] {
 
 async function seededRoster() {
   const value = harness();
-  await value.store.createActive({
+  const created = await value.store.createActive({
     id: "war-1",
     eventId: "event-1",
     warName: "War",
     actorUserId: "admin-1",
     now: NOW,
     audit: audit("request-init", "init"),
+  });
+  expect(created).toMatchObject({
+    war: { id: "war-1", eventId: "event-1", status: "active", rosterVersion: 0 },
+    teams: [],
+    pool: [],
   });
   value.database.prepare(`INSERT INTO event_participants (id, event_id, user_id, joined_at)
     VALUES ('participant-1', 'event-1', 'user-1', ?), ('participant-2', 'event-1', 'user-2', ?)`)
@@ -199,6 +213,25 @@ async function seededRoster() {
     media_id, entity_type, entity_id, slot, audience, sort_order
   ) VALUES (?, 'member_profile', 'user-1', 'avatar', 'public', 0)`).run(AVATAR_MEDIA_ID);
   return value;
+}
+
+class RejectGuildWarSnapshotExecutor implements SqlExecutor {
+  constructor(private readonly delegate: SqliteTestExecutor) {}
+
+  execute(statement: SqlStatement): Promise<SqlResult> {
+    return this.delegate.execute(statement);
+  }
+
+  batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
+    return this.delegate.batch(statements.map((statement): SqlBatchStatement => statement.sql.includes("guild-war-snapshot")
+      ? {
+          method: "all",
+          columns: ["snapshot_failure"],
+          sql: "SELECT missing_guild_war_snapshot_column",
+          params: [],
+        }
+      : statement));
+  }
 }
 
 describe("SqliteGuildWarStore concurrency", () => {
@@ -272,6 +305,8 @@ describe("SqliteGuildWarStore concurrency", () => {
       warId: "war-1",
       eventId: "event-1",
       expectedVersion: 1,
+      expectedEventUpdatedAt: NOW,
+      updatedEventAt: NEXT_EVENT_REVISION,
       actorUserId: "admin-1",
       now: NOW,
       moves: [{ id: `move-${requestId}`, userId: "user-2", to, participantId: null }],
@@ -287,6 +322,31 @@ describe("SqliteGuildWarStore concurrency", () => {
       .toBe(winner.moves[0]!.to);
     expect(text(database, "SELECT request_id FROM audit_log WHERE action = 'move_member'")).toBe(winner.audit.requestId);
     expect(scalar(database, "SELECT count(*) FROM audit_log WHERE action = 'move_member'")).toBe(1);
+    expect(text(database, "SELECT updated_at FROM events WHERE id = 'event-1'")).toBe(NEXT_EVENT_REVISION);
+  });
+
+  it("rejects a roster move when the parent Event aggregate changed", async () => {
+    const { database, lifecycle } = await seededRoster();
+    const concurrentRevision = "2026-08-09T12:00:00.005Z";
+    database.prepare("UPDATE events SET updated_at = ? WHERE id = 'event-1'").run(concurrentRevision);
+
+    await expect(lifecycle.moveMembers({
+      warId: "war-1",
+      eventId: "event-1",
+      expectedVersion: 1,
+      expectedEventUpdatedAt: NOW,
+      updatedEventAt: NEXT_EVENT_REVISION,
+      actorUserId: "admin-1",
+      now: NOW,
+      moves: [{ id: "stale-move", userId: "user-2", to: "team-1", participantId: null }],
+      audit: audit("request-stale-event-move", "move_member"),
+    })).resolves.toBe(false);
+
+    expect(scalar(database, "SELECT roster_version FROM guild_wars WHERE id = 'war-1'")).toBe(1);
+    expect(text(database, "SELECT COALESCE(team_id, 'pool') FROM war_members WHERE war_id = 'war-1' AND user_id = 'user-2'"))
+      .toBe("pool");
+    expect(text(database, "SELECT updated_at FROM events WHERE id = 'event-1'")).toBe(concurrentRevision);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE request_id = 'request-stale-event-move'")).toBe(0);
   });
 
   it("atomically enrolls a new pool member before placing them in the roster", async () => {
@@ -295,6 +355,8 @@ describe("SqliteGuildWarStore concurrency", () => {
       warId: "war-1",
       eventId: "event-1",
       expectedVersion: 1,
+      expectedEventUpdatedAt: NOW,
+      updatedEventAt: NEXT_EVENT_REVISION,
       actorUserId: "admin-1",
       now: NOW,
       moves: [{
@@ -312,6 +374,7 @@ describe("SqliteGuildWarStore concurrency", () => {
     expect(scalar(database, `SELECT count(*) FROM war_members
       WHERE war_id = 'war-1' AND user_id = 'admin-1' AND team_id IS NULL`)).toBe(1);
     expect(scalar(database, "SELECT roster_version FROM guild_wars WHERE id = 'war-1'")).toBe(2);
+    expect(text(database, "SELECT updated_at FROM events WHERE id = 'event-1'")).toBe(NEXT_EVENT_REVISION);
     expect(scalar(database, "SELECT count(*) FROM audit_log WHERE request_id = 'request-enroll-and-move'")).toBe(1);
     expect(auditContext(database, "request-enroll-and-move", "user_ids")).toEqual({
       type: "list",
@@ -343,12 +406,15 @@ describe("SqliteGuildWarStore concurrency", () => {
       warId: "war-1",
       eventId: "event-1",
       expectedVersion: 1,
+      expectedEventUpdatedAt: NOW,
+      updatedEventAt: NEXT_EVENT_REVISION,
       actorUserId: "admin-1",
       now: NOW,
       moves: [{ id: "removed-user-1", userId: "user-1", to: "remove", participantId: null }],
       audit: duplicateAudit,
     })).rejects.toThrow();
     expect(scalar(database, "SELECT roster_version FROM guild_wars WHERE id = 'war-1'")).toBe(1);
+    expect(text(database, "SELECT updated_at FROM events WHERE id = 'event-1'")).toBe(NOW);
     expect(scalar(database, "SELECT count(*) FROM war_members WHERE war_id = 'war-1' AND user_id = 'user-1'")).toBe(1);
     expect(scalar(database, "SELECT count(*) FROM event_participants WHERE event_id = 'event-1' AND user_id = 'user-1'")).toBe(1);
   });
@@ -458,6 +524,99 @@ describe("SqliteGuildWarStore concurrency", () => {
   });
 });
 
+describe("SqliteGuildWarStore atomic mutation snapshots", () => {
+  it("rolls back active-war creation and its audit when the final snapshot query fails", async () => {
+    const { database, executor } = harness();
+    const rejecting = new RejectGuildWarSnapshotExecutor(executor);
+    const store = new SqliteGuildWarStore(createAppDatabase(rejecting), rejecting);
+
+    await expect(store.createActive({
+      id: "war-1",
+      eventId: "event-1",
+      warName: "War",
+      actorUserId: "admin-1",
+      now: NOW,
+      audit: audit("request-snapshot-init", "init"),
+    })).rejects.toThrow(/missing_guild_war_snapshot_column/);
+
+    expect(scalar(database, "SELECT count(*) FROM guild_wars WHERE id = 'war-1'")).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE request_id = 'request-snapshot-init'")).toBe(0);
+  });
+
+  it("rolls back a history update and its audit when the final snapshot query fails", async () => {
+    const { database, executor, store: seedStore } = harness();
+    await expect(seedStore.createHistory({
+      record: {
+        id: "history-1",
+        eventId: null,
+        status: "concluded",
+        warName: "Original",
+        enemyName: null,
+        result: "win",
+        ownStats: null,
+        enemyStats: null,
+        durationMinutes: null,
+        notes: null,
+        rosterVersion: 0,
+        concludedAt: NOW,
+        createdBy: "admin-1",
+        updatedBy: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      audit: audit("request-history-create", "create"),
+    })).resolves.toBe(true);
+    const rejecting = new RejectGuildWarSnapshotExecutor(executor);
+    const store = new SqliteGuildWarStore(createAppDatabase(rejecting), rejecting);
+
+    await expect(store.updateHistory({
+      warId: "history-1",
+      expectedVersion: 0,
+      actorUserId: "admin-1",
+      now: NOW,
+      patch: { warName: "Renamed" },
+      audit: audit("request-history-snapshot", "update"),
+    })).rejects.toThrow(/missing_guild_war_snapshot_column/);
+
+    expect(text(database, "SELECT war_name FROM guild_wars WHERE id = 'history-1'")).toBe("Original");
+    expect(scalar(database, "SELECT roster_version FROM guild_wars WHERE id = 'history-1'")).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE request_id = 'request-history-snapshot'")).toBe(0);
+  });
+
+  it("rolls back member stats and their audit when the final snapshot query fails", async () => {
+    const { database, executor, store: seedStore } = await seededRoster();
+    await expect(seedStore.conclude({
+      warId: "war-1",
+      expectedVersion: 1,
+      actorUserId: "admin-1",
+      now: NOW,
+      enemyName: "Rivals",
+      result: "win",
+      ownStats: { kills: 2 },
+      enemyStats: { kills: 5 },
+      durationMinutes: 30,
+      memberStats: [{ userId: "user-1", stats: { kills: 2 } }],
+      audit: audit("request-snapshot-conclude", "conclude"),
+    })).resolves.toBe(true);
+    const rejecting = new RejectGuildWarSnapshotExecutor(executor);
+    const store = new SqliteGuildWarStore(createAppDatabase(rejecting), rejecting);
+
+    await expect(store.updateMemberStats({
+      warId: "war-1",
+      expectedVersion: 2,
+      actorUserId: "admin-1",
+      now: NOW,
+      updates: [{ userId: "user-1", stats: { kills: 9 }, note: "updated" }],
+      audit: audit("request-member-snapshot", "batch_update"),
+    })).rejects.toThrow(/missing_guild_war_snapshot_column/);
+
+    expect(scalar(database, "SELECT roster_version FROM guild_wars WHERE id = 'war-1'")).toBe(2);
+    expect(scalar(database, "SELECT kills FROM war_members WHERE id = 'member-1'")).toBe(2);
+    expect(text(database, "SELECT note FROM war_members WHERE id = 'member-1'")).toBe(null);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE request_id = 'request-member-snapshot'")).toBe(0);
+  });
+});
+
 describe("SqliteGuildWarStore bounded member writes", () => {
   it("keeps every maximum legal member mutation below the batch ceiling", async () => {
     const { database, executor, lifecycle, store } = harness();
@@ -502,6 +661,8 @@ describe("SqliteGuildWarStore bounded member writes", () => {
       warId: "war-1",
       eventId: "event-1",
       expectedVersion: 1,
+      expectedEventUpdatedAt: NOW,
+      updatedEventAt: NEXT_EVENT_REVISION,
       actorUserId: "admin-1",
       now: NOW,
       moves: userIds.map((userId, index) => ({
@@ -533,7 +694,7 @@ describe("SqliteGuildWarStore bounded member writes", () => {
       memberStats: userIds.map((userId, index) => ({ userId, stats: { kills: index } })),
       audit: audit("request-bulk-conclude", "conclude"),
     })).toBe(true);
-    expect(await store.updateMemberStats({
+    await expect(store.updateMemberStats({
       warId: "war-1",
       expectedVersion: 4,
       actorUserId: "admin-1",
@@ -544,11 +705,11 @@ describe("SqliteGuildWarStore bounded member writes", () => {
         note: `note-${index}`,
       })),
       audit: audit("request-bulk-stats", "batch_update"),
-    })).toBe(true);
+    })).resolves.toHaveLength(MAX_GUILD_WAR_MEMBERS);
 
-    const memberBatchSizes = executor.batches.slice(1).map((batch) => batch.length);
-    expect(memberBatchSizes).toEqual([6, 6, 3, 3, 3]);
-    expect(Math.max(...memberBatchSizes)).toBeLessThanOrEqual(MAX_SQL_BATCH_STATEMENTS);
+    const batchSizes = executor.batches.map((batch) => batch.length);
+    expect(batchSizes).toEqual([5, 6, 7, 3, 3, 4]);
+    expect(Math.max(...batchSizes)).toBeLessThanOrEqual(MAX_SQL_BATCH_STATEMENTS);
     expect(scalar(database, "SELECT count(*) FROM war_members WHERE war_id = 'war-1' AND team_id = 'bulk-team'")).toBe(MAX_GUILD_WAR_MEMBERS);
     expect(scalar(database, "SELECT count(*) FROM war_members WHERE war_id = 'war-1' AND role_tag = 'raider'")).toBe(MAX_GUILD_WAR_MEMBERS);
     expect(scalar(database, "SELECT count(*) FROM war_members WHERE war_id = 'war-1' AND note LIKE 'note-%'")).toBe(MAX_GUILD_WAR_MEMBERS);
@@ -568,6 +729,19 @@ describe("SqliteGuildWarStore query plans", () => {
 });
 
 describe("SqliteGuildWarStore analytics filters", () => {
+  it("exports one selected history record without leaking adjacent wars", async () => {
+    const { database, store } = harness();
+    const insert = database.prepare(`INSERT INTO guild_wars (
+      id, status, war_name, result, concluded_at, created_by, created_at, updated_at
+    ) VALUES (?, 'concluded', ?, 'win', ?, 'admin-1', ?, ?)`);
+    insert.run("history-1", "Selected", NOW, NOW, NOW);
+    insert.run("history-2", "Adjacent", NOW, NOW, NOW);
+
+    const rows = await store.exportHistory({ historyId: "history-1" });
+
+    expect(rows.map(({ id }) => id)).toEqual(["history-1"]);
+  });
+
   it("keeps the legal 20-war and 100-user request below D1's 100-parameter limit", async () => {
     const { database, executor, store } = harness();
     const warIds = Array.from({ length: 20 }, (_, index) => `history-${index}`);

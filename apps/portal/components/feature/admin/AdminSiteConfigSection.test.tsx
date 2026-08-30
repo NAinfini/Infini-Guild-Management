@@ -37,6 +37,7 @@ const siteConfig: AdminSiteConfigResponse = {
     created_at: "2026-06-12T00:00:00.000Z",
     updated_at: "2026-06-12T00:00:00.000Z",
   },
+  revision_token: "site-config-v1",
   oauth_provider_status: {
     google: "missing_credentials",
     discord: "available",
@@ -53,8 +54,8 @@ function renderSiteConfig(overrides: Partial<AdminSiteConfigSectionProps> = {}) 
     loading: false,
     saving: false,
     logoUploading: false,
-    onSaveSite: vi.fn(),
-    onUploadLogo: vi.fn(),
+    onSaveSite: vi.fn().mockResolvedValue(siteConfig),
+    onUploadLogo: vi.fn().mockResolvedValue(siteConfig),
     ...overrides,
   };
   const renderSection = (nextProps: AdminSiteConfigSectionProps) => (
@@ -141,10 +142,19 @@ describe("AdminSiteConfigSection layout", () => {
     expect(container.querySelector(".site-config-brand-fields .site-config-logo-upload")).toBeNull();
   });
 
-  it("saves only valid changes and hides the save bar when the parent supplies the saved data", async () => {
+  it("saves only valid changes and replaces the local baseline with the canonical response", async () => {
     const user = userEvent.setup();
-    const onSaveSite = vi.fn();
-    const { rerenderSiteConfig } = renderSiteConfig({ onSaveSite });
+    const savedConfig: AdminSiteConfigResponse = {
+      ...siteConfig,
+      revision_token: "site-config-v2",
+      site: {
+        ...siteConfig.site,
+        site_name: "Infini Guild Prime",
+        updated_at: "2026-06-13T00:00:00.000Z",
+      },
+    };
+    const onSaveSite = vi.fn().mockResolvedValue(savedConfig);
+    renderSiteConfig({ onSaveSite });
     const siteNameInput = screen.getByRole("textbox", { name: "siteConfig.field.siteName" });
 
     expect(querySaveButton(), "没有改动时保存条不该出现").toBeNull();
@@ -156,37 +166,21 @@ describe("AdminSiteConfigSection layout", () => {
     await user.click(querySaveButton()!);
     expect(onSaveSite).toHaveBeenCalledTimes(1);
     expect(onSaveSite).toHaveBeenCalledWith(
-      expect.objectContaining({ site_name: "Infini Guild Prime" }),
+      expect.objectContaining({
+        site_name: "Infini Guild Prime",
+        expected_revision_token: "site-config-v1",
+      }),
     );
-
-    /* 保存中：改动还没回来，保存条仍在，但按钮必须锁住，避免重复提交。 */
-    rerenderSiteConfig({ saving: true });
-    expect(querySaveButton()).toBeDisabled();
-    expect(querySaveButton()).toHaveAttribute("data-loading", "true");
-    await user.click(querySaveButton()!);
-    expect(onSaveSite).toHaveBeenCalledTimes(1);
-
-    rerenderSiteConfig({
-      data: {
-        ...siteConfig,
-        site: {
-          ...siteConfig.site,
-          site_name: "Infini Guild Prime",
-          updated_at: "2026-06-13T00:00:00.000Z",
-        },
-      },
-      saving: false,
-    });
 
     await waitFor(() => {
       expect(siteNameInput).toHaveValue("Infini Guild Prime");
-      expect(querySaveButton(), "父层回填保存结果后保存条应当收起").toBeNull();
+      expect(querySaveButton(), "保存响应成为新的版本基线后保存条应当收起").toBeNull();
     });
   });
 
   it("includes the compact public preview description in the shared save payload", async () => {
     const user = userEvent.setup();
-    const onSaveSite = vi.fn();
+    const onSaveSite = vi.fn().mockResolvedValue(siteConfig);
     renderSiteConfig({ onSaveSite });
     const description = screen.getByRole("textbox", { name: "siteConfig.field.siteDescription" });
 
@@ -196,13 +190,14 @@ describe("AdminSiteConfigSection layout", () => {
 
     expect(onSaveSite).toHaveBeenCalledWith(expect.objectContaining({
       site_description: "Our guild, in one place.",
+      expected_revision_token: "site-config-v1",
     }));
     expect(description).toHaveAttribute("maxlength", "300");
   });
 
   it("keeps the save bar visible but disabled for whitespace-only site names", async () => {
     const user = userEvent.setup();
-    const onSaveSite = vi.fn();
+    const onSaveSite = vi.fn().mockResolvedValue(siteConfig);
     renderSiteConfig({ onSaveSite });
     const siteNameInput = screen.getByRole("textbox", { name: "siteConfig.field.siteName" });
 
@@ -219,13 +214,17 @@ describe("AdminSiteConfigSection layout", () => {
 
   it("tracks editable policy changes without treating logo upload as a pending save", async () => {
     const user = userEvent.setup();
-    const onUploadLogo = vi.fn();
+    const onUploadLogo = vi.fn().mockResolvedValue({
+      ...siteConfig,
+      revision_token: "site-config-v2",
+      site: { ...siteConfig.site, site_logo_media_id: "logo1234567890abcdefh" },
+    });
     const { container } = renderSiteConfig({ onUploadLogo });
     const logoInput = container.querySelector<HTMLInputElement>('input[type="file"]');
 
     expect(logoInput).not.toBeNull();
     await user.upload(logoInput!, new File(["logo"], "logo.png", { type: "image/png" }));
-    expect(onUploadLogo).toHaveBeenCalledTimes(1);
+    expect(onUploadLogo).toHaveBeenCalledWith(expect.any(File), "site-config-v1");
     expect(querySaveButton(), "上传 logo 走的是独立接口，不该被算成待保存改动").toBeNull();
 
     await user.click(
@@ -243,7 +242,7 @@ describe("AdminSiteConfigSection layout", () => {
 
   it("only changes OAuth settings for providers whose runtime credentials are available", async () => {
     const user = userEvent.setup();
-    const onSaveSite = vi.fn();
+    const onSaveSite = vi.fn().mockResolvedValue(siteConfig);
     renderSiteConfig({ onSaveSite });
 
     await user.click(screen.getByRole("switch", { name: "siteConfig.oauth.provider.discord" }));
@@ -251,6 +250,25 @@ describe("AdminSiteConfigSection layout", () => {
 
     expect(onSaveSite).toHaveBeenCalledWith(expect.objectContaining({
       oauth: expect.objectContaining({ discord: true, google: false, wechat: false }),
+      expected_revision_token: "site-config-v1",
     }));
+  });
+
+  it("keeps an A/B stale draft and its original version after a 409 save failure", async () => {
+    const user = userEvent.setup();
+    const onSaveSite = vi.fn().mockRejectedValue({ status: 409 });
+    renderSiteConfig({ onSaveSite });
+    const siteNameInput = screen.getByRole("textbox", { name: "siteConfig.field.siteName" });
+
+    await user.clear(siteNameInput);
+    await user.type(siteNameInput, "A's draft");
+    await user.click(querySaveButton()!);
+
+    await waitFor(() => expect(onSaveSite).toHaveBeenCalledWith(expect.objectContaining({
+      site_name: "A's draft",
+      expected_revision_token: "site-config-v1",
+    })));
+    expect(siteNameInput).toHaveValue("A's draft");
+    expect(querySaveButton()).toBeEnabled();
   });
 });

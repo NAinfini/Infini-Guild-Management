@@ -14,6 +14,8 @@ import {
   updateTemplateSchema,
 } from "./event";
 
+const REVISION = "2026-05-04T12:00:00.000Z";
+
 describe("recurrenceRuleSchema", () => {
   it("accepts only the fields owned by each recurrence frequency", () => {
     expect(recurrenceRuleSchema.safeParse({ frequency: "daily", interval: 1 }).success).toBe(true);
@@ -146,7 +148,8 @@ describe("event schemas", () => {
       auto_archive: true,
     })).toMatchObject({ auto_archive: true });
 
-    expect(updateEventSchema.parse({ auto_archive: false })).toMatchObject({ auto_archive: false });
+    expect(updateEventSchema.parse({ auto_archive: false, expected_updated_at: REVISION }))
+      .toMatchObject({ auto_archive: false });
 
     expect(
       recurringTemplateSchema.parse({
@@ -178,7 +181,8 @@ describe("event schemas", () => {
       auto_archive: true,
     })).toMatchObject({ auto_archive: true });
 
-    expect(updateTemplateSchema.parse({ auto_archive: false })).toMatchObject({ auto_archive: false });
+    expect(updateTemplateSchema.parse({ auto_archive: false, expected_updated_at: REVISION }))
+      .toMatchObject({ auto_archive: false });
   });
 
   it("allows update-only clearing and a zero visibility offset", () => {
@@ -186,17 +190,20 @@ describe("event schemas", () => {
       description: null,
       end_at: null,
       capacity: null,
-    })).toEqual({ description: null, end_at: null, capacity: null });
+      expected_updated_at: REVISION,
+    })).toEqual({ description: null, end_at: null, capacity: null, expected_updated_at: REVISION });
     expect(updateTemplateSchema.parse({
       description: null,
       duration_minutes: null,
       capacity: null,
       visibility_offset_minutes: 0,
+      expected_updated_at: REVISION,
     })).toEqual({
       description: null,
       duration_minutes: null,
       capacity: null,
       visibility_offset_minutes: 0,
+      expected_updated_at: REVISION,
     });
     expect(createEventSchema.safeParse({
       type: "social",
@@ -215,17 +222,29 @@ describe("event schemas", () => {
       type: "poll",
       end_at: null,
       poll: { options: ["One", "Two"] },
+      expected_updated_at: REVISION,
     }).success).toBe(false);
     expect(updateEventSchema.parse({
       type: "poll",
       end_at: "2026-05-04T21:00:00.000Z",
       capacity: null,
       poll: { options: ["One", "Two"] },
+      expected_updated_at: REVISION,
     })).toMatchObject({ capacity: null });
     expect(updateEventSchema.safeParse({
       type: "raffle",
       end_at: null,
+      expected_updated_at: REVISION,
     }).success).toBe(false);
+  });
+
+  it("requires the revision read with an event or recurring-template edit", () => {
+    expect(updateEventSchema.safeParse({ title: "Changed" }).success).toBe(false);
+    expect(updateTemplateSchema.safeParse({ title: "Changed" }).success).toBe(false);
+    expect(updateEventSchema.parse({ title: "Changed", expected_updated_at: REVISION }))
+      .toMatchObject({ expected_updated_at: REVISION });
+    expect(updateTemplateSchema.parse({ title: "Changed", expected_updated_at: REVISION }))
+      .toMatchObject({ expected_updated_at: REVISION });
   });
 
   it("accepts canonical media ids in template create and update payloads", () => {
@@ -239,7 +258,8 @@ describe("event schemas", () => {
       attachments,
     })).toMatchObject({ attachments });
 
-    expect(updateTemplateSchema.parse({ attachments })).toEqual({ attachments });
+    expect(updateTemplateSchema.parse({ attachments, expected_updated_at: REVISION }))
+      .toEqual({ attachments, expected_updated_at: REVISION });
   });
 
   it("accepts only source-owned event types while validating poll requirements", () => {
@@ -290,6 +310,7 @@ describe("event schemas", () => {
       title: "Guild Run",
       start_at: "2026-05-07T21:00:00.000Z",
       end_at: "2026-05-07T19:00:00.000Z",
+      expected_updated_at: REVISION,
     }).success).toBe(false);
 
     expect(updateEventSchema.safeParse({
@@ -299,13 +320,14 @@ describe("event schemas", () => {
   });
 
   it("rejects update-only poll and raffle fields unless the matching type is explicit", () => {
-    expect(updateEventSchema.safeParse({ poll: { options: ["A", "B"] } }).success).toBe(false);
-    expect(updateEventSchema.safeParse({ type: "social", winner_count: 2 }).success).toBe(false);
-    expect(updateEventSchema.safeParse({ winner_count: 2 }).success).toBe(false);
+    expect(updateEventSchema.safeParse({ poll: { options: ["A", "B"] }, expected_updated_at: REVISION }).success).toBe(false);
+    expect(updateEventSchema.safeParse({ type: "social", winner_count: 2, expected_updated_at: REVISION }).success).toBe(false);
+    expect(updateEventSchema.safeParse({ winner_count: 2, expected_updated_at: REVISION }).success).toBe(false);
     expect(updateEventSchema.safeParse({
       type: "raffle",
       end_at: "2026-05-07T21:00:00.000Z",
       winner_count: 2,
+      expected_updated_at: REVISION,
     }).success).toBe(true);
   });
 

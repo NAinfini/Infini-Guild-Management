@@ -9,14 +9,18 @@ import {
 import { nanoid } from "nanoid";
 import {
   AUDIT_ARCHIVE_BATCH_SIZE,
+  AUDIT_ARCHIVE_CLEANUP_BATCH_SIZE,
   type AuditArchiveService,
 } from "../audit/public.js";
 import type {
   MaterializationAuditFactory,
   RecurrenceMaterialization,
 } from "../events/public.js";
-import { selectRaffleWinnerIds } from "../events/public.js";
-import type { MediaService } from "../media/public.js";
+import { monotonicTimestamp, selectRaffleWinnerIds } from "../events/public.js";
+import {
+  MEDIA_GARBAGE_COLLECTION_BATCH_SIZE,
+  type MediaService,
+} from "../media/public.js";
 import type { SystemTestService } from "../system-test/public.js";
 import type {
   AuditArchiveJob,
@@ -76,6 +80,7 @@ export type DueRaffle = Readonly<{
   title: string;
   winnerCount: number;
   drawnByUserId: string;
+  updatedAt: string;
   participantIds: readonly string[];
 }>;
 
@@ -90,6 +95,8 @@ export interface BoundedRaffleAutoDrawStore {
     winnerRowIds: readonly string[];
     now: string;
     drawnByUserId: string;
+    expectedUpdatedAt: string;
+    updatedAt: string;
     audit: ReturnType<SchedulerAuditFactory>;
   }>): Promise<void>;
   inspectBacklog(now: string): Promise<ScheduledJobBacklog>;
@@ -222,6 +229,7 @@ export class ScheduledRaffleAutoDrawJob implements RaffleAutoDrawJob {
         this.random,
       );
       if (winnerIds.length === 0) continue;
+      const updatedAt = monotonicTimestamp(input.now, raffle.updatedAt);
       try {
         await this.store.drawRaffle({
           eventId: raffle.eventId,
@@ -229,6 +237,8 @@ export class ScheduledRaffleAutoDrawJob implements RaffleAutoDrawJob {
           winnerRowIds: winnerIds.map(() => this.createId()),
           now: input.now,
           drawnByUserId: raffle.drawnByUserId,
+          expectedUpdatedAt: raffle.updatedAt,
+          updatedAt,
           audit: input.audit({
             subjectType: "event",
             subjectId: raffle.eventId,
@@ -246,7 +256,7 @@ export class ScheduledRaffleAutoDrawJob implements RaffleAutoDrawJob {
         type: "entity_changed",
         entity_type: "event",
         entity_id: raffle.eventId,
-        updated_at: input.now,
+        updated_at: updatedAt,
         hint: "raffle_drawn",
       });
     }
@@ -262,7 +272,9 @@ export class ScheduledMediaGarbageCollectionJob implements MediaGarbageCollectio
   constructor(private readonly media: Pick<MediaService, "collectGarbage" | "inspectGarbageBacklog">) {}
 
   async run(input: Parameters<MediaGarbageCollectionJob["run"]>[0]) {
-    if (input.limit !== 50) throw new RangeError("Media garbage collection uses batches of 50");
+    if (input.limit !== MEDIA_GARBAGE_COLLECTION_BATCH_SIZE) {
+      throw new RangeError(`Media garbage collection uses batches of ${MEDIA_GARBAGE_COLLECTION_BATCH_SIZE}`);
+    }
     const context = createRequestContext({
       requestId: `scheduled:media-gc:${input.before}`,
       authorization: createAuthorizationContext(null),
@@ -285,12 +297,31 @@ export class ScheduledMediaGarbageCollectionJob implements MediaGarbageCollectio
 }
 
 export class ScheduledAuditArchiveJob implements AuditArchiveJob {
-  constructor(private readonly archives: Pick<AuditArchiveService, "archiveBatch" | "inspectBacklog">) {}
+  constructor(private readonly archives: Pick<
+    AuditArchiveService,
+    "archiveBatch" | "cleanupExpired" | "inspectCombinedBacklog"
+  >) {}
 
   async run(input: Parameters<AuditArchiveJob["run"]>[0]) {
     if (input.limit !== AUDIT_ARCHIVE_BATCH_SIZE) {
       throw new RangeError(`Audit archive batches must contain ${AUDIT_ARCHIVE_BATCH_SIZE} rows`);
     }
+    const cleanup = await this.archives.cleanupExpired(
+      input.expiredBefore,
+      AUDIT_ARCHIVE_CLEANUP_BATCH_SIZE,
+      (archiveId, rowCount) => input.audit({
+        subjectType: "audit_archive_export",
+        subjectId: archiveId,
+        subjectLabel: null,
+        action: "delete",
+        context: [
+          { field: "reason", value: { type: "code", value: "retention_expired" } },
+          { field: "row_count", value: { type: "number", value: rowCount } },
+        ],
+      }),
+    );
+    if (cleanup.deleted > 0) return { processed: cleanup.deleted, hasMore: true };
+
     const result = await this.archives.archiveBatch(input.before, input.now, (archiveId, rowCount) => input.audit({
       subjectType: "audit_archive_export",
       subjectId: archiveId,
@@ -302,7 +333,7 @@ export class ScheduledAuditArchiveJob implements AuditArchiveJob {
   }
 
   inspectBacklog(input: Parameters<AuditArchiveJob["inspectBacklog"]>[0]) {
-    return this.archives.inspectBacklog(input.before);
+    return this.archives.inspectCombinedBacklog(input.before, input.expiredBefore);
   }
 }
 
@@ -310,7 +341,7 @@ export class ScheduledSystemTestCleanupJob implements SystemTestCleanupJob {
   constructor(private readonly systemTests: Pick<SystemTestService, "cleanupExpired" | "inspectExpiredBacklog">) {}
 
   async run(input: Parameters<SystemTestCleanupJob["run"]>[0]) {
-    if (input.limit !== 25) throw new RangeError("System-test cleanup uses batches of 25");
+    if (input.limit !== 1) throw new RangeError("System-test cleanup uses one run per batch");
     const result = await this.systemTests.cleanupExpired(input.before, input.limit);
     return { processed: result.processed, hasMore: result.processed === input.limit };
   }

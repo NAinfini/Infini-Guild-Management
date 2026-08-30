@@ -4,16 +4,19 @@ import { useMediaQuery } from "@portal/hooks/useMediaQuery";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import {
   useInfiniteQuery,
+  useMutation,
   useQuery,
+  useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   fetchWikiArticleBySlug,
   fetchWikiArticles,
   fetchWikiCategories,
+  recordWikiArticleView,
 } from "../services/WikiService";
 import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
 import { useExternalView } from "./useExternalView";
@@ -25,10 +28,8 @@ import { useEffectivePermissions } from "./useEffectivePermissions";
 type WikiArchivedMode = "active" | "archived" | "all";
 type WikiSort = "curated" | "updated_desc" | "updated_asc";
 type WikiSelection =
-  | { kind: "auto" }
   | { kind: "none" }
   | { kind: "selected"; slug: string };
-type WikiRouteSearch = { selection?: "none" };
 type WikiListCache = InfiniteData<PaginatedResponse<WikiArticle>>;
 
 function toArchivedParam(mode: WikiArchivedMode): boolean | undefined {
@@ -37,13 +38,9 @@ function toArchivedParam(mode: WikiArchivedMode): boolean | undefined {
   return undefined;
 }
 
-function selectionFromRoute(
-  routeSlug: string | null,
-  search: WikiRouteSearch,
-): WikiSelection {
+function selectionFromRoute(routeSlug: string | null): WikiSelection {
   if (routeSlug) return { kind: "selected", slug: routeSlug };
-  if (search.selection === "none") return { kind: "none" };
-  return { kind: "auto" };
+  return { kind: "none" };
 }
 
 function sameSelection(left: WikiSelection, right: WikiSelection): boolean {
@@ -65,45 +62,74 @@ function flattenUniqueArticles(data: WikiListCache | undefined): WikiArticle[] {
 export function useWikiPageController() {
   const { t } = useTranslation("wiki");
   const confirm = useConfirmDialog();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const params = useParams({ strict: false });
   const routeSlug = (params as { slug?: string }).slug ?? null;
-  const routeSearch = useSearch({ strict: false }) as WikiRouteSearch;
+  const routeLocation = useLocation({
+    select: (location) => ({
+      pathname: location.pathname,
+      entryKey: location.state.__TSR_key ?? location.state.key ?? location.href,
+    }),
+  });
+  const { pathname, entryKey: routeEntryKey } = routeLocation;
+  const isCreateRoute = pathname === "/wiki/new";
   const isDesktop = useMediaQuery("(min-width: 1200px)");
   const isMobile = !isDesktop;
   const isExternalView = useExternalView();
   const { canManage: canManagePermission } = useEffectivePermissions();
-  const isModerator = canManagePermission(["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.articles.delete", "wiki.categories.manage"]);
-  const canEdit = isModerator && !isExternalView;
   const canCreateArticle = canManagePermission(["wiki.articles.create"]) && !isExternalView;
+  const canEditArticle = canManagePermission(["wiki.articles.edit"]) && !isExternalView;
+  const canArchiveArticle = canManagePermission(["wiki.articles.archive"]) && !isExternalView;
+  const canDeleteArticle = canManagePermission(["wiki.articles.delete"]) && !isExternalView;
   const canManageCategories = canManagePermission(["wiki.categories.manage"]) && !isExternalView;
+  const canViewNonPublicContent = canCreateArticle
+    || canEditArticle
+    || canArchiveArticle
+    || canDeleteArticle;
+  const canManageContent = canCreateArticle
+    || canEditArticle
+    || canArchiveArticle
+    || canDeleteArticle
+    || canManageCategories;
 
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim();
-  const [pinnedOnly, setPinnedOnly] = useState(false);
   const [sortOrder, setSortOrder] = useState<WikiSort>("curated");
   const [archivedMode, setArchivedMode] = useState<WikiArchivedMode>("active");
+  const effectiveArchivedMode = canViewNonPublicContent ? archivedMode : "active";
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [selection, setSelection] = useState<WikiSelection>(() =>
-    selectionFromRoute(routeSlug, routeSearch));
+    selectionFromRoute(routeSlug));
   const selectedSlug = selection.kind === "selected" ? selection.slug : null;
   const [editorTab, setEditorTab] = useState<"article" | "categories">("article");
   const [mobilePane, setMobilePane] = useState<"list" | "article">("list");
   const [showEditorPane, setShowEditorPane] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const isEditorPaneVisible = canEdit && showEditorPane;
-  const isHistoryOpen = canEdit && showHistory;
+  const isEditorPaneVisible = showEditorPane && (
+    editorTab === "categories"
+      ? canManageCategories
+      : canCreateArticle || canEditArticle
+  );
+  const isHistoryOpen = canEditArticle && showHistory;
   const selectionRef = useRef(selection);
   const articleEditorRef = useRef<ReturnType<typeof useWikiArticleEditor> | null>(null);
   const isMobileRef = useRef(isMobile);
   const editorPaneVisibleRef = useRef(isEditorPaneVisible);
   const closeEditorPaneRef = useRef(() => setShowEditorPane(false));
   const routeSelectionProcessedRef = useRef(false);
+  const createRouteInitializedRef = useRef(false);
+  const lastViewedArticleRouteEntryRef = useRef<string | null>(null);
   selectionRef.current = selection;
   isMobileRef.current = isMobile;
   editorPaneVisibleRef.current = isEditorPaneVisible;
   closeEditorPaneRef.current = () => setShowEditorPane(false);
+
+  useEffect(() => {
+    if (!canViewNonPublicContent && archivedMode !== "active") {
+      setArchivedMode("active");
+    }
+  }, [archivedMode, canViewNonPublicContent]);
 
   const categoriesQuery = useQuery({
     queryKey: queryKeys.wiki.categories(),
@@ -111,25 +137,37 @@ export function useWikiPageController() {
     staleTime: Infinity,
   });
 
-  const selectedCategoryFilterKey =
-    selectedCategoryIds.length === 0 ? "all" : [...selectedCategoryIds].sort().join(",");
+  const selectedCategoryFilterKey = selectedCategoryId ?? "all";
 
   const articlesQuery = useInfiniteQuery({
-    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedMode, pinnedOnly, sortOrder),
+    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, effectiveArchivedMode, sortOrder),
     queryFn: ({ pageParam }) =>
       fetchWikiArticles({
         page: pageParam,
         limit: 50,
-        category_id: selectedCategoryIds,
+        category_id: selectedCategoryId ? [selectedCategoryId] : [],
         search: debouncedSearch || undefined,
-        archived: toArchivedParam(archivedMode),
-        pinned: pinnedOnly ? true : undefined,
+        archived: toArchivedParam(effectiveArchivedMode),
         sort: sortOrder,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.page < lastPage.total_pages ? lastPage.page + 1 : undefined,
     staleTime: 10 * 60_000,
+    enabled: pathname === "/wiki",
+  });
+
+  const pinnedQuery = useQuery({
+    queryKey: queryKeys.wiki.pinned(),
+    queryFn: () => fetchWikiArticles({
+      page: 1,
+      limit: 3,
+      archived: false,
+      pinned: true,
+      sort: "curated",
+    }),
+    staleTime: 10 * 60_000,
+    enabled: pathname === "/wiki",
   });
 
   const detailQuery = useQuery({
@@ -139,7 +177,8 @@ export function useWikiPageController() {
     staleTime: 10 * 60_000,
   });
 
-  const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
+  const categoryCatalog = categoriesQuery.data;
+  const categories = useMemo(() => categoryCatalog?.categories ?? [], [categoryCatalog]);
   const categoriesById = useMemo(() => new Map(categories.map((item) => [item.id, item])), [categories]);
 
   const articles = useMemo(
@@ -150,6 +189,43 @@ export function useWikiPageController() {
 
   const selectedArticle = detailQuery.data ?? null;
 
+  const recordViewMutation = useMutation({
+    mutationFn: recordWikiArticleView,
+    retry: false,
+    onSuccess: ({ view_count }, slug) => {
+      queryClient.setQueryData<WikiArticle>(queryKeys.wiki.article(slug), (current) =>
+        current ? { ...current, view_count } : current);
+      for (const [key, current] of queryClient.getQueriesData<WikiListCache>({ queryKey: queryKeys.wiki.all })) {
+        if (!Array.isArray(key) || key[1] !== "articles") continue;
+        queryClient.setQueryData<WikiListCache>(key, current ? {
+          ...current,
+          pages: current.pages.map((page) => ({
+            ...page,
+            data: page.data.map((item) => item.slug === slug ? { ...item, view_count } : item),
+          })),
+        } : current);
+      }
+      queryClient.setQueryData<PaginatedResponse<WikiArticle>>(queryKeys.wiki.pinned(), (current) =>
+        current ? {
+          ...current,
+          data: current.data.map((item) => item.slug === slug ? { ...item, view_count } : item),
+        } : current);
+    },
+    onError: (error, slug) => {
+      console.error(`[wiki-view] failed to count ${slug}`, error);
+    },
+  });
+
+  useEffect(() => {
+    if (!routeSlug) return;
+    if (pathname !== `/wiki/${encodeURIComponent(routeSlug)}`) return;
+    if (selectedSlug !== routeSlug) return;
+    if (!detailQuery.isSuccess || detailQuery.isFetching) return;
+    if (lastViewedArticleRouteEntryRef.current === routeEntryKey) return;
+    lastViewedArticleRouteEntryRef.current = routeEntryKey;
+    recordViewMutation.mutate(selectedSlug);
+  }, [detailQuery.isFetching, detailQuery.isSuccess, pathname, recordViewMutation, routeEntryKey, routeSlug, selectedSlug]);
+
   const setWikiSelection = useCallback((
     next: WikiSelection,
     options?: { replace?: boolean },
@@ -159,7 +235,6 @@ export function useWikiPageController() {
       void navigate({
         to: "/wiki/$slug",
         params: { slug: next.slug },
-        search: (previous) => ({ ...previous, selection: undefined }),
         replace: options?.replace,
         viewTransition: false,
       });
@@ -167,10 +242,6 @@ export function useWikiPageController() {
     }
     void navigate({
       to: "/wiki",
-      search: (previous) => ({
-        ...previous,
-        selection: next.kind === "none" ? "none" as const : undefined,
-      }),
       replace: options?.replace,
       viewTransition: false,
     });
@@ -184,22 +255,27 @@ export function useWikiPageController() {
   }, [setWikiSelection]);
 
   const articleEditor = useWikiArticleEditor({
-    canEdit,
+    canCreate: canCreateArticle,
+    canEdit: canEditArticle,
+    canArchive: canArchiveArticle,
+    canDelete: canDeleteArticle,
     categories,
     selectedArticle,
     selectedCategoryId,
-    selectedCategoryIds,
     onArticleCreated: handleArticleCreated,
   });
   articleEditorRef.current = articleEditor;
-  const categoryEditor = useWikiCategoryEditor({ categories });
+  const categoryEditor = useWikiCategoryEditor({
+    categoryCatalog,
+    isOpen: isEditorPaneVisible && editorTab === "categories",
+  });
 
   useEffect(() => {
-    const next = selectionFromRoute(routeSlug, routeSearch);
+    const next = selectionFromRoute(routeSlug);
     const routeChangedExternally = !routeSelectionProcessedRef.current
       || !sameSelection(selectionRef.current, next);
     routeSelectionProcessedRef.current = true;
-    if (routeChangedExternally) {
+    if (routeChangedExternally && !isCreateRoute) {
       if (articleEditorRef.current?.isCreatingArticle) {
         articleEditorRef.current.exitEditor();
       }
@@ -211,15 +287,20 @@ export function useWikiPageController() {
       }
     }
     setSelection((current) => sameSelection(current, next) ? current : next);
-  }, [routeSearch.selection, routeSlug]);
+  }, [isCreateRoute, routeSlug]);
 
   useEffect(() => {
-    if (selection.kind !== "auto" || articleEditor.isCreatingArticle) return;
-    const firstSlug = articles[0]?.slug;
-    if (firstSlug) {
-      setWikiSelection({ kind: "selected", slug: firstSlug }, { replace: true });
+    if (!isCreateRoute) {
+      createRouteInitializedRef.current = false;
+      return;
     }
-  }, [articleEditor.isCreatingArticle, articles, selection.kind, setWikiSelection]);
+    if (!canCreateArticle || createRouteInitializedRef.current) return;
+    createRouteInitializedRef.current = true;
+    setEditorTab("article");
+    setShowEditorPane(true);
+    articleEditor.startCreateArticle();
+    setSelection({ kind: "none" });
+  }, [articleEditor, canCreateArticle, isCreateRoute]);
 
   useEffect(() => {
     if (!isMobile) {
@@ -229,17 +310,14 @@ export function useWikiPageController() {
 
   useEffect(() => {
     const categoryIdSet = new Set(categories.map((item) => item.id));
-    setSelectedCategoryIds((current) => {
-      const next = current.filter((id) => categoryIdSet.has(id));
-      return next.length === current.length ? current : next;
-    });
+    setSelectedCategoryId((current) => current && !categoryIdSet.has(current) ? undefined : current);
   }, [categories]);
 
   useEffect(() => {
-    if (!canEdit) {
+    if (!canManageContent) {
       setShowEditorPane(false);
     }
-  }, [canEdit]);
+  }, [canManageContent]);
 
   const categoryOptions = categories.map((category) => ({
     value: category.id,
@@ -261,19 +339,22 @@ export function useWikiPageController() {
     setEditorTab("article");
     setShowEditorPane(true);
     articleEditor.startCreateArticle();
-    setWikiSelection({ kind: "none" });
+    setSelection({ kind: "none" });
+    void navigate({ to: "/wiki/new", viewTransition: false });
     if (isMobile) {
       setMobilePane("article");
     }
-  }, [articleEditor, canCreateArticle, isMobile, setWikiSelection]);
+  }, [articleEditor, canCreateArticle, isMobile, navigate]);
 
   const handleOpenArticleEditor = useCallback(() => {
+    if (!canEditArticle) return;
     setEditorTab("article");
+    articleEditor.startEditArticle();
     setShowEditorPane(true);
     if (isMobile) {
       setMobilePane("article");
     }
-  }, [isMobile]);
+  }, [articleEditor, canEditArticle, isMobile]);
 
   const handleOpenCategoryEditor = useCallback(() => {
     if (!canManageCategories) return;
@@ -299,13 +380,11 @@ export function useWikiPageController() {
     }
     articleEditor.exitEditor();
     setShowEditorPane(false);
+    if (isCreateRoute) {
+      setWikiSelection({ kind: "none" }, { replace: true });
+    }
     return true;
-  }, [articleEditor, confirm, t]);
-
-  const handleCategoryFilterChange = useCallback((values: string[]) => {
-    setSelectedCategoryIds(values);
-    setSelectedCategoryId(values.length === 1 ? values[0] : undefined);
-  }, []);
+  }, [articleEditor, confirm, isCreateRoute, setWikiSelection, t]);
 
   const handleCloseCategoryEditorWithoutSave = useCallback(async () => {
     if (categoryEditor.isDirty) {
@@ -338,6 +417,17 @@ export function useWikiPageController() {
     }
   }, [categoriesById, categoryEditor, confirm, t]);
 
+  const handleBackToList = useCallback(async () => {
+    if (isEditorPaneVisible) {
+      const closed = editorTab === "categories"
+        ? await handleCloseCategoryEditorWithoutSave()
+        : await handleExitArticleEditor();
+      if (!closed) return false;
+    }
+    setWikiSelection({ kind: "none" });
+    return true;
+  }, [editorTab, handleCloseCategoryEditorWithoutSave, handleExitArticleEditor, isEditorPaneVisible, setWikiSelection]);
+
   return {
     // layout / responsive
     isMobile,
@@ -349,32 +439,38 @@ export function useWikiPageController() {
     // filter state
     search,
     setSearch,
-    pinnedOnly,
-    setPinnedOnly,
     sortOrder,
     setSortOrder,
     archivedMode,
     setArchivedMode,
-    selectedCategoryIds,
+    selectedCategoryId,
+    setSelectedCategoryId,
 
     // queries
     categoriesQuery,
     articlesQuery,
+    pinnedQuery,
     detailQuery,
 
     // derived data
     categories,
     categoryOptions,
     articles,
+    pinnedArticles: pinnedQuery.data?.data.slice(0, 3) ?? [],
     articlesHasMore,
     articlesLoadingMore: articlesQuery.isFetchingNextPage,
     loadMoreArticles: () => void articlesQuery.fetchNextPage(),
     selectedArticle,
     selectedSlug,
     selectedCategory,
-    canEdit,
+    canManageContent,
+    canViewNonPublicContent,
     canCreateArticle,
+    canEditArticle,
+    canArchiveArticle,
+    canDeleteArticle,
     canManageCategories,
+    isCreateRoute,
 
     // revision history
     isHistoryOpen,
@@ -391,8 +487,8 @@ export function useWikiPageController() {
     handleOpenArticleEditor,
     handleOpenCategoryEditor,
     handleExitArticleEditor,
-    handleCategoryFilterChange,
     handleCloseCategoryEditorWithoutSave,
     handleDeleteCategory,
+    handleBackToList,
   };
 }

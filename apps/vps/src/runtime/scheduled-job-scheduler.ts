@@ -5,7 +5,19 @@ import type {
 } from "@guild/server";
 
 const QUARTER_HOUR_MS = 15 * 60_000;
+const HALF_HOUR_MS = 30 * 60_000;
+const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
+
+const SCHEDULE_TIMING = Object.freeze({
+  "quarter-hourly": { intervalMs: QUARTER_HOUR_MS, offsetMs: 0 },
+  "half-hourly": { intervalMs: HALF_HOUR_MS, offsetMs: 7 * 60_000 },
+  "hourly-media": { intervalMs: HOUR_MS, offsetMs: 12 * 60_000 },
+  "hourly-cleanup": { intervalMs: HOUR_MS, offsetMs: 42 * 60_000 },
+  daily: { intervalMs: DAY_MS, offsetMs: 27 * 60_000 },
+} satisfies Record<ScheduledJobSchedule, Readonly<{ intervalMs: number; offsetMs: number }>>);
+
+const SCHEDULES = Object.freeze(Object.keys(SCHEDULE_TIMING) as ScheduledJobSchedule[]);
 
 export type VpsScheduledJobSchedulerOptions = Readonly<{
   now?: () => number;
@@ -15,9 +27,9 @@ export type VpsScheduledJobSchedulerOptions = Readonly<{
 
 function nextBoundaryDelay(schedule: ScheduledJobSchedule, now: number): number {
   if (!Number.isFinite(now) || now < 0) throw new TypeError("Scheduler clock returned an invalid timestamp");
-  const interval = schedule === "quarter-hourly" ? QUARTER_HOUR_MS : DAY_MS;
-  const remainder = now % interval;
-  return remainder === 0 ? interval : interval - remainder;
+  const { intervalMs, offsetMs } = SCHEDULE_TIMING[schedule];
+  const remainder = ((now - offsetMs) % intervalMs + intervalMs) % intervalMs;
+  return remainder === 0 ? intervalMs : intervalMs - remainder;
 }
 
 export class VpsScheduledJobScheduler {
@@ -49,8 +61,7 @@ export class VpsScheduledJobScheduler {
   start(): void {
     if (!this.stopped) return;
     this.stopped = false;
-    this.schedule("quarter-hourly");
-    this.schedule("daily");
+    for (const schedule of SCHEDULES) this.schedule(schedule);
   }
 
   async stop(): Promise<void> {

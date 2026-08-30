@@ -142,7 +142,7 @@
   /* 字体。L3 使用站点语义名称，由共享控件直接消费。 */
   --font-body: "Inter", system-ui, sans-serif;
   --font-display: "Saira Semi Condensed", var(--font-body);
-  --font-code: "JetBrains Mono", "Fira Code", monospace;
+  --font-code: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, "Liberation Mono", monospace;
 }
 
 /* 粗指针（触屏、手写笔、遥控器）没有像素级精度，regular 这一档整体回到

@@ -12,23 +12,22 @@ import { confirmDialog, expectNoDialog, field } from "../../support/ui";
  * 所以每条用例都要回读服务端确认 status 真的变成了那一档——只看编辑器收起来了，
  * 等于把「前端关了个面板」当成了「后端存下了东西」。
  *
- * 置顶按钮是纯前端意图：点了只改草稿，要等某个收尾动作才一起进 PATCH。
+ * 置顶开关是纯前端意图：点了只改草稿，要等某个收尾动作才一起进 PATCH。
  * 因此它得验两次——点的时候不许写服务端，收尾之后服务端字段真的变了。
  *
- * 一个已知缺口，这里不测：侧栏的「Archive」图标只会把 archived 这个前端状态翻个面，
- * 三个收尾动作全都把它强制写回 false（validateAndFinish 里的 onArchivedChange(mode === "archived")，
- * 而没有任何控件传得进 "archived"）。也就是说归档方向在界面上根本提交不了，
- * archiveMutation / DELETE /api/announcements/:id 是够不着的死路。
- * 这属于要产品拍板的缺陷（补个菜单项还是让图标即时归档），不在这里用断言把现状固化成「对」。
+ * 归档和永久删除都从打开编辑器时冻结同一份 ETag；确认框期间若远端已改动，
+ * 服务端必须拒绝旧动作，不能用确认后的新快照替用户扩大授权。
  */
 
 const CREATE = { method: "POST", path: /^\/api\/announcements$/ } as const;
 const UPDATE = { method: "PATCH", path: /^\/api\/announcements\/[^/]+$/ } as const;
+const ARCHIVE = { method: "DELETE", path: /^\/api\/announcements\/[^/]+$/ } as const;
 const DELETE_PERMANENT = { method: "DELETE", path: /^\/api\/announcements\/[^/]+\/permanent$/ } as const;
 
 type AnnouncementDetail = {
   id: string;
   title: string;
+  category: "announcement" | "event" | "war" | "important";
   body_json: string;
   pinned: boolean;
   status: string;
@@ -51,7 +50,14 @@ test.beforeEach(async ({ api }) => {
 
 test.afterEach(async ({ api }) => {
   for (const id of [target.id, other.id, ...extraIds]) {
-    const response = await api.delete(`/api/announcements/${id}/permanent`);
+    const detail = await api.get(`/api/announcements/${id}`);
+    if (detail.status() === 404) continue;
+    expect(detail.status(), `清理前回读公告 ${id}`).toBe(200);
+    const etag = detail.headers().etag;
+    expect(etag, `公告 ${id} 必须返回 ETag 供精确清理`).toBeTruthy();
+    const response = await api.delete(`/api/announcements/${id}/permanent`, {
+      headers: { "If-Match": etag as string },
+    });
     expect([200, 204, 404], `清理公告 ${id} 返回 ${response.status()}`).toContain(response.status());
   }
 });
@@ -70,7 +76,13 @@ async function createAnnouncement(
 ): Promise<AnnouncementDetail> {
   return await readJson(
     await api.post("/api/announcements", {
-      data: { title, body_json: bodyJson(body), pinned: false, status: "draft" },
+      data: {
+        title,
+        category: "announcement",
+        body_json: bodyJson(body),
+        pinned: false,
+        status: "draft",
+      },
     }),
     `创建公告 ${title}`,
   ) as AnnouncementDetail;
@@ -82,7 +94,7 @@ async function readAnnouncement(api: APIRequestContext, id: string): Promise<Ann
 
 /** 直接按 id 进页面：省掉「先在列表里找到它」这段与本用例无关的操作。 */
 async function openAnnouncement(page: Page, announcement: AnnouncementDetail): Promise<void> {
-  await page.goto(`/announcements?announcementId=${announcement.id}`);
+  await page.goto(`/announcements/${announcement.id}`);
   await expect(page.locator(".announcement-reader-title")).toHaveText(announcement.title);
 }
 
@@ -115,7 +127,7 @@ async function chooseFinish(page: Page, item: string): Promise<Locator> {
 }
 
 function items(page: Page): Locator {
-  return page.locator(".announcement-item");
+  return page.locator(".announcements-catalog .content-preview-card--announcements");
 }
 
 function item(page: Page, title: string): Locator {
@@ -226,14 +238,11 @@ test("未就绪：标题或正文空着时不给发布，三个出口一起禁�
 test("置顶：点图标只改草稿，发布之后服务端才真的置顶", async ({ page, flow, api }) => {
   await openEditor(page);
 
-  const pin = page.getByRole("button", { name: "Pin", exact: true });
-  await expect(pin).toHaveAttribute("aria-pressed", "false");
+  const pin = page.getByRole("switch", { name: "Pin", exact: true });
+  await expect(pin).not.toBeChecked();
   await clickWithoutWrite(page, pin);
 
-  await expect(
-    page.getByRole("button", { name: "Unpin", exact: true }),
-    "按钮要自报当前草稿是置顶态，否则用户不知道点没点上",
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(pin, "开关要自报当前草稿是置顶态，否则用户不知道点没点上").toBeChecked();
   await expect(page.getByText("Unsaved", { exact: true })).toBeVisible();
   expect((await readAnnouncement(api, target.id)).pinned, "还没收尾，服务端不该有变化").toBe(false);
 
@@ -242,7 +251,7 @@ test("置顶：点图标只改草稿，发布之后服务端才真的置顶", as
 
   // 再点一次是撤销置顶：同样先改草稿，收尾才生效。
   await page.getByRole("button", { name: "Edit", exact: true }).click();
-  await clickWithoutWrite(page, page.getByRole("button", { name: "Unpin", exact: true }));
+  await clickWithoutWrite(page, page.getByRole("switch", { name: "Pin", exact: true }));
   await flow.click(publishButton(page), UPDATE);
   expect((await readAnnouncement(api, target.id)).pinned, "取消置顶同样要落库").toBe(false);
 });
@@ -263,11 +272,11 @@ test("存草稿：菜单里的 Save as Draft 把内容存下但不发布", async
 test("定时发布：未来时间进 scheduled，过去时间被前端挡住", async ({ page, flow, api }) => {
   await openEditor(page);
 
-  const publishAt = field(page, "Announcement publish time");
+  const publishAt = field(page, "Announcement release time");
   await publishAt.fill(await localDateTimeValue(page, -24 * 60));
   await clickWithoutWrite(page, await chooseFinish(page, "Schedule post"));
   await expect(
-    page.getByText("Scheduled publish time must be in the future.", { exact: true }),
+    page.getByRole("alert").getByText("Scheduled publish time must be in the future.", { exact: true }),
     "过去的时间要当场说清楚为什么不行",
   ).toBeVisible();
   expect((await readAnnouncement(api, target.id)).status, "被挡住的定时发布不该动服务端").toBe("draft");
@@ -304,10 +313,28 @@ test("删除：确认框拦一道，取消不写，确认后服务端和列表�
   await expect(item(page, target.title), "列表里也不该再留着它").toHaveCount(0);
 });
 
-test("新建：New Announcement 进创建态，发布之后真的多出一条并选中它", async ({ page, flow, api }) => {
-  await openAnnouncement(page, target);
+test("归档：确认框拦一道，确认后写入 archived 并返回目录", async ({ page, flow, api }) => {
+  await openEditor(page);
 
-  await clickWithoutWrite(page, page.getByRole("button", { name: "New Announcement", exact: true }));
+  await page.getByRole("switch", { name: "Archive", exact: true }).click();
+  const dialog = await confirmDialog(page, "Archive Announcement");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expectNoDialog(page);
+  expect((await readAnnouncement(api, target.id)).status, "取消归档不该动服务端").toBe("draft");
+
+  await page.getByRole("switch", { name: "Archive", exact: true }).click();
+  await flow.click(
+    (await confirmDialog(page, "Archive Announcement"))
+      .getByRole("button", { name: "Archive", exact: true }),
+    ARCHIVE,
+  );
+
+  expect((await readAnnouncement(api, target.id)).status, "确认归档必须落库").toBe("archived");
+  await expect(page.locator(".announcements-catalog"), "归档完成后要回到目录").toBeVisible();
+});
+
+test("新建：独立创建路由发布后跳到新公告详情", async ({ page, flow, api }) => {
+  await page.goto("/announcements/new");
   await expect(titleField(page), "创建态的标题应当是空的").toHaveValue("");
   await expect(
     page.getByRole("button", { name: "Delete", exact: true }),
@@ -330,27 +357,24 @@ test("新建：New Announcement 进创建态，发布之后真的多出一条并
   /*
    * 建完这一跳会经过未保存改动拦截器。创建态的草稿不清干净的话，用户点完「发布」
    * 立刻被问「有未保存的改动，确定离开吗」；选 Stay 更糟——公告已经建出来了，
-   * 地址栏却停在 ?selection=none，选中的是空。这两条断言钉的就是这个修复
+   * 地址栏却停在创建路由。这两条断言钉的就是这个修复
    * （useAnnouncementsController 的 discardCreateDraft）。
    */
   await expectNoDialog(page);
-  /* 收尾用 (?:&|$) 而不是 \b：nanoid 允许以 - 或 _ 结尾，那时候 \b 根本不成立。 */
-  await expect(page, "建完要把新公告选上，地址栏跟着走")
-    .toHaveURL(new RegExp(`announcementId=${created.id}(?:&|$)`));
-  await expect(item(page, newTitle)).toBeVisible();
+  await expect(page, "建完要跳到新公告的独立地址")
+    .toHaveURL(new RegExp(`/announcements/${created.id}$`));
+  await expect(page.locator(".announcement-reader-title")).toHaveText(newTitle);
 });
 
 test("新建后取消：草稿直接丢掉，不该再多问一句有没有未保存的改动", async ({ page, api }) => {
-  await openAnnouncement(page, target);
-
-  await page.getByRole("button", { name: "New Announcement", exact: true }).click();
+  await page.goto("/announcements/new");
   await titleField(page).fill(`${SYSTEM_TEST_CONTENT_MARKER} Abandoned ${stamp}`);
 
   await clickWithoutWrite(page, page.getByRole("button", { name: "Cancel", exact: true }));
 
   // 「取消」本身就是在说要丢掉草稿，再弹一次拦截器就是同一件事问两遍。
   await expectNoDialog(page);
-  await expect(page.locator(".announcement-reader-title"), "取消之后要落回某一条上，而不是停在空选中")
+  await expect(page.locator(".announcements-catalog"), "取消之后要回到公告目录")
     .toBeVisible();
 
   const list = await readJson(
@@ -363,11 +387,12 @@ test("新建后取消：草稿直接丢掉，不该再多问一句有没有未�
   ).toEqual([target.title, other.title].sort());
 });
 
-test("脏着切换选中：先问一句，取消留在原处，确认才换过去", async ({ page, api }) => {
+test("脏着返回目录：先问一句，取消留在原处，确认才离开", async ({ page, api }) => {
   await openEditor(page);
   await titleField(page).fill(`${SYSTEM_TEST_CONTENT_MARKER} Dirty ${stamp}`);
 
-  await item(page, other.title).click();
+  const back = page.getByRole("button", { name: "Back to announcements", exact: true });
+  await back.click();
   const dialog = await confirmDialog(page, "Discard unsaved changes?");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expectNoDialog(page);
@@ -376,10 +401,12 @@ test("脏着切换选中：先问一句，取消留在原处，确认才换过�
     "取消之后必须留在原来那条上，改了一半的内容还在",
   ).toHaveValue(`${SYSTEM_TEST_CONTENT_MARKER} Dirty ${stamp}`);
 
-  await item(page, other.title).click();
+  await back.click();
   await (await confirmDialog(page, "Discard unsaved changes?"))
     .getByRole("button", { name: "Discard", exact: true }).click();
 
-  await expect(titleField(page), "确认丢弃之后要换成另一条").toHaveValue(other.title);
+  await expect(page.locator(".announcements-catalog"), "确认丢弃之后要回到目录").toBeVisible();
+  await item(page, other.title).click();
+  await expect(page.locator(".announcement-reader-title")).toHaveText(other.title);
   expect((await readAnnouncement(api, target.id)).title, "丢弃的改动不该落库").toBe(target.title);
 });

@@ -150,6 +150,7 @@ export function TipTapEditorContextMenu({
       }}
     >
       <DropdownMenuTrigger
+        nativeButton={false}
         render={(
           <span
             aria-hidden="true"

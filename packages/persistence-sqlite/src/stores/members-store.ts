@@ -17,8 +17,9 @@ import { availabilityFromWindows, availabilityToWindows } from "@guild/shared/sc
 import { AppError } from "@guild/kernel";
 import type { ClassVectorIconId } from "@guild/shared/constants/class-icons";
 import { LIMITS } from "@guild/shared/config/limits";
-import type { MemberAbsence, MemberBadge, UserBadge } from "@guild/shared";
+import type { CatalogRevisionEntry, MemberAbsence, MemberBadge, UserBadge } from "@guild/shared";
 import type {
+  BadgeAssignmentMutationResult,
   ClassCatalogStoreRecord,
   ClassTagStoreRecord,
   MemberProfilePatch,
@@ -63,6 +64,21 @@ type MembersSchema = {
   memberProfileVideos: typeof memberProfileVideos;
 };
 
+type ClassCatalogRow = Pick<typeof classCatalog.$inferSelect,
+  "id" | "label" | "color" | "iconType" | "vectorIcon" | "sortOrder" | "createdAt" | "updatedAt">;
+
+type MemberBadgeRow = Pick<typeof memberBadges.$inferSelect,
+  "id" | "name" | "labelHtml" | "color" | "description" | "sortOrder" | "createdAt" | "updatedAt">;
+
+type ClassTagRecordRow = Readonly<{
+  id: string;
+  label: string;
+  classIds: readonly string[];
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
 type BaseMemberRow = Readonly<{
   userId: string;
   display_name: string;
@@ -74,6 +90,7 @@ type BaseMemberRow = Readonly<{
   deletedAt: string | null;
   userCreatedAt: string;
   userUpdatedAt: string;
+  userRevisionToken: string;
   userLastLoginAt: string | null;
   power: number;
   titleHtml: string | null;
@@ -84,6 +101,7 @@ type BaseMemberRow = Readonly<{
   notes: string | null;
   profileCreatedAt: string;
   profileUpdatedAt: string;
+  profileRevisionToken: string;
 }>;
 
 const publicMemberColumns = {
@@ -97,6 +115,7 @@ const publicMemberColumns = {
   deletedAt: users.deletedAt,
   userCreatedAt: users.createdAt,
   userUpdatedAt: users.updatedAt,
+  userRevisionToken: users.revisionToken,
   /* 最近登录时刻只给登录后的视图。对外视图跟 notes、休假一样按 NULL 投影：
      公开名单没有理由透露谁什么时候上过站。 */
   userLastLoginAt: drizzleSql<string | null>`NULL`,
@@ -109,6 +128,7 @@ const publicMemberColumns = {
   notes: drizzleSql<string | null>`NULL`,
   profileCreatedAt: memberProfiles.createdAt,
   profileUpdatedAt: memberProfiles.updatedAt,
+  profileRevisionToken: memberProfiles.revisionToken,
 } as const;
 
 const memberColumns = {
@@ -137,19 +157,128 @@ function returning(sql: string, params: readonly SqlValue[] = []): SqlBatchState
   return { method: "all", columns: ["affected"], sql: `${sql} RETURNING 1 AS affected`, params };
 }
 
+const CLASS_CATALOG_SNAPSHOT_COLUMNS = [
+  "id", "label", "color", "icon_type", "vector_icon", "sort_order", "created_at", "updated_at",
+] as const;
+const CLASS_TAG_SNAPSHOT_COLUMNS = ["id", "label", "class_ids_json", "sort_order", "created_at", "updated_at"] as const;
+const BADGE_SNAPSHOT_COLUMNS = [
+  "id", "name", "label_html", "color", "description", "sort_order", "created_at", "updated_at",
+] as const;
+
+function classCatalogSnapshot(id: string): SqlBatchStatement {
+  return {
+    method: "all",
+    columns: CLASS_CATALOG_SNAPSHOT_COLUMNS,
+    sql: `SELECT id, label, color, icon_type, vector_icon, sort_order, created_at, updated_at
+      FROM class_catalog WHERE id = ?`,
+    params: [id],
+  };
+}
+
+function classTagSnapshot(id: string): SqlBatchStatement {
+  return {
+    method: "all",
+    columns: CLASS_TAG_SNAPSHOT_COLUMNS,
+    sql: `SELECT tags.id, tags.label,
+      COALESCE((
+        SELECT json_group_array(class_id) FROM (
+          SELECT class_id FROM class_tag_members WHERE tag_id = tags.id ORDER BY class_id
+        )
+      ), '[]') AS class_ids_json,
+      tags.sort_order, tags.created_at, tags.updated_at
+      FROM class_tags AS tags WHERE tags.id = ? AND tags.owner_kind IS NULL`,
+    params: [id],
+  };
+}
+
+function badgeSnapshot(id: string): SqlBatchStatement {
+  return {
+    method: "all",
+    columns: BADGE_SNAPSHOT_COLUMNS,
+    sql: `SELECT id, name, label_html, color, description, sort_order, created_at, updated_at
+      FROM member_badges WHERE id = ?`,
+    params: [id],
+  };
+}
+
+function oneClassCatalogSnapshot(result: SqlResult | undefined, label: string): ClassCatalogStoreRecord | null {
+  const row = oneSnapshotRow(result, CLASS_CATALOG_SNAPSHOT_COLUMNS.length, label);
+  if (!row) return null;
+  const [id, name, color, iconType, vectorIcon, sortOrder, createdAt, updatedAt] = row;
+  if (typeof id !== "string" || typeof name !== "string" || typeof color !== "string"
+    || (iconType !== "vector" && iconType !== "image") || (vectorIcon !== null && typeof vectorIcon !== "string")
+    || typeof sortOrder !== "number" || typeof createdAt !== "string" || typeof updatedAt !== "string") {
+    throw invalidHydration(label);
+  }
+  return classRecord({
+    id,
+    label: name,
+    color,
+    iconType,
+    vectorIcon,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  });
+}
+
+function oneClassTagSnapshot(result: SqlResult | undefined, label: string): ClassTagStoreRecord | null {
+  const row = oneSnapshotRow(result, CLASS_TAG_SNAPSHOT_COLUMNS.length, label);
+  if (!row) return null;
+  const [id, name, classIdsJson, sortOrder, createdAt, updatedAt] = row;
+  if (typeof id !== "string" || typeof name !== "string" || typeof classIdsJson !== "string"
+    || typeof sortOrder !== "number" || typeof createdAt !== "string" || typeof updatedAt !== "string") {
+    throw invalidHydration(label);
+  }
+  return classTagRecord({
+    id,
+    label: name,
+    classIds: parseStringArray(classIdsJson, label),
+    sortOrder,
+    createdAt,
+    updatedAt,
+  });
+}
+
+function oneBadgeSnapshot(result: SqlResult | undefined, label: string): MemberBadge | null {
+  const row = oneSnapshotRow(result, BADGE_SNAPSHOT_COLUMNS.length, label);
+  if (!row) return null;
+  const [id, name, labelHtml, color, description, sortOrder, createdAt, updatedAt] = row;
+  if (typeof id !== "string" || typeof name !== "string" || typeof labelHtml !== "string" || typeof color !== "string"
+    || (description !== null && typeof description !== "string") || typeof sortOrder !== "number"
+    || typeof createdAt !== "string" || typeof updatedAt !== "string") {
+    throw invalidHydration(label);
+  }
+  return badgeRecord({ id, name, labelHtml, color, description, sortOrder, createdAt, updatedAt });
+}
+
+function oneSnapshotRow(result: SqlResult | undefined, width: number, label: string): readonly SqlValue[] | null {
+  if (!result) throw invalidHydration(label);
+  const rows = sqlRows(result, width, label);
+  if (rows.length > 1) throw invalidHydration(label);
+  return rows[0] ?? null;
+}
+
 function captureSystemTestSortOrder(
   targetType: "class_catalog" | "class_tag" | "badge",
-  ids: readonly string[],
-  now: string,
+  expected: readonly CatalogRevisionEntry[],
+  next: readonly CatalogRevisionEntry[],
   audit: AuditMutation,
 ): SqlBatchStatement {
   const table = targetType === "class_catalog" ? "class_catalog" : targetType === "class_tag" ? "class_tags" : "member_badges";
-  const catalogOnly = targetType === "class_tag" ? "AND target.owner_kind IS NULL" : "";
-  const desired = JSON.stringify(ids.map((id, index) => ({ id, sort_order: index * 10 })));
+  const targetScope = targetType === "class_tag" ? "AND target.owner_kind IS NULL" : "";
+  const expectedJson = catalogRevisionJson(expected);
+  const desiredJson = catalogRevisionJson(next);
   return run(
-    `WITH desired AS (
-       SELECT json_extract(value, '$.id') AS id,
+    `WITH expected AS (
+       SELECT CAST(json_extract(value, '$.id') AS TEXT) AS id,
+              CAST(json_extract(value, '$.sort_order') AS INTEGER) AS sort_order,
+              CAST(json_extract(value, '$.updated_at') AS TEXT) AS updated_at
+       FROM json_each(?)
+     ), desired AS (
+       SELECT CAST(json_extract(value, '$.id') AS TEXT) AS id,
               CAST(json_extract(value, '$.sort_order') AS INTEGER) AS sort_order
+              , CAST(json_extract(value, '$.updated_at') AS TEXT) AS updated_at
        FROM json_each(?)
      )
      INSERT INTO system_test_before_images (
@@ -157,12 +286,13 @@ function captureSystemTestSortOrder(
        expected_sort_order, expected_updated_at, request_id, created_at
      )
      SELECT requests.run_id, ?, target.id, target.sort_order, target.updated_at,
-            desired.sort_order, ?, ?, ?
+            desired.sort_order, desired.updated_at, ?, ?
      FROM system_test_requests AS requests
      JOIN desired
      JOIN ${table} AS target ON target.id = desired.id
-      WHERE requests.request_id = ? ${catalogOnly}
+      WHERE requests.request_id = ? ${targetScope}
         AND target.sort_order IS NOT desired.sort_order
+        AND ${catalogBaselinePredicate(targetType)}
         AND NOT EXISTS (
          SELECT 1 FROM system_test_artifacts AS artifacts
          WHERE artifacts.run_id = requests.run_id
@@ -173,31 +303,78 @@ function captureSystemTestSortOrder(
        expected_sort_order = excluded.expected_sort_order,
        expected_updated_at = excluded.expected_updated_at,
        request_id = excluded.request_id`,
-    [desired, targetType, now, audit.requestId, audit.occurredAt, audit.requestId, targetType],
+    [expectedJson, desiredJson, targetType, audit.requestId, audit.occurredAt, audit.requestId, targetType],
   );
 }
 
 function reorderCatalog(
   targetType: "class_catalog" | "class_tag" | "badge",
-  ids: readonly string[],
-  now: string,
+  expected: readonly CatalogRevisionEntry[],
+  next: readonly CatalogRevisionEntry[],
 ): SqlBatchStatement {
   const table = targetType === "class_catalog" ? "class_catalog" : targetType === "class_tag" ? "class_tags" : "member_badges";
   const catalogOnly = targetType === "class_tag" ? "AND owner_kind IS NULL" : "";
-  const desired = JSON.stringify(ids.map((id, index) => ({ id, sortOrder: index * 10 })));
-  return run(
-    `WITH desired AS (
+  return returning(
+    `WITH expected AS (
        SELECT CAST(json_extract(value, '$.id') AS TEXT) AS id,
-              CAST(json_extract(value, '$.sortOrder') AS INTEGER) AS sort_order
+              CAST(json_extract(value, '$.sort_order') AS INTEGER) AS sort_order,
+              CAST(json_extract(value, '$.updated_at') AS TEXT) AS updated_at
+       FROM json_each(?)
+     ), desired AS (
+       SELECT CAST(json_extract(value, '$.id') AS TEXT) AS id,
+              CAST(json_extract(value, '$.sort_order') AS INTEGER) AS sort_order,
+              CAST(json_extract(value, '$.updated_at') AS TEXT) AS updated_at
        FROM json_each(?)
      )
      UPDATE ${table}
      SET sort_order = (
        SELECT desired.sort_order FROM desired WHERE desired.id = ${table}.id
-     ), updated_at = ?
+     ), updated_at = (
+       SELECT desired.updated_at FROM desired WHERE desired.id = ${table}.id
+     )
      WHERE id IN (SELECT desired.id FROM desired) ${catalogOnly}
-       AND sort_order IS NOT (SELECT desired.sort_order FROM desired WHERE desired.id = ${table}.id)`,
-    [desired, now],
+       AND ${catalogBaselinePredicate(targetType)}
+       AND (
+         sort_order IS NOT (SELECT desired.sort_order FROM desired WHERE desired.id = ${table}.id)
+         OR updated_at IS NOT (SELECT desired.updated_at FROM desired WHERE desired.id = ${table}.id)
+       )`,
+    [catalogRevisionJson(expected), catalogRevisionJson(next)],
+  );
+}
+
+function catalogRevisionJson(entries: readonly CatalogRevisionEntry[]): string {
+  return JSON.stringify(entries.map(({ id, sort_order, updated_at }) => ({ id, sort_order, updated_at })));
+}
+
+function catalogBaselinePredicate(targetType: "class_catalog" | "class_tag" | "badge"): string {
+  const table = targetType === "class_catalog" ? "class_catalog" : targetType === "class_tag" ? "class_tags" : "member_badges";
+  const scope = targetType === "class_tag" ? "current.owner_kind IS NULL" : "1";
+  const baselineScope = targetType === "class_tag" ? "baseline.owner_kind IS NULL" : "1";
+  return `(
+    (SELECT count(*) FROM ${table} AS current WHERE ${scope}) = (SELECT count(*) FROM expected)
+    AND NOT EXISTS (
+      SELECT 1 FROM expected
+      WHERE NOT EXISTS (
+        SELECT 1 FROM ${table} AS baseline
+        WHERE baseline.id = expected.id
+          AND baseline.sort_order = expected.sort_order
+          AND baseline.updated_at = expected.updated_at
+          AND ${baselineScope}
+      )
+    )
+  )`;
+}
+
+function advanceBadgeRevision(badgeId: string, requestedUpdatedAt: string, auditId: string): SqlBatchStatement {
+  return run(
+    `UPDATE member_badges
+     SET updated_at = CASE
+       WHEN julianday(updated_at) >= julianday(?)
+         THEN strftime('%Y-%m-%dT%H:%M:%fZ', julianday(updated_at) + 1.0 / 86400.0)
+       ELSE ?
+     END
+     WHERE id = ? AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
+    [requestedUpdatedAt, requestedUpdatedAt, badgeId, auditId],
   );
 }
 
@@ -292,9 +469,138 @@ function mediaSnapshot(mediaIds: readonly string[]): string {
   return mediaIds.join("\u001e");
 }
 
+function profileCollectionSnapshot(values: readonly string[]): string {
+  return values.join("\u001e");
+}
+
+function availabilitySnapshot(value: MemberProfilePatch["availability"]): string {
+  if (!value) return "";
+  return availabilityToWindows(value)
+    .map((window) => `${window.weekday}:${window.startMinute}-${window.endMinute}`)
+    .join("\u001e");
+}
+
+function memberProfileSnapshotGuard(
+  userId: string,
+  expectedTarget: MemberTarget,
+  expectedUserRevision: string,
+  expectedImageIds: readonly string[],
+): Readonly<{ sql: string; params: readonly SqlValue[] }> {
+  return {
+    sql: `user_id = ? AND revision_token = ?
+      AND EXISTS (
+        SELECT 1 FROM users AS target
+        JOIN roles AS target_role ON target_role.id = target.role_id
+        WHERE target.id = ? AND target.role_id = ? AND target.revision_token = ?
+          AND target_role.revision_token = ? AND target_role.level = ?
+          AND target.is_active = ? AND target.deleted_at IS ?
+      )
+      AND COALESCE((
+        SELECT group_concat(media_id, char(30)) FROM (
+          SELECT media_id FROM media_links
+          WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = 'image'
+          ORDER BY sort_order, media_id
+        )
+      ), '') = ?`,
+    params: [
+      userId,
+      expectedTarget.profileRevisionToken,
+      expectedTarget.userId,
+      expectedTarget.roleId,
+      expectedUserRevision,
+      expectedTarget.roleRevisionToken,
+      expectedTarget.roleLevel,
+      expectedTarget.isActive ? 1 : 0,
+      expectedTarget.deletedAt,
+      userId,
+      mediaSnapshot(expectedImageIds),
+    ],
+  };
+}
+
+function profileChangePredicate(patch: MemberProfilePatch): Readonly<{ sql: string; params: readonly SqlValue[] }> {
+  const comparisons: string[] = [];
+  const params: SqlValue[] = [];
+  if (patch.displayName !== undefined) comparisons.push("1");
+  if (patch.power !== undefined) { comparisons.push("power IS NOT ?"); params.push(patch.power); }
+  if (patch.titleHtml !== undefined) { comparisons.push("title_html IS NOT ?"); params.push(patch.titleHtml); }
+  if (patch.bio !== undefined) { comparisons.push("bio IS NOT ?"); params.push(patch.bio); }
+  if (patch.notes !== undefined) { comparisons.push("notes IS NOT ?"); params.push(patch.notes); }
+  if (patch.classes !== undefined) {
+    comparisons.push(`COALESCE((
+      SELECT group_concat(class_id, char(30)) FROM (
+        SELECT class_id FROM member_profile_classes
+        WHERE user_id = member_profiles.user_id
+        ORDER BY sort_order, class_id
+      )
+    ), '') IS NOT ?`);
+    params.push(profileCollectionSnapshot(patch.classes));
+  }
+  if (patch.videoUrls !== undefined) {
+    comparisons.push(`COALESCE((
+      SELECT group_concat(url, char(30)) FROM (
+        SELECT url FROM member_profile_videos
+        WHERE user_id = member_profiles.user_id
+        ORDER BY sort_order, url
+      )
+    ), '') IS NOT ?`);
+    params.push(profileCollectionSnapshot(patch.videoUrls));
+  }
+  if (patch.availability !== undefined) {
+    comparisons.push("availability_timezone IS NOT ?");
+    params.push(patch.availability?.timezone ?? null);
+    comparisons.push(`COALESCE((
+      SELECT group_concat(window_value, char(30)) FROM (
+        SELECT printf('%d:%d-%d', weekday, start_minute, end_minute) AS window_value
+        FROM member_availability_windows
+        WHERE user_id = member_profiles.user_id
+        ORDER BY weekday, start_minute, end_minute
+      )
+    ), '') IS NOT ?`);
+    params.push(availabilitySnapshot(patch.availability));
+  }
+  if (patch.images !== undefined) {
+    comparisons.push(`COALESCE((
+      SELECT group_concat(media_id, char(30)) FROM (
+        SELECT media_id FROM media_links
+        WHERE entity_type = 'member_profile' AND entity_id = member_profiles.user_id AND slot = 'image'
+        ORDER BY sort_order, media_id
+      )
+    ), '') IS NOT ?`);
+    params.push(mediaSnapshot(patch.images));
+  }
+  return { sql: comparisons.length > 0 ? comparisons.join(" OR ") : "0", params };
+}
+
 function assertBoundedUnique(values: readonly string[], maximum: number, label: string, allowEmpty = false): void {
   if ((!allowEmpty && values.length === 0) || values.length > maximum || new Set(values).size !== values.length) {
     throw new RangeError(`${label} must contain ${allowEmpty ? "0" : "1"} to ${maximum} unique values`);
+  }
+}
+
+function assertCatalogReorder(
+  input: Readonly<{
+    order: readonly string[];
+    expected: readonly CatalogRevisionEntry[];
+    next: readonly CatalogRevisionEntry[];
+  }>,
+  maximum: number,
+  label: string,
+): void {
+  assertBoundedUnique(input.order, maximum, label);
+  if (input.expected.length !== input.order.length || input.next.length !== input.order.length) {
+    throw new RangeError(`${label} baseline must cover the complete catalog`);
+  }
+  const expectedIds = new Set(input.expected.map(({ id }) => id));
+  if (expectedIds.size !== input.order.length || input.order.some((id) => !expectedIds.has(id))) {
+    throw new RangeError(`${label} baseline must match the requested catalog`);
+  }
+  if (input.next.some(({ id, sort_order, updated_at }, index) => (
+    id !== input.order[index]
+    || sort_order !== index * 10
+    || !updated_at
+  ))) {
+    throw new RangeError(`${label} target state is invalid`);
   }
 }
 
@@ -409,34 +715,19 @@ export class SqliteMembersStore implements MembersStore {
     const expectedUserRevision = patch.displayName === undefined
       ? expectedTarget.revisionToken
       : audit.eventId;
+    const snapshotGuard = memberProfileSnapshotGuard(
+      userId,
+      expectedTarget,
+      expectedUserRevision,
+      expectedImageIds,
+    );
+    const profileChange = profileChangePredicate(patch);
     const profileUpdate = returning(`UPDATE member_profiles SET ${assignments.join(", ")}
-      WHERE user_id = ? AND revision_token = ?
-        AND EXISTS (
-          SELECT 1 FROM users AS target
-          JOIN roles AS target_role ON target_role.id = target.role_id
-          WHERE target.id = ? AND target.role_id = ? AND target.revision_token = ?
-            AND target_role.revision_token = ? AND target_role.level = ?
-            AND target.is_active = ? AND target.deleted_at IS ?
-        )
-        AND COALESCE((
-          SELECT group_concat(media_id, char(30)) FROM (
-            SELECT media_id FROM media_links
-            WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = 'image'
-            ORDER BY sort_order, media_id
-          )
-        ), '') = ?`, [
+      WHERE ${snapshotGuard.sql}
+        AND (${profileChange.sql})`, [
         ...profileParams,
-        userId,
-        expectedTarget.profileRevisionToken,
-        expectedTarget.userId,
-        expectedTarget.roleId,
-        expectedUserRevision,
-        expectedTarget.roleRevisionToken,
-        expectedTarget.roleLevel,
-        expectedTarget.isActive ? 1 : 0,
-        expectedTarget.deletedAt,
-        userId,
-        mediaSnapshot(expectedImageIds),
+        ...snapshotGuard.params,
+        ...profileChange.params,
       ]);
     const statements: SqlBatchStatement[] = [];
     if (patch.displayName !== undefined) {
@@ -535,9 +826,18 @@ export class SqliteMembersStore implements MembersStore {
         [JSON.stringify(patch.images), userId, JSON.stringify(patch.images), userId, audit.eventId],
       ));
     }
+    const noOpSnapshotIndex = statements.length;
+    statements.push({
+      method: "get",
+      columns: ["matched"],
+      sql: `SELECT 1 AS matched FROM member_profiles WHERE ${snapshotGuard.sql}`,
+      params: snapshotGuard.params,
+    });
     try {
       const results = await this.executor.batch(statements);
-      if (returnedRowCount(results[profileUpdateIndex]) !== 1) return null;
+      if (returnedRowCount(results[profileUpdateIndex]) !== 1) {
+        if (returnedRowCount(results[noOpSnapshotIndex]) !== 1) return null;
+      }
     } catch (error) {
       if (patch.displayName !== undefined && displayNameUniqueViolation(error)) return "display_name_taken";
       throw error;
@@ -646,10 +946,14 @@ export class SqliteMembersStore implements MembersStore {
           [input.id, input.label, input.color, input.vectorIcon, input.sortOrder ?? null, input.now, input.now, LIMITS.content.classCatalogSize.max],
         ),
         auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
+        classCatalogSnapshot(input.id),
       ]);
-      return returnedRowCount(results[0]) === 1 ? "created" as const : "limit_reached" as const;
+      if (returnedRowCount(results[0]) !== 1) return { outcome: "limit_reached" as const };
+      const record = oneClassCatalogSnapshot(results[2], "created class");
+      if (!record) throw invalidHydration("created class");
+      return { outcome: "created" as const, record };
     } catch (error) {
-      if (uniqueViolation(error)) return "conflict" as const;
+      if (uniqueViolation(error)) return { outcome: "conflict" as const };
       throw error;
     }
   }
@@ -658,13 +962,40 @@ export class SqliteMembersStore implements MembersStore {
     if (!(await this.findClass(id))) return "not_found" as const;
     const assignments = ["updated_at = ?"];
     const params: SqlValue[] = [input.now];
-    if (input.label !== undefined) { assignments.push("label = ?"); params.push(input.label); }
-    if (input.color !== undefined) { assignments.push("color = ?"); params.push(input.color); }
-    if (input.vectorIcon !== undefined) { assignments.push("icon_type = 'vector'", "vector_icon = ?"); params.push(input.vectorIcon); }
-    if (input.sortOrder !== undefined) { assignments.push("sort_order = ?"); params.push(input.sortOrder); }
-    params.push(id);
+    const differences: string[] = [];
+    const differenceParams: SqlValue[] = [];
+    if (input.label !== undefined) {
+      assignments.push("label = ?");
+      params.push(input.label);
+      differences.push("label IS NOT ?");
+      differenceParams.push(input.label);
+    }
+    if (input.color !== undefined) {
+      assignments.push("color = ?");
+      params.push(input.color);
+      differences.push("color IS NOT ?");
+      differenceParams.push(input.color);
+    }
+    if (input.vectorIcon !== undefined) {
+      assignments.push("icon_type = 'vector'", "vector_icon = ?");
+      params.push(input.vectorIcon);
+      differences.push("(icon_type IS NOT 'vector' OR vector_icon IS NOT ?)");
+      differenceParams.push(input.vectorIcon);
+    }
+    if (input.sortOrder !== undefined) {
+      assignments.push("sort_order = ?");
+      params.push(input.sortOrder);
+      differences.push("sort_order IS NOT ?");
+      differenceParams.push(input.sortOrder);
+    }
+    if (differences.length === 0) return "updated" as const;
+    params.push(id, input.expectedUpdatedAt, ...differenceParams);
     const statements: SqlBatchStatement[] = [
-      returning(`UPDATE class_catalog SET ${assignments.join(", ")} WHERE id = ?`, params),
+      returning(
+        `UPDATE class_catalog SET ${assignments.join(", ")}
+         WHERE id = ? AND updated_at = ? AND (${differences.join(" OR ")})`,
+        params,
+      ),
       auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
     ];
     if (input.vectorIcon !== undefined) {
@@ -677,33 +1008,32 @@ export class SqliteMembersStore implements MembersStore {
     }
     try {
       const results = await this.executor.batch(statements);
-      return returnedRowCount(results[0]) === 1 ? "updated" as const : "not_found" as const;
+      if (returnedRowCount(results[0]) === 1) return "updated" as const;
+      return await this.findClass(id) ? "stale" as const : "not_found" as const;
     } catch (error) {
       if (uniqueViolation(error)) return "conflict" as const;
       throw error;
     }
   }
 
-  async reorderClasses(ids: readonly string[], now: string, audit: AuditMutation) {
-    assertBoundedUnique(ids, LIMITS.content.classCatalogSize.max, "Class order");
-    const existing = (await this.listClasses()).map((row) => row.id).sort();
-    if (ids.length !== existing.length || [...ids].sort().some((id, index) => id !== existing[index])) return "stale_order" as const;
-    await this.executor.batch([
-      captureSystemTestSortOrder("class_catalog", ids, now, audit),
-      reorderCatalog("class_catalog", ids, now),
+  async reorderClasses(input: Parameters<MembersStore["reorderClasses"]>[0], audit: AuditMutation) {
+    assertCatalogReorder(input, LIMITS.content.classCatalogSize.max, "Class order");
+    const results = await this.executor.batch([
+      captureSystemTestSortOrder("class_catalog", input.expected, input.next, audit),
+      reorderCatalog("class_catalog", input.expected, input.next),
       auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() > 0", params: [] }),
     ]);
-    return "updated" as const;
+    return returnedRowCount(results[1]) > 0 ? "updated" as const : "stale_order" as const;
   }
 
-  async deleteClass(id: string, audit: AuditMutation) {
-    if (!(await this.findClass(id))) return "not_found" as const;
+  async deleteClass(id: string, expectedUpdatedAt: string, audit: AuditMutation) {
     try {
-      await this.executor.batch([
-        run("DELETE FROM class_catalog WHERE id = ?", [id]),
+      const results = await this.executor.batch([
+        returning("DELETE FROM class_catalog WHERE id = ? AND updated_at = ?", [id, expectedUpdatedAt]),
         auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
       ]);
-      return "deleted" as const;
+      if (returnedRowCount(results[0]) === 1) return "deleted" as const;
+      return await this.findClass(id) ? "stale" as const : "not_found" as const;
     } catch (error) {
       if (foreignKeyViolation(error)) return "referenced" as const;
       throw error;
@@ -719,13 +1049,13 @@ export class SqliteMembersStore implements MembersStore {
       .orderBy(asc(classTagMembers.tagId), asc(classTagMembers.classId));
     const byTag = new Map<string, string[]>();
     for (const row of members) byTag.set(row.tagId, [...(byTag.get(row.tagId) ?? []), row.classId]);
-    return tags.map((tag) => ({
+    return tags.map((tag) => classTagRecord({
       id: tag.id,
       label: tag.label,
-      class_ids: byTag.get(tag.id) ?? [],
-      sort_order: tag.sortOrder,
-      created_at: tag.createdAt,
-      updated_at: tag.updatedAt,
+      classIds: byTag.get(tag.id) ?? [],
+      sortOrder: tag.sortOrder,
+      createdAt: tag.createdAt,
+      updatedAt: tag.updatedAt,
     }));
   }
 
@@ -747,14 +1077,14 @@ export class SqliteMembersStore implements MembersStore {
       )`,
     }).from(classTags).where(and(eq(classTags.id, id), isNull(classTags.ownerKind))).limit(1);
     const tag = rows[0];
-    return tag ? {
+    return tag ? classTagRecord({
       id: tag.id,
       label: tag.label,
-      class_ids: JSON.parse(tag.classIdsJson) as string[],
-      sort_order: tag.sortOrder,
-      created_at: tag.createdAt,
-      updated_at: tag.updatedAt,
-    } : null;
+      classIds: parseStringArray(tag.classIdsJson, "class tag"),
+      sortOrder: tag.sortOrder,
+      createdAt: tag.createdAt,
+      updatedAt: tag.updatedAt,
+    }) : null;
   }
 
   async createClassTag(input: Parameters<MembersStore["createClassTag"]>[0], audit: AuditMutation) {
@@ -776,10 +1106,14 @@ export class SqliteMembersStore implements MembersStore {
            WHERE EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
           [input.id, JSON.stringify(input.classIds), audit.eventId],
         ),
+        classTagSnapshot(input.id),
       ]);
-      return returnedRowCount(results[0]) === 1 ? "created" as const : "limit_reached" as const;
+      if (returnedRowCount(results[0]) !== 1) return { outcome: "limit_reached" as const };
+      const record = oneClassTagSnapshot(results[3], "created class tag");
+      if (!record) throw invalidHydration("created class tag");
+      return { outcome: "created" as const, record };
     } catch (error) {
-      if (uniqueViolation(error)) return "conflict" as const;
+      if (uniqueViolation(error)) return { outcome: "conflict" as const };
       throw error;
     }
   }
@@ -818,10 +1152,10 @@ export class SqliteMembersStore implements MembersStore {
       differenceParams.push(classIds, classIds);
     }
     if (differences.length === 0) return "updated" as const;
-    params.push(id, ...differenceParams);
+    params.push(id, input.expectedUpdatedAt, ...differenceParams);
     const statements: SqlBatchStatement[] = [returning(
       `UPDATE class_tags SET ${assignments.join(", ")}
-       WHERE id = ? AND owner_kind IS NULL AND (${differences.join(" OR ")})`,
+       WHERE id = ? AND owner_kind IS NULL AND updated_at = ? AND (${differences.join(" OR ")})`,
       params,
     ), auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" })];
     if (input.classIds !== undefined) {
@@ -841,33 +1175,37 @@ export class SqliteMembersStore implements MembersStore {
     }
     try {
       const results = await this.executor.batch(statements);
-      return returnedRowCount(results[0]) === 1 || await this.findClassTag(id)
-        ? "updated" as const
-        : "not_found" as const;
+      if (returnedRowCount(results[0]) === 1) return "updated" as const;
+      return await this.findClassTag(id) ? "stale" as const : "not_found" as const;
     } catch (error) {
       if (uniqueViolation(error)) return "conflict" as const;
       throw error;
     }
   }
 
-  async reorderClassTags(ids: readonly string[], now: string, audit: AuditMutation) {
-    assertBoundedUnique(ids, LIMITS.content.classTags.max, "Class tag order");
-    const existing = (await this.listClassTags()).map((row) => row.id).sort();
-    if (ids.length !== existing.length || [...ids].sort().some((id, index) => id !== existing[index])) return "stale_order" as const;
-    await this.executor.batch([
-      captureSystemTestSortOrder("class_tag", ids, now, audit),
-      reorderCatalog("class_tag", ids, now),
+  async reorderClassTags(input: Parameters<MembersStore["reorderClassTags"]>[0], audit: AuditMutation) {
+    assertCatalogReorder(input, LIMITS.content.classTags.max, "Class tag order");
+    const results = await this.executor.batch([
+      captureSystemTestSortOrder("class_tag", input.expected, input.next, audit),
+      reorderCatalog("class_tag", input.expected, input.next),
       auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() > 0", params: [] }),
     ]);
-    return "updated" as const;
+    return returnedRowCount(results[1]) > 0 ? "updated" as const : "stale_order" as const;
   }
 
-  async deleteClassTag(id: string, audit: AuditMutation): Promise<boolean> {
+  async deleteClassTag(id: string, expectedUpdatedAt: string, expectedUsageCount: number, audit: AuditMutation) {
     const results = await this.executor.batch([
-      returning("DELETE FROM class_tags WHERE id = ? AND owner_kind IS NULL", [id]),
+      returning(
+        `DELETE FROM class_tags
+         WHERE id = ? AND owner_kind IS NULL AND updated_at = ?
+           AND ((SELECT count(*) FROM event_class_quotas WHERE tag_id = class_tags.id)
+             + (SELECT count(*) FROM recurring_template_class_quotas WHERE tag_id = class_tags.id)) = ?`,
+        [id, expectedUpdatedAt, expectedUsageCount],
+      ),
       auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
     ]);
-    return returnedRowCount(results[0]) > 0;
+    if (returnedRowCount(results[0]) === 1) return "deleted" as const;
+    return await this.findClassTag(id) ? "stale" as const : "not_found" as const;
   }
 
   async listBadges(): Promise<readonly MemberBadge[]> {
@@ -890,10 +1228,14 @@ export class SqliteMembersStore implements MembersStore {
           [input.id, input.name, input.labelHtml, input.color, input.description, input.sortOrder ?? null, input.now, input.now, LIMITS.content.badgeCatalogSize.max],
         ),
         auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
+        badgeSnapshot(input.id),
       ]);
-      return returnedRowCount(results[0]) === 1 ? "created" as const : "limit_reached" as const;
+      if (returnedRowCount(results[0]) !== 1) return { outcome: "limit_reached" as const };
+      const record = oneBadgeSnapshot(results[2], "created badge");
+      if (!record) throw invalidHydration("created badge");
+      return { outcome: "created" as const, record };
     } catch (error) {
-      if (uniqueViolation(error)) return "conflict" as const;
+      if (uniqueViolation(error)) return { outcome: "conflict" as const };
       throw error;
     }
   }
@@ -916,43 +1258,41 @@ export class SqliteMembersStore implements MembersStore {
     if (input.description !== undefined) add("description", input.description);
     if (input.sortOrder !== undefined) add("sort_order", input.sortOrder);
     if (differences.length === 0) return "updated" as const;
-    params.push(id, ...differenceParams);
+    params.push(id, input.expectedUpdatedAt, ...differenceParams);
     try {
       const results = await this.executor.batch([
         returning(
           `UPDATE member_badges SET ${assignments.join(", ")}
-           WHERE id = ? AND (${differences.join(" OR ")})`,
+           WHERE id = ? AND updated_at = ? AND (${differences.join(" OR ")})`,
           params,
         ),
         auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
       ]);
-      return returnedRowCount(results[0]) === 1 || await this.findBadge(id)
-        ? "updated" as const
-        : "not_found" as const;
+      if (returnedRowCount(results[0]) === 1) return "updated" as const;
+      return await this.findBadge(id) ? "stale" as const : "not_found" as const;
     } catch (error) {
       if (uniqueViolation(error)) return "conflict" as const;
       throw error;
     }
   }
 
-  async reorderBadges(ids: readonly string[], now: string, audit: AuditMutation) {
-    assertBoundedUnique(ids, LIMITS.content.badgeCatalogSize.max, "Badge order");
-    const existing = (await this.listBadges()).map((row) => row.id).sort();
-    if (ids.length !== existing.length || [...ids].sort().some((id, index) => id !== existing[index])) return "stale_order" as const;
-    await this.executor.batch([
-      captureSystemTestSortOrder("badge", ids, now, audit),
-      reorderCatalog("badge", ids, now),
+  async reorderBadges(input: Parameters<MembersStore["reorderBadges"]>[0], audit: AuditMutation) {
+    assertCatalogReorder(input, LIMITS.content.badgeCatalogSize.max, "Badge order");
+    const results = await this.executor.batch([
+      captureSystemTestSortOrder("badge", input.expected, input.next, audit),
+      reorderCatalog("badge", input.expected, input.next),
       auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() > 0", params: [] }),
     ]);
-    return "updated" as const;
+    return returnedRowCount(results[1]) > 0 ? "updated" as const : "stale_order" as const;
   }
 
-  async deleteBadge(id: string, audit: AuditMutation): Promise<boolean> {
+  async deleteBadge(id: string, expectedUpdatedAt: string, audit: AuditMutation) {
     const results = await this.executor.batch([
-      returning("DELETE FROM member_badges WHERE id = ?", [id]),
+      returning("DELETE FROM member_badges WHERE id = ? AND updated_at = ?", [id, expectedUpdatedAt]),
       auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
     ]);
-    return returnedRowCount(results[0]) > 0;
+    if (returnedRowCount(results[0]) === 1) return "deleted" as const;
+    return await this.findBadge(id) ? "stale" as const : "not_found" as const;
   }
 
   async listBadgeAssignments(badgeId: string, query: Parameters<MembersStore["listBadgeAssignments"]>[1]) {
@@ -983,7 +1323,13 @@ export class SqliteMembersStore implements MembersStore {
     return { records, hasMore: rows.length > query.limit };
   }
 
-  async assignBadge(badgeId: string, userIds: readonly string[], actorUserId: string, now: string, audit: AuditMutation): Promise<number> {
+  async assignBadge(
+    badgeId: string,
+    userIds: readonly string[],
+    actorUserId: string,
+    updatedAt: string,
+    audit: AuditMutation,
+  ): Promise<BadgeAssignmentMutationResult> {
     assertBoundedUnique(userIds, 100, "Badge assignments");
     const requested = JSON.stringify(userIds);
     const results = await this.executor.batch([
@@ -992,13 +1338,23 @@ export class SqliteMembersStore implements MembersStore {
         `INSERT OR IGNORE INTO member_badge_assignments (badge_id, user_id, assigned_by, assigned_at)
          SELECT ?, CAST(value AS TEXT), ?, ? FROM json_each(?)
          WHERE EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
-        [badgeId, actorUserId, now, requested, audit.eventId],
+        [badgeId, actorUserId, updatedAt, requested, audit.eventId],
       ),
+      advanceBadgeRevision(badgeId, updatedAt, audit.eventId),
+      badgeSnapshot(badgeId),
     ]);
-    return returnedRowCount(results[1]);
+    return {
+      changed: returnedRowCount(results[1]),
+      updatedAt: oneBadgeSnapshot(results[3], "badge assignment")?.updated_at ?? null,
+    };
   }
 
-  async unassignBadge(badgeId: string, userIds: readonly string[], audit: AuditMutation): Promise<number> {
+  async unassignBadge(
+    badgeId: string,
+    userIds: readonly string[],
+    updatedAt: string,
+    audit: AuditMutation,
+  ): Promise<BadgeAssignmentMutationResult> {
     assertBoundedUnique(userIds, 100, "Badge assignments");
     const requested = JSON.stringify(userIds);
     const results = await this.executor.batch([
@@ -1010,8 +1366,13 @@ export class SqliteMembersStore implements MembersStore {
            AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
         [badgeId, requested, audit.eventId],
       ),
+      advanceBadgeRevision(badgeId, updatedAt, audit.eventId),
+      badgeSnapshot(badgeId),
     ]);
-    return returnedRowCount(results[1]);
+    return {
+      changed: returnedRowCount(results[1]),
+      updatedAt: oneBadgeSnapshot(results[3], "badge assignment")?.updated_at ?? null,
+    };
   }
 
   private selectMemberRows(projection: "public" | "member" | "admin", where: SQL<unknown> | undefined) {
@@ -1096,6 +1457,7 @@ export class SqliteMembersStore implements MembersStore {
         deletedAt: row.deletedAt,
         createdAt: row.userCreatedAt,
         updatedAt: row.userUpdatedAt,
+        revisionToken: row.userRevisionToken,
         lastLoginAt: row.userLastLoginAt,
       },
       profile: {
@@ -1113,13 +1475,14 @@ export class SqliteMembersStore implements MembersStore {
         notes: row.notes,
         createdAt: row.profileCreatedAt,
         updatedAt: row.profileUpdatedAt,
+        revisionToken: row.profileRevisionToken,
       },
       badges: badges.get(row.userId) ?? [],
     }));
   }
 }
 
-function classRecord(row: typeof classCatalog.$inferSelect): ClassCatalogStoreRecord {
+function classRecord(row: ClassCatalogRow): ClassCatalogStoreRecord {
   return {
     id: row.id,
     label: row.label,
@@ -1132,7 +1495,18 @@ function classRecord(row: typeof classCatalog.$inferSelect): ClassCatalogStoreRe
   };
 }
 
-function badgeRecord(row: typeof memberBadges.$inferSelect): MemberBadge {
+function classTagRecord(row: ClassTagRecordRow): ClassTagStoreRecord {
+  return {
+    id: row.id,
+    label: row.label,
+    class_ids: [...row.classIds],
+    sort_order: row.sortOrder,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
+  };
+}
+
+function badgeRecord(row: MemberBadgeRow): MemberBadge {
   return {
     id: row.id,
     name: row.name,
@@ -1150,6 +1524,16 @@ function sqlRows(result: SqlResult, width: number, label: string): readonly (rea
     throw invalidHydration(label);
   }
   return result.rows as readonly (readonly SqlValue[])[];
+}
+
+function parseStringArray(value: string, label: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed) && parsed.every((entry) => typeof entry === "string")) return parsed;
+  } catch {
+    // The invariant error below keeps malformed snapshot data visible to callers.
+  }
+  throw invalidHydration(label);
 }
 
 function invalidHydration(label: string): TypeError {

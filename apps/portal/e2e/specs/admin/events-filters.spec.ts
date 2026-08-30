@@ -27,7 +27,13 @@ test.beforeEach(async ({ page, api }) => {
   beta = await createEvent(api, `${SYSTEM_TEST_CONTENT_MARKER} Beta ${stamp}`, "other");
   // 置顶和锁定不在创建 schema 里，只能建完再补一刀。
   await readJson(
-    await api.patch(`/api/events/${alpha.id}`, { data: { pinned: true, signup_locked: true } }),
+    await api.patch(`/api/events/${alpha.id}`, {
+      data: {
+        pinned: true,
+        signup_locked: true,
+        expected_updated_at: await currentEventUpdatedAt(api, alpha.id),
+      },
+    }),
     "把 Alpha 标成置顶且锁定",
   );
 
@@ -57,6 +63,14 @@ async function createEvent(api: APIRequestContext, title: string, type: string):
     `创建一次性活动 ${title}`,
   ) as { id: string };
   return { id: created.id, title };
+}
+
+async function currentEventUpdatedAt(api: APIRequestContext, id: string): Promise<string> {
+  const event = await readJson(await api.get(`/api/events/${id}`), `读取活动 ${id} 的当前版本`) as {
+    updated_at?: unknown;
+  };
+  expect(typeof event.updated_at, `活动 ${id} 缺少更新版本`).toBe("string");
+  return event.updated_at as string;
 }
 
 function card(page: Page, title: string): Locator {

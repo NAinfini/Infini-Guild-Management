@@ -36,6 +36,7 @@ describe("buffered request body route regression", () => {
       name: "Vault",
       description: null,
       created_at: NOW,
+      structure_revision: 0,
       categories: [],
     };
     const createStorage = vi.fn().mockResolvedValue(storage);

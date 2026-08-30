@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { QueryClient } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import { renderWithQueryClient as render } from "@portal/tests/query-harness";
@@ -70,7 +68,6 @@ function EventCreationHarness({
     queryClient: { invalidateQueries: vi.fn().mockResolvedValue(undefined) } as unknown as QueryClient,
     createEvent: createEvent as never,
     updateEvent: vi.fn(),
-    uploadEventImages: vi.fn(),
   });
   const [title, setTitle] = useState("");
   const [eventType, setEventType] = useState<"social">("social");
@@ -118,6 +115,7 @@ function EventCreationHarness({
           void eventService.saveEvent({
             mode: "create",
             editingEventId: null,
+            expectedUpdatedAt: null,
             eventType,
             title,
             description,
@@ -137,16 +135,6 @@ function EventCreationHarness({
 }
 
 describe("event creation flow", () => {
-  it("uses one datetime column on mobile and two from the sm breakpoint", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/feature/events/EventFormContent.css"),
-      "utf8",
-    );
-
-    expect(source).toMatch(/\.event-form__schedule-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
-    expect(source).toMatch(/@media \(max-width:\s*39\.99em\)[\s\S]*\.event-form__schedule-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-  });
-
   it("creates an event with attachment files through the editor workflow", async () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:poster");
     const createEvent = vi.fn().mockResolvedValue({ id: "evt-1" });

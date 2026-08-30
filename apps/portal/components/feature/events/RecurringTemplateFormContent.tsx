@@ -1,6 +1,8 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { Button } from "@portal/components/ui/button";
-import { PlayerPauseIcon, PlayerPlayIcon, SaveIcon, PlusIcon, TrashIcon, XIcon } from "@portal/components/icons";
+import { PlayerPauseIcon, PlayerPlayIcon, PhotoIcon, SaveIcon, PlusIcon, TrashIcon, XIcon } from "@portal/components/icons";
+import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
+import type { ImageGridEditorItem } from "@portal/types/media";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { eventHasBehavior } from "@portal/utils/game-rules";
@@ -33,6 +35,10 @@ export type RecurringTemplateFormContentProps = {
   onPause?: (id: string) => Promise<unknown>;
   onResume?: (id: string) => Promise<unknown>;
   onDelete?: (id: string) => Promise<void>;
+  attachmentItems: ImageGridEditorItem[];
+  onAttachmentsChange: (items: ImageGridEditorItem[]) => void;
+  onFilesSelected: (files: File[]) => void;
+  onAttachmentDelete: (item: ImageGridEditorItem) => void;
   onDirtyChange?: (dirty: boolean) => void;
   stickyActions?: boolean;
 };
@@ -47,6 +53,10 @@ export function RecurringTemplateFormContent({
   onPause,
   onResume,
   onDelete,
+  attachmentItems,
+  onAttachmentsChange,
+  onFilesSelected,
+  onAttachmentDelete,
   onDirtyChange,
   stickyActions = false,
 }: RecurringTemplateFormContentProps) {
@@ -142,6 +152,28 @@ export function RecurringTemplateFormContent({
         <div className="rtf-columns">
           <div className="rtf-col">
             <RecurringTemplateProducesFields formState={formState} setFormState={setFormState} />
+            <section className="rtf-media" aria-labelledby="recurring-template-media-title">
+              <div className="rtf-divider">
+                <PhotoIcon size={16} aria-hidden />
+                <span id="recurring-template-media-title" className="rtf-divider__label">
+                  {t("recurring.section.media")}
+                </span>
+              </div>
+              <div className="rtf-section rtf-media__content">
+                <div className="rtf-media__heading">
+                  <p>{t("recurring.field.mediaHint")}</p>
+                  <span>{t("field.attachmentsCount", { current: attachmentItems.length, max: 5 })}</span>
+                </div>
+                <ImageGridEditor
+                  items={attachmentItems}
+                  onReorder={onAttachmentsChange}
+                  onDelete={onAttachmentDelete}
+                  onFilesSelected={onFilesSelected}
+                  maxImages={5}
+                  aria-label={t("recurring.media.ariaLabel")}
+                />
+              </div>
+            </section>
           </div>
           <div className="rtf-col">
             <RecurringTemplateTimingFields formState={formState} setFormState={setFormState} />

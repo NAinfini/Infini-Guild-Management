@@ -2,7 +2,7 @@ import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test, type Flow } from "../../support/test";
-import { confirmDialog, expectNoDialog, field, selectOption } from "../../support/ui";
+import { confirmDialog, ensureFiltersOpen, expectNoDialog, field, pageSubnavItem, selectOption } from "../../support/ui";
 
 /*
  * 公会战「History」标签：战史列表（搜索、日期筛选、翻页、每页条数）、明细面板
@@ -41,9 +41,13 @@ let title: string;
 let enemyName: string;
 let eventId: string;
 let historyId: string;
+let ownedEventIds = new Set<string>();
+let ownedHistoryIds = new Set<string>();
 let member: { id: string; display_name: string };
 
 test.beforeEach(async ({ api }) => {
+  ownedEventIds = new Set();
+  ownedHistoryIds = new Set();
   stamp = Date.now();
   title = `${SYSTEM_TEST_CONTENT_MARKER} War ${stamp}`;
   enemyName = `Crimson ${stamp}`;
@@ -68,11 +72,12 @@ test.beforeEach(async ({ api }) => {
     "创建公会战活动",
   ) as { id: string };
   eventId = created.id;
+  ownedEventIds.add(eventId);
 
   /* 再留一场没结束的战。导出按钮会带上 Active 标签当前选中的活动（见导出那条用例
      里的说明），可选列表空掉时选中项也会空掉，两种情况下导出的过滤条件完全不同。
      固定留一场，导出的行为才是确定的。 */
-  await readJson(
+  const decoy = await readJson(
     await api.post("/api/events", {
       data: {
         type: "guild_war",
@@ -82,7 +87,8 @@ test.beforeEach(async ({ api }) => {
       },
     }),
     "创建垫底的公会战活动",
-  );
+  ) as { id: string };
+  ownedEventIds.add(decoy.id);
 
   const joined = await api.post(`/api/events/${eventId}/participants`, {
     data: { user_ids: [member.id] },
@@ -115,29 +121,19 @@ test.beforeEach(async ({ api }) => {
     "结束战争造出战史",
   ) as { war_history_id: string };
   historyId = concluded.war_history_id;
+  ownedHistoryIds.add(historyId);
 });
 
 test.afterEach(async ({ api }) => {
-  while (true) {
-    const histories = await readJson(
-      await api.get(`/api/guild-war/history?search=${stamp}&limit=20`),
-      "回读待清理的战史",
-    ) as { data: HistoryRow[] };
-    const ids = histories.data.map((entry) => entry.id);
-    if (ids.length === 0) break;
+  if (ownedHistoryIds.size > 0) {
     const response = await api.post("/api/guild-war/history/batch-delete", {
-      data: { ids },
+      data: { ids: [...ownedHistoryIds] },
     });
     expect(response.ok(), `清理战史返回 ${response.status()}: ${await response.text()}`).toBe(true);
-    if (ids.length < 20) break;
   }
 
-  const events = await readJson(
-    await api.get(`/api/events?search=${stamp}&limit=50`),
-    "回读待清理的活动",
-  ) as { data: { id: string }[] };
-  for (const entry of events.data) {
-    const response = await api.delete(`/api/events/${entry.id}/destroy`);
+  for (const id of ownedEventIds) {
+    const response = await api.delete(`/api/events/${id}/destroy`);
     expect([200, 204, 404], `清理活动返回 ${response.status()}`).toContain(response.status());
   }
 });
@@ -168,7 +164,7 @@ function searchBox(page: Page): Locator {
 /** 打开 History 标签，等列表卡片渲染出来。 */
 async function gotoHistoryTab(page: Page): Promise<void> {
   await page.goto("/guild-war");
-  await page.getByRole("tab", { name: "History", exact: true }).click();
+  await pageSubnavItem(page, "Guild war workspace", "History").click();
   await expect(page.locator(".war-history-list-card")).toBeVisible();
 }
 
@@ -198,10 +194,12 @@ test("搜索与日期筛选：条件都送到服务端，列表跟着变", async
 
   // 起始日期挪到明天：今天造的这条必须被筛掉。
   const tomorrow = new Date(Date.now() + DAY_MS).toISOString().slice(0, 10);
+  await ensureFiltersOpen(page.locator(".war-history-toolbar"));
   await flow.act(() => field(page, "Guild war history date from").fill(tomorrow), HISTORY_LIST);
   await expect(railItems(page), "起始日期在它之后，这条战史不该还留在列表里").toHaveCount(0);
 
-  await page.getByRole("button", { name: "Clear dates", exact: true }).click();
+  await ensureFiltersOpen(page.locator(".war-history-toolbar"));
+  await page.getByRole("dialog").getByRole("button", { name: "Reset", exact: true }).click();
   await expect(field(page, "Guild war history date from")).toHaveValue("");
   await expect(railItems(page), "清掉日期之后必须重新出现").toHaveCount(1);
 });
@@ -211,17 +209,20 @@ test("深链接 ?warName=：仪表盘点进来时列表要按战名预筛，纯�
      TanStack 的默认搜索参数解析会先拿 JSON.parse 试一遍，"1785..." 这种纯数字战名
      会被解析成 number，再进 zod 校验——所以这里特意造一个纯数字名字的战史。 */
   const numericName = String(stamp);
-  const created = await api.post("/api/guild-war/history", {
-    data: { war_name: numericName, result: "draw" },
-  });
-  expect(created.ok(), `预置纯数字战名的战史返回 ${created.status()}`).toBe(true);
+  const created = await readJson(
+    await api.post("/api/guild-war/history", {
+      data: { war_name: numericName, result: "draw" },
+    }),
+    "预置纯数字战名的战史",
+  ) as { id: string };
+  ownedHistoryIds.add(created.id);
 
   await page.goto(`/guild-war?warName=${numericName}`);
 
   await expect(
-    page.getByRole("tab", { name: "History", exact: true }),
+    pageSubnavItem(page, "Guild war workspace", "History"),
     "带着战名进来就应该直接落在 History 标签",
-  ).toHaveAttribute("aria-selected", "true");
+  ).toHaveAttribute("aria-current", "page");
   await expect(searchBox(page), "搜索框要预填成链接里的战名").toHaveValue(numericName);
   await expect(railItems(page), "预筛之后只剩名字里带这串数字的两条").toHaveCount(2);
   await expect(railItem(page, numericName)).toBeVisible();
@@ -355,28 +356,23 @@ test("导出：两种格式都真的下载下来，但导出范围不受列表�
     const path = await download.path();
     expect(path, "下载没有落到磁盘上").toBeTruthy();
     const content = readFileSync(path, "utf8");
-    /*
-     * 这里断言的是现状，不是我认为对的行为：
-     * 导出请求带的是 Active 标签当前选中的 event_id（GuildWarPage 把 activeSelectedEventId
-     * 传给了 useGuildWarMutations），而刚被结束的这场战已经不在可选列表里了，
-     * 选中的是另一场没结束的战——于是从 History 标签点导出，导出的恰恰不是
-     * 列表里正在看的这条。搜索框同样不参与导出（服务端 exportHistory 根本不收 search）。
-     * 已记为待确认的产品问题；改行为超出「补测试」的范围，等确认后再动。
-     */
     expect(
       content.includes(title),
-      "现状：导出被 Active 标签选中的活动过滤掉了，列表里看到的这条并不在文件里",
-    ).toBe(false);
+      "详情导出必须包含当前正在查看的这条战史，不能受 Active 页选择影响",
+    ).toBe(true);
   }
 });
 
 test("翻页与每页条数：页码、上下页与每页条数都重新向服务端取数", async ({ page, flow, api }) => {
   // 默认每页 20 条，凑够 21 条才会出现分页控件。
   for (let index = 0; index < 20; index += 1) {
-    const response = await api.post("/api/guild-war/history", {
-      data: { war_name: `${SYSTEM_TEST_CONTENT_MARKER} Bulk ${index} ${stamp}`, result: "loss" },
-    });
-    expect(response.ok(), `预置第 ${index} 条战史返回 ${response.status()}`).toBe(true);
+    const created = await readJson(
+      await api.post("/api/guild-war/history", {
+        data: { war_name: `${SYSTEM_TEST_CONTENT_MARKER} Bulk ${index} ${stamp}`, result: "loss" },
+      }),
+      `预置第 ${index} 条战史`,
+    ) as { id: string };
+    ownedHistoryIds.add(created.id);
   }
 
   await gotoHistoryTab(page);
@@ -401,16 +397,14 @@ test("翻页与每页条数：页码、上下页与每页条数都重新向服�
   await firstPage.click();
   await expect(railItems(page)).toHaveCount(20);
 
-  /* 页码输入框没有可访问名，只能按结构取——这是这块分页条上的一个无障碍缺口。 */
-  await page.locator(".war-history-pagination__pages input").fill("2");
+  await page.getByRole("spinbutton", { name: "Page 1", exact: true }).fill("2");
   await expect(railItems(page)).toHaveCount(1);
 
   // 每页 10：服务端重新分页，第一页只返回 10 条。
-  const perPage = page.locator(".war-history-pagination input[aria-haspopup='listbox']");
-  await flow.act(async () => {
-    await perPage.click();
-    await page.getByRole("option", { name: "10", exact: true }).click();
-  }, HISTORY_LIST);
+  await flow.act(
+    () => selectOption(page.locator(".war-history-pagination"), "Per page", "10"),
+    HISTORY_LIST,
+  );
   await expect(railItems(page), "每页 10 之后第一页只能有 10 条").toHaveCount(10);
   await expect(page.locator(".war-history-pagination")).toBeVisible();
 });

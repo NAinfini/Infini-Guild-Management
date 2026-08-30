@@ -1,40 +1,13 @@
 {
   "adventure-exploration.name": "Adventure & Exploration",
-  "adventure-exploration.landing.eyebrow": "The trail is open",
-  "adventure-exploration.landing.motto": "Gather here. Set out for the unknown.",
-  "adventure-exploration.tools.title": "Prepare before the trail begins",
-  "adventure-exploration.tools.description": "Small utilities for fair calls, quick decisions, and the moments between expeditions.",
 
   "wuxia.name": "Wuxia Jianghu",
-  "wuxia.landing.eyebrow": "Rivers and mountains await",
-  "wuxia.landing.motto": "Shoulder to shoulder, every road becomes jianghu.",
-  "wuxia.tools.title": "Prepare before entering the jianghu",
-  "wuxia.tools.description": "Settle fair calls, gather the party, and keep every journey moving with purpose.",
 
   "tactical-fps.name": "Tactical FPS",
-  "tactical-fps.landing.eyebrow": "Mission channel ready",
-  "tactical-fps.landing.motto": "Confirm the objective. Move as one.",
-  "tactical-fps.tools.title": "Check the kit before deployment",
-  "tactical-fps.tools.description": "Quick utilities for fair calls, squad decisions, and clean pre-mission setup.",
 
   "battlefield.name": "Battlefield Command",
-  "battlefield.landing.eyebrow": "The line is forming",
-  "battlefield.landing.motto": "One front. One direction.",
-  "battlefield.tools.title": "Prepare the field before the advance",
-  "battlefield.tools.description": "Practical utilities for allocation, fair resolution, and fast command decisions.",
 
   "deep-space-fleet.name": "Deep-Space Fleet",
-  "deep-space-fleet.landing.eyebrow": "The next beacon is online",
-  "deep-space-fleet.landing.motto": "Beyond the last beacon, the fleet flies together.",
-  "deep-space-fleet.tools.title": "Run the checks before undocking",
-  "deep-space-fleet.tools.description": "Compact utilities for mission calls, crew decisions, and reliable pre-flight coordination.",
 
-  "survival-extraction.name": "Survival & Extraction",
-  "survival-extraction.landing.eyebrow": "The safehouse is active",
-  "survival-extraction.landing.motto": "Endure the night. Bring everyone home.",
-  "survival-extraction.tools.title": "Check the pack before moving out",
-  "survival-extraction.tools.description": "Reliable utilities for scarce resources, fair calls, and decisions made under pressure.",
-
-  "settings.title": "Let the interface follow your habits",
-  "settings.description": "Choose the light, color, and language that keep the guild readable for you."
+  "survival-extraction.name": "Survival & Extraction"
 }

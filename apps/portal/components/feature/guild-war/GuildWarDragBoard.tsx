@@ -20,6 +20,7 @@ import { guildWarCollisionDetection, guildWarMeasuring } from "./guildWarDragGeo
 type GuildWarDragBoardProps = {
   dragColumns: DragMemberColumn[];
   canDrag: boolean;
+  canRemoveParticipants: boolean;
   emptyText: string;
   activeSearch: string;
   activeDragItem: ActiveDragItem | null;
@@ -59,6 +60,7 @@ const snapCenterToCursor: Modifier = ({ activatorEvent, draggingNodeRect, transf
 export function GuildWarDragBoard({
   dragColumns,
   canDrag,
+  canRemoveParticipants,
   emptyText,
   activeSearch,
   activeDragItem,
@@ -110,6 +112,7 @@ export function GuildWarDragBoard({
           poolColumn={poolColumn}
           teamColumns={teamColumns}
           canDrag={canDrag}
+          canRemoveParticipants={canRemoveParticipants}
           activeSearch={activeSearch}
           activeDragItem={activeDragItem}
           toMemberDomId={toMemberDomId}

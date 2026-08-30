@@ -2,8 +2,14 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
-import { AuthService, createInviteTokenCodec, createPasswordHash, IdentityAdminService } from "@guild/server/modules/auth";
+import {
+  createAuthorizationContext,
+  createRequestContext,
+  type SqlBatchStatement,
+  type SqlExecutor,
+  type SqlResult,
+  type SqlStatement,
+} from "@guild/kernel";
 import { createAuditEvent } from "@guild/server/modules/audit";
 import { createAppDatabase } from "../database.js";
 import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
@@ -38,7 +44,20 @@ const BASE_SCHEMA = `
   CREATE UNIQUE INDEX ux_user_credentials_login_name_nocase ON user_credentials(login_name COLLATE NOCASE);
   CREATE TABLE member_profiles (
     user_id TEXT PRIMARY KEY REFERENCES users(id), power REAL NOT NULL DEFAULT 0,
+    title_html TEXT, bio TEXT, availability_timezone TEXT, notes TEXT,
     revision_token TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE TABLE class_catalog (id TEXT PRIMARY KEY);
+  CREATE TABLE member_profile_classes (
+    user_id TEXT NOT NULL REFERENCES member_profiles(user_id) ON DELETE CASCADE,
+    class_id TEXT NOT NULL REFERENCES class_catalog(id),
+    sort_order INTEGER NOT NULL,
+    PRIMARY KEY(user_id, class_id)
+  );
+  CREATE TABLE member_availability_windows (
+    user_id TEXT NOT NULL REFERENCES member_profiles(user_id) ON DELETE CASCADE,
+    weekday INTEGER NOT NULL, start_minute INTEGER NOT NULL, end_minute INTEGER NOT NULL,
+    PRIMARY KEY(user_id, weekday, start_minute, end_minute)
   );
   CREATE TABLE sessions (
     token_digest TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -47,11 +66,10 @@ const BASE_SCHEMA = `
   );
   CREATE INDEX idx_sessions_user_created ON sessions(user_id, created_at, token_digest);
   CREATE TABLE invite_links (
-    id TEXT PRIMARY KEY, token_digest TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL REFERENCES users(id),
+    id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL REFERENCES users(id),
     role_id TEXT NOT NULL REFERENCES roles(id), max_uses INTEGER NOT NULL, used_count INTEGER NOT NULL,
     expires_at TEXT, created_at TEXT NOT NULL, revoked_at TEXT
   );
-  CREATE TABLE login_failures (login_name TEXT PRIMARY KEY, fail_count INTEGER NOT NULL, locked_until TEXT, last_failed_at TEXT NOT NULL);
   CREATE TABLE external_identities (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     provider TEXT NOT NULL, provider_subject TEXT NOT NULL, created_at TEXT NOT NULL, last_used_at TEXT NOT NULL
@@ -70,6 +88,28 @@ const BASE_SCHEMA = `
 
 const databases: DatabaseSync[] = [];
 afterEach(() => { for (const database of databases.splice(0)) database.close(); });
+
+class RejectSnapshotExecutor implements SqlExecutor {
+  constructor(
+    private readonly delegate: SqliteTestExecutor,
+    private readonly rejects: (statement: SqlBatchStatement) => boolean,
+  ) {}
+
+  async execute(statement: SqlStatement): Promise<SqlResult> {
+    return this.delegate.execute(statement);
+  }
+
+  async batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
+    return this.delegate.batch(statements.map((statement): SqlBatchStatement => this.rejects(statement)
+      ? {
+          method: "all",
+          columns: ["snapshot_failure"],
+          sql: "SELECT missing_role_snapshot_column",
+          params: [],
+        }
+      : statement));
+  }
+}
 
 function harness() {
   const database = new DatabaseSync(":memory:");
@@ -93,6 +133,13 @@ function harness() {
   insertCredential.run("admin-1", "admin-login", NOW);
   insertCredential.run("target-1", "target-one", NOW);
   insertCredential.run("target-2", "target-two", NOW);
+  const insertProfile = database.prepare(
+    "INSERT INTO member_profiles (user_id, power, revision_token, created_at, updated_at) VALUES (?, 0, ?, ?, ?)",
+  );
+  insertProfile.run("admin-1", "admin-profile-v1", NOW, NOW);
+  insertProfile.run("target-1", "target-1-profile-v1", NOW, NOW);
+  insertProfile.run("target-2", "target-2-profile-v1", NOW, NOW);
+  database.prepare("INSERT INTO class_catalog (id) VALUES ('guardian')").run();
   const executor = new SqliteTestExecutor(database);
   return {
     database,
@@ -112,16 +159,6 @@ function context() {
   });
 }
 
-function passwordAdminContext() {
-  return createRequestContext({
-    requestId: crypto.randomUUID(), now: NOW,
-    authorization: createAuthorizationContext({
-      userId: "admin-1", sessionId: "session", roleId: "admin", roleLevel: 900,
-      permissions: ["admin.users.password"],
-    }),
-  });
-}
-
 function audit(entityId: string, action: "update" | "deactivate") {
   return createAuditEvent(context(), { subjectType: "user", subjectId: entityId, action });
 }
@@ -132,6 +169,31 @@ function scalar(database: DatabaseSync, sql: string): number {
 }
 
 describe("SqliteAuthStore guarded mutations", () => {
+  it("rolls the role and audit back when its in-batch role snapshot fails", async () => {
+    const value = harness();
+    const failingExecutor = new RejectSnapshotExecutor(
+      value.executor,
+      (statement) => statement.columns?.includes("assigned_user_count") === true,
+    );
+    const store = new SqliteAuthStore(createAppDatabase(failingExecutor), failingExecutor);
+
+    await expect(store.createRole({
+      id: "snapshot-role",
+      name: "Snapshot role",
+      level: 150,
+      color: null,
+      permissions: ["announcements.create"],
+      now: NOW,
+    }, createAuditEvent(context(), {
+      subjectType: "role",
+      subjectId: "snapshot-role",
+      action: "create",
+    }))).rejects.toThrow(/missing_role_snapshot_column/);
+
+    expect(scalar(value.database, "SELECT count(*) FROM roles WHERE id = 'snapshot-role'")).toBe(0);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'snapshot-role'")).toBe(0);
+  });
+
   it("consumes temporary credentials and completes reset exactly once at the same timestamp", async () => {
     const value = harness();
     value.database.prepare(`UPDATE user_credentials SET
@@ -186,14 +248,11 @@ describe("SqliteAuthStore guarded mutations", () => {
     expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'target-1'")).toBe(1);
   });
 
-  it("rotates the temporary login, revokes sessions, clears locks, and audits in one batch", async () => {
+  it("rotates the temporary login, revokes sessions and OAuth factors, and audits in one batch", async () => {
     const value = harness();
     const targetRecord = (await value.store.findManagedUsers(["target-1"]))[0]!;
     value.database.prepare(`INSERT INTO sessions (token_digest, user_id, expires_at, created_at, scope)
       VALUES ('old-session', 'target-1', '2026-09-01T00:00:00.000Z', ?, 'normal')`).run(NOW);
-    value.database.prepare(`INSERT INTO login_failures (login_name, fail_count, locked_until, last_failed_at)
-      VALUES ('target-one', 4, '2026-08-09T12:05:00.000Z', ?),
-        ('recovery-login', 2, NULL, ?)` ).run(NOW, NOW);
     value.database.prepare(`INSERT INTO external_identities
       (id, user_id, provider, provider_subject, created_at, last_used_at)
       VALUES ('target-google', 'target-1', 'google', 'target-subject', ?, ?)`).run(NOW, NOW);
@@ -219,14 +278,13 @@ describe("SqliteAuthStore guarded mutations", () => {
       temporary_password_expires_at: "2026-08-09T12:15:00.000Z",
     });
     expect(scalar(value.database, "SELECT count(*) FROM sessions WHERE user_id = 'target-1'")).toBe(0);
-    expect(scalar(value.database, "SELECT count(*) FROM login_failures WHERE login_name IN ('target-one', 'recovery-login')")).toBe(0);
     expect(scalar(value.database, "SELECT auth_revision FROM user_credentials WHERE user_id = 'target-1'")).toBe(2);
     expect(scalar(value.database, "SELECT count(*) FROM external_identities WHERE user_id = 'target-1'")).toBe(0);
     expect(scalar(value.database, "SELECT count(*) FROM oauth_challenges WHERE user_id = 'target-1'")).toBe(0);
     expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'target-1'")).toBe(1);
   });
 
-  it("leaves sessions, OAuth factors, and locks intact when an admin recovery races", async () => {
+  it("leaves sessions and OAuth factors intact when an admin recovery races", async () => {
     const value = harness();
     const target = (await value.store.findManagedUsers(["target-1"]))[0]!;
     value.database.prepare(`INSERT INTO sessions (token_digest, user_id, expires_at, created_at, scope)
@@ -234,8 +292,6 @@ describe("SqliteAuthStore guarded mutations", () => {
     value.database.prepare(`INSERT INTO external_identities
       (id, user_id, provider, provider_subject, created_at, last_used_at)
       VALUES ('target-google', 'target-1', 'google', 'target-subject', ?, ?)`).run(NOW, NOW);
-    value.database.prepare(`INSERT INTO login_failures (login_name, fail_count, locked_until, last_failed_at)
-      VALUES ('target-one', 4, '2026-08-09T12:05:00.000Z', ?)`).run(NOW);
     value.executor.beforeNextBatch = () => {
       value.database.prepare("UPDATE user_credentials SET auth_revision = auth_revision + 1 WHERE user_id = 'target-1'").run();
     };
@@ -253,7 +309,6 @@ describe("SqliteAuthStore guarded mutations", () => {
 
     expect(scalar(value.database, "SELECT count(*) FROM sessions WHERE user_id = 'target-1'")).toBe(1);
     expect(scalar(value.database, "SELECT count(*) FROM external_identities WHERE user_id = 'target-1'")).toBe(1);
-    expect(scalar(value.database, "SELECT count(*) FROM login_failures WHERE login_name = 'target-one'")).toBe(1);
     expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
   });
 
@@ -327,6 +382,32 @@ describe("SqliteAuthStore guarded mutations", () => {
     await expect(value.store.findSessionAuthorization("revoked-session")).resolves.toBeNull();
   });
 
+  it("hydrates many session authorizations with one bounded JSON query and omits revoked sessions", async () => {
+    const value = harness();
+    value.database.prepare("INSERT INTO role_permissions (role_id, permission) VALUES ('member', 'events.create')").run();
+    const insertSession = value.database.prepare(`INSERT INTO sessions
+      (token_digest, user_id, expires_at, created_at, scope, auth_revision)
+      VALUES (?, ?, '2026-09-01T00:00:00.000Z', ?, 'normal', 1)`);
+    insertSession.run("bulk-session-1", "target-1", NOW);
+    insertSession.run("bulk-session-2", "target-2", NOW);
+    value.database.prepare("UPDATE user_credentials SET auth_revision = 2 WHERE user_id = 'target-2'").run();
+
+    const records = await value.store.findSessionAuthorizations([
+      "bulk-session-1",
+      "bulk-session-2",
+      "missing-session",
+    ]);
+
+    expect([...records.keys()]).toEqual(["bulk-session-1"]);
+    expect(records.get("bulk-session-1")).toMatchObject({
+      id: "target-1",
+      tokenDigest: "bulk-session-1",
+      permissions: new Set(["events.create"]),
+    });
+    await expect(value.store.findSessionAuthorizations(["bulk-session-1", "bulk-session-1"]))
+      .rejects.toThrow("unique and bounded");
+  });
+
   it("bounds the role catalog and keeps direct role lookup bounded", async () => {
     const value = harness();
     const insertRole = value.database.prepare(
@@ -348,7 +429,7 @@ describe("SqliteAuthStore guarded mutations", () => {
       subjectType: "role",
       subjectId: "overflow",
       action: "create",
-    }))).resolves.toBe("conflict");
+    }))).resolves.toEqual({ status: "conflict" });
     expect(scalar(value.database, "SELECT count(*) FROM roles")).toBe(50);
     expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
 
@@ -403,7 +484,7 @@ describe("SqliteAuthStore guarded mutations", () => {
       expectedPermissions: [...role!.permissions],
       now: NOW,
     }, createAuditEvent(context(), { subjectType: "role", subjectId: "admin", action: "update" }));
-    expect(result).toBe("last_role_manager");
+    expect(result).toEqual({ status: "last_role_manager" });
     expect(value.database.prepare("SELECT name FROM roles WHERE id = 'admin'").get()).toMatchObject({ name: "Admin" });
     expect(scalar(value.database, "SELECT count(*) FROM role_permissions WHERE permission = 'admin.roles.manage'")).toBe(1);
     expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
@@ -416,21 +497,239 @@ describe("account provisioning ownership", () => {
     expect(source).not.toContain("member_profiles");
   });
 
+  it("rejects an A/B stale user baseline even when the service has already reread B's target", async () => {
+    const value = harness();
+    const openedByA = (await value.store.findManagedUsers(["target-1"]))[0]!;
+    const expectedProfileRevisionToken = "target-1-profile-v1";
+    value.database.prepare("UPDATE users SET revision_token = 'target-1-b-v2' WHERE id = 'target-1'").run();
+    const rereadForSave = (await value.store.findManagedUsers(["target-1"]))[0]!;
+
+    await expect(value.provisioning.updateManagedMember({
+      target: rereadForSave,
+      expectedUserRevisionToken: openedByA.revisionToken,
+      expectedProfileRevisionToken,
+      profile: {
+        power: 42,
+        classes: ["guardian"],
+        titleHtml: null,
+        bio: "A's stale draft",
+        availability: null,
+        notes: null,
+      },
+      now: NOW,
+    }, audit("target-1", "update"))).resolves.toBe("conflict");
+
+    expect(value.database.prepare("SELECT power, bio FROM member_profiles WHERE user_id = 'target-1'").get())
+      .toEqual({ power: 0, bio: null });
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'target-1'")).toBe(0);
+  });
+
+  it("leaves role, lifecycle, profile, sessions, and audit untouched when the profile CAS becomes stale", async () => {
+    const value = harness();
+    const target = (await value.store.findManagedUsers(["target-1"]))[0]!;
+    const destinationRole = (await value.store.findRole("officer"))!;
+    value.database.prepare(`INSERT INTO sessions (token_digest, user_id, expires_at, created_at, scope)
+      VALUES ('target-session', 'target-1', '2026-09-01T00:00:00.000Z', ?, 'normal')`).run(NOW);
+    value.executor.beforeNextBatch = () => {
+      value.database.prepare("UPDATE member_profiles SET revision_token = 'profile-raced' WHERE user_id = 'target-1'").run();
+    };
+
+    await expect(value.provisioning.updateManagedMember({
+      target,
+      expectedUserRevisionToken: target.revisionToken,
+      expectedProfileRevisionToken: "target-1-profile-v1",
+      destinationRole,
+      active: false,
+      profile: {
+        power: 42,
+        classes: ["guardian"],
+        titleHtml: "<b>Officer</b>",
+        bio: "Coordinates raids",
+        availability: null,
+        notes: "Private officer note",
+      },
+      now: NOW,
+    }, audit("target-1", "update"))).resolves.toBe("conflict");
+
+    expect(value.database.prepare("SELECT role_id, is_active FROM users WHERE id = 'target-1'").get())
+      .toEqual({ role_id: "member", is_active: 1 });
+    expect(value.database.prepare("SELECT power, notes FROM member_profiles WHERE user_id = 'target-1'").get())
+      .toEqual({ power: 0, notes: null });
+    expect(scalar(value.database, "SELECT count(*) FROM member_profile_classes WHERE user_id = 'target-1'")).toBe(0);
+    expect(scalar(value.database, "SELECT count(*) FROM sessions WHERE user_id = 'target-1'")).toBe(1);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'target-1'")).toBe(0);
+  });
+
+  it("leaves the whole command untouched when the assignable role snapshot becomes stale", async () => {
+    const value = harness();
+    const target = (await value.store.findManagedUsers(["target-1"]))[0]!;
+    const destinationRole = (await value.store.findRole("officer"))!;
+    value.executor.beforeNextBatch = () => {
+      value.database.prepare("UPDATE roles SET revision_token = 'officer-raced' WHERE id = 'officer'").run();
+    };
+
+    await expect(value.provisioning.updateManagedMember({
+      target,
+      expectedUserRevisionToken: target.revisionToken,
+      expectedProfileRevisionToken: "target-1-profile-v1",
+      destinationRole,
+      profile: {
+        power: 42,
+        classes: [],
+        titleHtml: null,
+        bio: null,
+        availability: null,
+        notes: null,
+      },
+      now: NOW,
+    }, audit("target-1", "update"))).resolves.toBe("conflict");
+
+    expect(value.database.prepare("SELECT role_id FROM users WHERE id = 'target-1'").get())
+      .toEqual({ role_id: "member" });
+    expect(value.database.prepare("SELECT power FROM member_profiles WHERE user_id = 'target-1'").get())
+      .toEqual({ power: 0 });
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'target-1'")).toBe(0);
+  });
+
+  it("commits a combined member edit with one audit row and revokes sessions for a role/lifecycle change", async () => {
+    const value = harness();
+    const target = (await value.store.findManagedUsers(["target-1"]))[0]!;
+    const destinationRole = (await value.store.findRole("officer"))!;
+    value.database.prepare(`INSERT INTO sessions (token_digest, user_id, expires_at, created_at, scope)
+      VALUES ('target-session', 'target-1', '2026-09-01T00:00:00.000Z', ?, 'normal')`).run(NOW);
+
+    await expect(value.provisioning.updateManagedMember({
+      target,
+      expectedUserRevisionToken: target.revisionToken,
+      expectedProfileRevisionToken: "target-1-profile-v1",
+      destinationRole,
+      active: false,
+      profile: {
+        power: 42,
+        classes: ["guardian"],
+        titleHtml: "<b>Officer</b>",
+        bio: "Coordinates raids",
+        availability: null,
+        notes: "Private officer note",
+      },
+      now: NOW,
+    }, audit("target-1", "update"))).resolves.toBe("updated");
+
+    expect(value.database.prepare("SELECT role_id, is_active FROM users WHERE id = 'target-1'").get())
+      .toEqual({ role_id: "officer", is_active: 0 });
+    expect(value.database.prepare("SELECT power, title_html, bio, notes FROM member_profiles WHERE user_id = 'target-1'").get())
+      .toEqual({
+        power: 42,
+        title_html: "<b>Officer</b>",
+        bio: "Coordinates raids",
+        notes: "Private officer note",
+      });
+    expect(value.database.prepare("SELECT class_id, sort_order FROM member_profile_classes WHERE user_id = 'target-1'").all())
+      .toEqual([{ class_id: "guardian", sort_order: 0 }]);
+    expect(scalar(value.database, "SELECT count(*) FROM sessions WHERE user_id = 'target-1'")).toBe(0);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'target-1'")).toBe(1);
+  });
+
+  it("updates a display name and availability with the same guarded member command", async () => {
+    const value = harness();
+    const target = (await value.store.findManagedUsers(["target-1"]))[0]!;
+    const changeAudit = audit("target-1", "update");
+
+    await expect(value.provisioning.updateManagedMember({
+      target,
+      expectedUserRevisionToken: target.revisionToken,
+      expectedProfileRevisionToken: "target-1-profile-v1",
+      displayName: "RenamedTarget",
+      profile: {
+        power: 42,
+        classes: ["guardian"],
+        titleHtml: null,
+        bio: null,
+        availability: {
+          timezone: "UTC",
+          days: {
+            sunday: [],
+            monday: [{ start_utc: "20:00", end_utc: "22:00" }],
+            tuesday: [],
+            wednesday: [],
+            thursday: [],
+            friday: [],
+            saturday: [],
+          },
+        },
+        notes: null,
+      },
+      now: NOW,
+    }, changeAudit)).resolves.toBe("updated");
+
+    expect(value.database.prepare("SELECT display_name, revision_token FROM users WHERE id = 'target-1'").get())
+      .toEqual({ display_name: "RenamedTarget", revision_token: changeAudit.eventId });
+    expect(value.database.prepare("SELECT availability_timezone, revision_token FROM member_profiles WHERE user_id = 'target-1'").get())
+      .toEqual({ availability_timezone: "UTC", revision_token: changeAudit.eventId });
+    expect(value.database.prepare(`SELECT weekday, start_minute, end_minute
+      FROM member_availability_windows WHERE user_id = 'target-1'`).all())
+      .toEqual([{ weekday: 1, start_minute: 1200, end_minute: 1320 }]);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'target-1'")).toBe(1);
+  });
+
+  it("reports a case-insensitive display-name collision without partial writes", async () => {
+    const value = harness();
+    const target = (await value.store.findManagedUsers(["target-1"]))[0]!;
+
+    await expect(value.provisioning.updateManagedMember({
+      target,
+      expectedUserRevisionToken: target.revisionToken,
+      expectedProfileRevisionToken: "target-1-profile-v1",
+      displayName: "target two",
+      now: NOW,
+    }, audit("target-1", "update"))).resolves.toBe("display_name_taken");
+
+    expect(value.database.prepare("SELECT display_name, revision_token FROM users WHERE id = 'target-1'").get())
+      .toEqual({ display_name: "Target One", revision_token: "target-1-v1" });
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'target-1'")).toBe(0);
+  });
+
+  it("maps the final-role-manager trigger to a conflict outcome without partial profile writes", async () => {
+    const value = harness();
+    const target = (await value.store.findManagedUsers(["admin-1"]))[0]!;
+    const destinationRole = (await value.store.findRole("member"))!;
+
+    await expect(value.provisioning.updateManagedMember({
+      target,
+      expectedUserRevisionToken: target.revisionToken,
+      expectedProfileRevisionToken: "admin-profile-v1",
+      destinationRole,
+      active: false,
+      profile: {
+        power: 42,
+        classes: [],
+        titleHtml: "<b>Officer</b>",
+        bio: "Coordinates raids",
+        availability: null,
+        notes: "Private officer note",
+      },
+      now: NOW,
+    }, audit("admin-1", "update"))).resolves.toBe("last_role_manager");
+
+    expect(value.database.prepare("SELECT role_id, is_active FROM users WHERE id = 'admin-1'").get())
+      .toEqual({ role_id: "admin", is_active: 1 });
+    expect(value.database.prepare("SELECT power, notes FROM member_profiles WHERE user_id = 'admin-1'").get())
+      .toEqual({ power: 0, notes: null });
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'admin-1'")).toBe(0);
+  });
+
   it("creates authentication and member rows through one provisioning batch", async () => {
     const value = harness();
     value.database.prepare(`INSERT INTO invite_links (
-      id, token_digest, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
-    ) VALUES ('invite-1', 'digest-1', 'admin-1', 'member', 1, 0, NULL, ?, NULL)`).run(NOW);
-    value.database.prepare(`INSERT INTO login_failures (login_name, fail_count, locked_until, last_failed_at)
-      VALUES ('registered-login', 4, '2026-08-09T12:05:00.000Z', ?),
-        ('managed-login', 4, '2026-08-09T12:05:00.000Z', ?)`).run(NOW, NOW);
+      id, code, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
+    ) VALUES ('invite-1', 'A1B2C3D4E5', 'admin-1', 'member', 1, 0, NULL, ?, NULL)`).run(NOW);
     const registrationAudit = createAuditEvent(context(), {
       subjectType: "user", subjectId: "registered-1", action: "register",
     });
 
     await expect(value.provisioning.redeemInviteAndCreateMember({
       inviteId: "invite-1",
-      tokenDigest: "digest-1",
+      inviteCode: "A1B2C3D4E5",
       userId: "registered-1",
       loginName: "registered-login",
       displayName: "Registered One",
@@ -451,20 +750,23 @@ describe("account provisioning ownership", () => {
       passwordHash: "managed-hash",
       temporaryPasswordExpiresAt: "2026-08-09T12:15:00.000Z",
       destinationRole: destinationRole!,
+      notes: "Initial officer note",
       now: NOW,
     }, createAuditEvent(context(), {
       subjectType: "user", subjectId: "managed-1", action: "admin_create_member",
     }))).resolves.toBe("created");
     expect(scalar(value.database, "SELECT count(*) FROM user_credentials WHERE user_id = 'managed-1'")).toBe(1);
     expect(scalar(value.database, "SELECT count(*) FROM member_profiles WHERE user_id = 'managed-1'")).toBe(1);
-    expect(scalar(value.database, "SELECT count(*) FROM login_failures WHERE login_name IN ('registered-login', 'managed-login')")).toBe(0);
+    expect(value.database.prepare(
+      "SELECT notes FROM member_profiles WHERE user_id = 'managed-1'",
+    ).get()).toEqual({ notes: "Initial officer note" });
   });
 
   it("rolls back invite use, account, credentials, and profile when the final audit write fails", async () => {
     const value = harness();
     value.database.prepare(`INSERT INTO invite_links (
-      id, token_digest, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
-    ) VALUES ('invite-rollback', 'digest-rollback', 'admin-1', 'member', 1, 0, NULL, ?, NULL)`).run(NOW);
+      id, code, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
+    ) VALUES ('invite-rollback', 'R1O2L3L4B5', 'admin-1', 'member', 1, 0, NULL, ?, NULL)`).run(NOW);
     const duplicateAudit = createAuditEvent(context(), {
       subjectType: "user", subjectId: "rollback-user", action: "register",
     });
@@ -487,7 +789,7 @@ describe("account provisioning ownership", () => {
 
     await expect(value.provisioning.redeemInviteAndCreateMember({
       inviteId: "invite-rollback",
-      tokenDigest: "digest-rollback",
+      inviteCode: "R1O2L3L4B5",
       userId: "rollback-user",
       loginName: "rollback-login",
       displayName: "Rollback User",
@@ -502,34 +804,25 @@ describe("account provisioning ownership", () => {
 });
 
 describe("SqliteAuthStore invite lookup", () => {
-  it("uses the unique token digest for exact invite-code lookup", async () => {
+  it("uses the unique invite code for registration lookup", async () => {
     const value = harness();
     const insert = value.database.prepare(`INSERT INTO invite_links (
-      id, token_digest, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
+      id, code, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
     ) VALUES (?, ?, 'admin-1', 'member', 5, 0, NULL, ?, NULL)`);
-    insert.run("invite-target", "digest-target", NOW);
-    insert.run("invite-other", "digest-other", NOW);
+    insert.run("invite-target", "T1A2R3G4E5", NOW);
+    insert.run("invite-other", "O1T2H3E4R5", NOW);
 
-    await expect(value.store.listInvites({
-      visibility: "active",
-      limit: 50,
-      cursor: null,
-      search: "",
-      exactTokenDigest: "digest-target",
-      now: NOW,
-    })).resolves.toMatchObject({ data: [{ id: "invite-target" }], total: 1 });
-
-    await expect(value.store.findActiveInvite("digest-target", NOW))
+    await expect(value.store.findActiveInvite("T1A2R3G4E5", NOW))
       .resolves.toMatchObject({ id: "invite-target" });
   });
 
-  it("searches invite creation and expiry dates without weakening exact-code lookup", async () => {
+  it("searches invite codes, creation dates, and expiry dates", async () => {
     const value = harness();
     const insert = value.database.prepare(`INSERT INTO invite_links (
-      id, token_digest, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
+      id, code, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
     ) VALUES (?, ?, 'admin-1', 'member', 5, 0, ?, ?, NULL)`);
-    insert.run("invite-first", "digest-first", "2032-09-14T01:00:00.000Z", NOW);
-    insert.run("invite-second", "digest-second", "2032-09-14T02:00:00.000Z", NOW);
+    insert.run("invite-first", "F1I2R3S4T5", "2032-09-14T01:00:00.000Z", NOW);
+    insert.run("invite-second", "S1E2C3O4N5", "2032-09-14T02:00:00.000Z", NOW);
 
     await expect(value.store.listInvites({
       visibility: "active",
@@ -544,156 +837,6 @@ describe("SqliteAuthStore invite lookup", () => {
       ]),
       total: 2,
     });
-  });
-});
-
-describe("SqliteAuthStore persistent login locks", () => {
-  it("returns 429 on the first locking failure and escalates after expiry", async () => {
-    const value = harness();
-    const passwordHash = await createPasswordHash("correct-password");
-    value.database.prepare("UPDATE user_credentials SET password_hash = ?, updated_at = ? WHERE user_id = 'target-1'")
-      .run(passwordHash, NOW);
-    const auth = new AuthService({
-      store: value.store,
-      provisioning: value.provisioning,
-      profiles: { readOwnProfile: async () => null },
-      inviteTokens: createInviteTokenCodec("0123456789abcdef0123456789abcdef"),
-    });
-
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await expect(auth.login({ loginName: "target-one", password: "wrong", stayLoggedIn: false, now: NOW }))
-        .rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
-    }
-    await expect(auth.login({ loginName: "target-one", password: "wrong", stayLoggedIn: false, now: NOW }))
-      .rejects.toMatchObject({
-        code: "RATE_LIMITED",
-        status: 429,
-        details: { retry_after_seconds: 30, locked_until: "2026-08-09T12:00:30.000Z" },
-      });
-    await expect(auth.login({
-      loginName: "target-one", password: "still-wrong", stayLoggedIn: false, now: "2026-08-09T12:00:10.000Z",
-    })).rejects.toMatchObject({
-      code: "RATE_LIMITED",
-      details: { retry_after_seconds: 20, locked_until: "2026-08-09T12:00:30.000Z" },
-    });
-    expect(scalar(value.database, "SELECT fail_count FROM login_failures WHERE login_name = 'target-one'")).toBe(4);
-
-    await expect(auth.login({
-      loginName: "target-one", password: "wrong", stayLoggedIn: false, now: "2026-08-09T12:00:30.000Z",
-    })).rejects.toMatchObject({
-      code: "RATE_LIMITED",
-      status: 429,
-      details: { retry_after_seconds: 60, locked_until: "2026-08-09T12:01:30.000Z" },
-    });
-  });
-
-  it("keeps unknown and real login names on the same persistent failure response path", async () => {
-    const value = harness();
-    value.database.prepare("UPDATE user_credentials SET password_hash = ?, updated_at = ? WHERE user_id = 'target-1'")
-      .run(await createPasswordHash("correct-password"), NOW);
-    const auth = new AuthService({
-      store: value.store,
-      provisioning: value.provisioning,
-      profiles: { readOwnProfile: async () => null },
-      inviteTokens: createInviteTokenCodec("0123456789abcdef0123456789abcdef"),
-    });
-    const capture = async (loginName: string) => {
-      try {
-        await auth.login({ loginName, password: "wrong", stayLoggedIn: false, now: NOW });
-      } catch (error) {
-        return error;
-      }
-      throw new Error("Expected login rejection");
-    };
-    expect(await capture("target-one")).toMatchObject({ code: "UNAUTHORIZED", status: 401, message: "Invalid credentials" });
-    expect(await capture("unknown-login")).toMatchObject({ code: "UNAUTHORIZED", status: 401, message: "Invalid credentials" });
-    expect(value.database.prepare(
-      "SELECT login_name, fail_count FROM login_failures ORDER BY login_name",
-    ).all()).toEqual([
-      { login_name: "target-one", fail_count: 1 },
-      { login_name: "unknown-login", fail_count: 1 },
-    ]);
-  });
-
-  it("reads and atomically resets the previous state, including an explicit empty state", async () => {
-    const value = harness();
-    value.database.prepare(
-      "INSERT INTO login_failures (login_name, fail_count, locked_until, last_failed_at) VALUES ('target-one', 6, '2026-08-09T12:05:00.000Z', ?)",
-    ).run(NOW);
-    const admin = new IdentityAdminService({
-      store: value.store,
-      provisioning: value.provisioning,
-      inviteTokens: createInviteTokenCodec("0123456789abcdef0123456789abcdef"),
-    });
-    await expect(admin.getLoginLock(passwordAdminContext(), "target-1")).resolves.toEqual({
-      failCount: 6,
-      lockedUntil: "2026-08-09T12:05:00.000Z",
-      isLocked: true,
-      retryAfterSeconds: 300,
-    });
-    await expect(admin.resetLoginLock(passwordAdminContext(), "target-1")).resolves.toEqual({
-      ok: true,
-      failCount: 6,
-      lockedUntil: "2026-08-09T12:05:00.000Z",
-      isLocked: true,
-      retryAfterSeconds: 300,
-    });
-    expect(scalar(value.database, "SELECT count(*) FROM login_failures")).toBe(0);
-    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE action = 'reset_login_lock'")).toBe(1);
-    expect(JSON.parse(String((value.database.prepare(
-      "SELECT payload_json FROM audit_log WHERE action = 'reset_login_lock'",
-    ).get() as { payload_json: string }).payload_json))).toEqual({
-      schema_version: 2,
-      changes: [],
-      context: [
-        { field: "failed_attempts", value: { type: "number", value: 6 } },
-        { field: "locked_until", value: { type: "datetime", value: "2026-08-09T12:05:00.000Z" } },
-      ],
-    });
-
-    await expect(admin.resetLoginLock(passwordAdminContext(), "target-1")).resolves.toEqual({
-      ok: true, failCount: 0, lockedUntil: null, isLocked: false, retryAfterSeconds: 0,
-    });
-    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE action = 'reset_login_lock'")).toBe(2);
-    expect(JSON.parse(String((value.database.prepare(
-      "SELECT payload_json FROM audit_log WHERE action = 'reset_login_lock' ORDER BY rowid DESC LIMIT 1",
-    ).get() as { payload_json: string }).payload_json))).toEqual({
-      schema_version: 2,
-      changes: [],
-      context: [
-        { field: "failed_attempts", value: { type: "number", value: 0 } },
-        { field: "locked_until", value: { type: "null", value: null } },
-      ],
-    });
-  });
-
-  it("rejects a raced target revision without deleting the lock or writing audit", async () => {
-    const value = harness();
-    value.database.prepare(
-      "INSERT INTO login_failures (login_name, fail_count, locked_until, last_failed_at) VALUES ('target-one', 4, '2026-08-09T12:00:30.000Z', ?)",
-    ).run(NOW);
-    const admin = new IdentityAdminService({
-      store: value.store,
-      provisioning: value.provisioning,
-      inviteTokens: createInviteTokenCodec("0123456789abcdef0123456789abcdef"),
-    });
-    value.executor.beforeNextBatch = () => {
-      value.database.prepare("UPDATE users SET revision_token = 'raced' WHERE id = 'target-1'").run();
-    };
-    await expect(admin.resetLoginLock(passwordAdminContext(), "target-1"))
-      .rejects.toMatchObject({ code: "CONFLICT", status: 409 });
-    expect(scalar(value.database, "SELECT count(*) FROM login_failures WHERE login_name = 'target-one'")).toBe(1);
-    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
-  });
-
-  it("bounds stale failure pruning", async () => {
-    const value = harness();
-    const insert = value.database.prepare(
-      "INSERT INTO login_failures (login_name, fail_count, locked_until, last_failed_at) VALUES (?, 1, NULL, '2026-08-01T00:00:00.000Z')",
-    );
-    for (let index = 0; index < 150; index += 1) insert.run(`stale-${String(index).padStart(3, "0")}`);
-    await value.store.pruneLoginFailures("2026-08-08T00:00:00.000Z", NOW, 100);
-    expect(scalar(value.database, "SELECT count(*) FROM login_failures")).toBe(50);
   });
 });
 
@@ -779,11 +922,11 @@ describe("SqliteAuthStore query plan", () => {
     const lookupStatements = value.executor.statements.slice(lookupStart);
 
     value.database.prepare(`INSERT INTO invite_links (
-      id, token_digest, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
-    ) VALUES ('invite-duplicate', 'digest-duplicate', 'admin-1', 'member', 1, 0, NULL, ?, NULL)`).run(NOW);
+      id, code, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
+    ) VALUES ('invite-duplicate', 'D1U2P3L4C5', 'admin-1', 'member', 1, 0, NULL, ?, NULL)`).run(NOW);
     await expect(value.provisioning.redeemInviteAndCreateMember({
       inviteId: "invite-duplicate",
-      tokenDigest: "digest-duplicate",
+      inviteCode: "D1U2P3L4C5",
       userId: "duplicate-user",
       loginName: "TARGET-ONE",
       displayName: "Duplicate User",

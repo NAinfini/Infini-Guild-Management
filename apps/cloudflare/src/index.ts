@@ -1,3 +1,4 @@
+export { AuthRateLimitDO } from "./runtime/auth-rate-limit-durable-object.js";
 export { CloudflareNotificationDurableObject } from "./runtime/notification-durable-object.js";
 export {
   createCloudflareComposition,

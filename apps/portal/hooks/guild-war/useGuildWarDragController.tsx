@@ -59,6 +59,7 @@ type UseGuildWarDragControllerParams = {
   activeData: GuildWarActiveResponse | undefined;
   usersData: UsersListResponse["data"] | undefined;
   canManageActive: boolean;
+  canRemoveParticipants: boolean;
   selectedEventId: string | undefined;
   activeController: ActiveControllerState;
   roleTagMutation: RoleTagMutation;
@@ -84,6 +85,7 @@ export function useGuildWarDragController({
   activeData,
   usersData,
   canManageActive,
+  canRemoveParticipants,
   selectedEventId,
   activeController,
   roleTagMutation,
@@ -164,6 +166,7 @@ export function useGuildWarDragController({
 
   const applyMove = useCallback((payloads: MovePayload[]) => {
     if (!canManageActive || payloads.length === 0) return;
+    if (!canRemoveParticipants && payloads.some((payload) => payload.to === "remove")) return;
     const firstPayload = payloads[0];
     if (!firstPayload) return;
     const normalizedMoves = payloads
@@ -197,7 +200,7 @@ export function useGuildWarDragController({
       }
     };
     void commitMoves();
-  }, [activeData?.etag, canManageActive, queryClient, selectedEventId, showError, t]);
+  }, [activeData?.etag, canManageActive, canRemoveParticipants, queryClient, selectedEventId, showError, t]);
 
   const persistTeamSnapshot = useCallback(
     async (nextTeams: typeof orderedTeams) => {
@@ -421,6 +424,7 @@ export function useGuildWarDragController({
     }
 
     if (targetContainer === "remove") {
+      if (!canRemoveParticipants) return;
       const payload = {
         event_id: selectedEventId,
         user_id: userId,
@@ -489,7 +493,7 @@ export function useGuildWarDragController({
 
   const handleRemoveFromWar = useCallback(
     (userId: string) => {
-      if (!selectedEventId || !canManageActive) return;
+      if (!selectedEventId || !canManageActive || !canRemoveParticipants) return;
       applyMove([{
         event_id: selectedEventId,
         user_id: userId,
@@ -498,7 +502,7 @@ export function useGuildWarDragController({
         etag: activeData?.etag ?? undefined,
       }]);
     },
-    [activeData?.etag, canManageActive, memberContainerMap, applyMove, selectedEventId],
+    [activeData?.etag, canManageActive, canRemoveParticipants, memberContainerMap, applyMove, selectedEventId],
   );
 
   return {

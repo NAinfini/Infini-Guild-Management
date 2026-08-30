@@ -1,9 +1,14 @@
 import {
+  announcementEtag,
   type Announcement,
   type AnnouncementAttachment,
   type AnnouncementSummary,
   type PaginatedResponse,
 } from "@guild/shared";
+import {
+  ANNOUNCEMENT_CATEGORIES,
+  type AnnouncementCategory,
+} from "@guild/shared/constants/announcements";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
 import {
@@ -12,8 +17,9 @@ import {
   useQuery,
   useQueryClient,
   type InfiniteData,
+  type QueryClient,
 } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useDebouncedSearch } from "./useDebouncedSearch";
@@ -30,23 +36,18 @@ import {
   uploadPendingAnnouncementImages,
   type UpdateAnnouncementPayload,
   updateAnnouncement,
-  uploadAnnouncementImages,
   fetchAnnouncement,
   fetchAnnouncements,
+  recordAnnouncementView,
 } from "../services/AnnouncementService";
 import { queryKeys } from "../api/query-keys";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 import { fromDateTimeLocalValue, toDateTimeLocalValue } from "../utils/datetime";
 import { notifyError, notifySuccess } from "../utils/notifications";
-import { useAuthStore } from "../stores/auth";
 import { requireSiteMediaPolicy, useSiteConfigStore } from "../stores/site-config";
-import { userScopedStorageKey } from "../session-storage";
 import { resolveMediaUrl } from "../utils/media";
 
-const ANNOUNCEMENTS_LAST_SEEN_STORAGE_KEY = "portal:last_seen";
-
 type AnnouncementSelection =
-  | { kind: "auto" }
   | { kind: "none" }
   | { kind: "selected"; id: string };
 
@@ -62,17 +63,17 @@ const ANNOUNCEMENT_STATUS_BY_FINISH_MODE = {
   Announcement["status"]
 >;
 
-type AnnouncementRouteSearch = {
-  announcementId?: string;
-  selection?: "none";
-};
-
 type AnnouncementListCache = InfiniteData<PaginatedResponse<AnnouncementSummary>>;
 
-function selectionFromRoute(search: AnnouncementRouteSearch): AnnouncementSelection {
-  if (search.announcementId) return { kind: "selected", id: search.announcementId };
-  if (search.selection === "none") return { kind: "none" };
-  return { kind: "auto" };
+async function invalidateAnnouncementReads(queryClient: QueryClient) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.latestAnnouncement() }),
+  ]);
+}
+
+function selectionFromRoute(announcementId: string | null): AnnouncementSelection {
+  return announcementId ? { kind: "selected", id: announcementId } : { kind: "none" };
 }
 
 function sameSelection(left: AnnouncementSelection, right: AnnouncementSelection): boolean {
@@ -118,6 +119,7 @@ function optimisticAnnouncementPatch(
 ) {
   return {
     ...(payload.title !== undefined ? { title: payload.title } : {}),
+    ...(payload.category !== undefined ? { category: payload.category } : {}),
     ...(payload.pinned !== undefined ? { pinned: payload.pinned } : {}),
     ...(payload.status !== undefined ? { status: payload.status } : {}),
     ...(payload.publish_at !== undefined ? { publish_at: payload.publish_at } : {}),
@@ -125,85 +127,104 @@ function optimisticAnnouncementPatch(
   } satisfies Partial<AnnouncementSummary>;
 }
 
-function readAnnouncementsLastSeenAt(storageKey: string): string | null {
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as {
-      announcements?: { lastSeenAt?: string };
-    };
-    const value = parsed.announcements?.lastSeenAt;
-    return typeof value === "string" ? value : null;
-  } catch {
-    return null;
-  }
-}
-
 export function useAnnouncementsController() {
   const { t } = useTranslation("announcements");
   const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const routeSearch = useSearch({ strict: false }) as AnnouncementRouteSearch;
+  const params = useParams({ strict: false }) as { announcementId?: string };
+  const routeAnnouncementId = params.announcementId ?? null;
+  const routeLocation = useLocation({
+    select: (location) => ({
+      pathname: location.pathname,
+      entryKey: location.state.__TSR_key ?? location.state.key ?? location.href,
+    }),
+  });
+  const { pathname, entryKey: routeEntryKey } = routeLocation;
+  const isCreateRoute = pathname === "/announcements/new";
   const isExternalView = useExternalView();
   const { showError } = useAppError();
   const mediaPolicy = useSiteConfigStore(requireSiteMediaPolicy);
   const attachmentMaxBytes = mediaPolicy.max_file_size_bytes.announcement_attachment;
   const attachmentQuota = mediaPolicy.quotas.announcement_attachments;
-  const currentUserId = useAuthStore((state) => state.user?.id);
-  const announcementsLastSeenStorageKey = userScopedStorageKey(
-    ANNOUNCEMENTS_LAST_SEEN_STORAGE_KEY,
-    currentUserId,
-  );
-
   const { canManage: canManagePermission } = useEffectivePermissions();
 
-  const isModerator = canManagePermission(["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"]);
-  const canEdit = isModerator && !isExternalView;
+  const canManageContent = canManagePermission([
+    "announcements.create",
+    "announcements.edit",
+    "announcements.archive",
+    "announcements.delete",
+  ]) && !isExternalView;
+  const canEdit = canManagePermission(["announcements.edit"]) && !isExternalView;
   const canCreate = canManagePermission(["announcements.create"]) && !isExternalView;
+  const canArchive = canManagePermission(["announcements.archive"]) && !isExternalView;
+  const canDelete = canManagePermission(["announcements.delete"]) && !isExternalView;
 
-  const [pinnedFilter, setPinnedFilter] = useState(false);
   const [sortOrder, setSortOrder] = useState<AnnouncementSort>("updated_desc");
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const effectiveStatusFilter = canManageContent ? statusFilter : undefined;
+  const [categoryFilter, setCategoryFilter] = useState<AnnouncementCategory | undefined>(undefined);
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim();
-  const [selection, setSelection] = useState<AnnouncementSelection>(() => selectionFromRoute(routeSearch));
+  const [selection, setSelection] = useState<AnnouncementSelection>(() => selectionFromRoute(routeAnnouncementId));
   const selectedId = selection.kind === "selected" ? selection.id : null;
   const [isCreating, setIsCreating] = useState(false);
   const openCreating = useCallback(() => setIsCreating(true), []);
   const closeCreating = useCallback(() => setIsCreating(false), []);
   const [title, setTitle] = useState("");
+  const [category, setCategory] = useState<AnnouncementCategory>("announcement");
   const [bodyJson, setBodyJson] = useState(TIPTAP_DEFAULT_JSON);
   const [pinned, setPinned] = useState(false);
-  const [archived, setArchived] = useState(false);
-  const [draftEnabled, setDraftEnabled] = useState(false);
   const [publishAt, setPublishAt] = useState("");
-  const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [attachments, setAttachments] = useState<AnnouncementAttachment[]>([]);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
-  const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
   const savePendingRef = useRef(false);
   const attachmentUploadPendingRef = useRef(false);
-  const isCreatingRef = useRef(isCreating);
-  const closeCreatingRef = useRef(closeCreating);
-  isCreatingRef.current = isCreating;
-  closeCreatingRef.current = closeCreating;
+  const attachmentUploadSessionRef = useRef(0);
+  const attachmentDraftScopeRef = useRef(isCreateRoute ? "new" : routeAnnouncementId ?? "list");
+  const lastViewedAnnouncementRouteEntryRef = useRef<string | null>(null);
+  const editorBaselineRef = useRef<Announcement | null>(null);
+
+  useEffect(() => {
+    if (!canManageContent && statusFilter !== undefined) {
+      setStatusFilter(undefined);
+    }
+  }, [canManageContent, statusFilter]);
+
+  const abandonPendingAttachmentUpload = useCallback(() => {
+    attachmentUploadSessionRef.current += 1;
+    attachmentUploadPendingRef.current = false;
+    setAttachmentUploading(false);
+  }, []);
+
+  const adoptAnnouncementDraft = useCallback((announcement: Announcement) => {
+    setTitle(announcement.title);
+    setCategory(announcement.category);
+    setBodyJson(announcement.body_json);
+    setPinned(announcement.pinned);
+    setPublishAt(toDateTimeLocalValue(announcement.publish_at));
+    setAttachments(announcement.attachments);
+  }, []);
 
   const setAnnouncementSelection = useCallback((
     next: AnnouncementSelection,
     options?: { replace?: boolean },
   ) => {
     setSelection(next);
-    void navigate({
-      to: "/announcements",
-      search: (previous) => ({
-        ...previous,
-        announcementId: next.kind === "selected" ? next.id : undefined,
-        selection: next.kind === "none" ? "none" as const : undefined,
-      }),
-      replace: options?.replace,
-      viewTransition: false,
-    });
+    if (next.kind === "selected") {
+      void navigate({
+        to: "/announcements/$announcementId",
+        params: { announcementId: next.id },
+        replace: options?.replace,
+        viewTransition: false,
+      });
+    } else {
+      void navigate({
+        to: "/announcements",
+        replace: options?.replace,
+        viewTransition: false,
+      });
+    }
   }, [navigate]);
 
   /**
@@ -212,30 +233,53 @@ export function useAnnouncementsController() {
    * 异步的 setState 会让它读到「还在创建、草稿是脏的」，凭空多问一句。
    */
   const discardCreateDraft = useCallback(() => {
+    abandonPendingAttachmentUpload();
     flushSync(() => {
       closeCreating();
       setTitle("");
+      setCategory("announcement");
       setBodyJson(TIPTAP_DEFAULT_JSON);
+      setPinned(false);
+      setPublishAt("");
       setAttachments([]);
+      editorBaselineRef.current = null;
     });
-  }, [closeCreating]);
+  }, [abandonPendingAttachmentUpload, closeCreating]);
 
   const listQuery = useInfiniteQuery({
-    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch, sortOrder),
+    queryKey: queryKeys.announcements.list(
+      effectiveStatusFilter ?? "all",
+      categoryFilter ?? "all",
+      debouncedSearch,
+      sortOrder,
+    ),
     queryFn: ({ pageParam }) =>
       fetchAnnouncements({
         page: pageParam,
         limit: 50,
-        status: statusFilter,
-        pinned: pinnedFilter ? true : undefined,
+        status: effectiveStatusFilter,
+        category: categoryFilter,
         search: debouncedSearch || undefined,
-        archived: statusFilter === undefined ? undefined : statusFilter === "archived",
         sort: sortOrder,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.page < lastPage.total_pages ? lastPage.page + 1 : undefined,
     staleTime: 10 * 60_000,
+    enabled: pathname === "/announcements",
+  });
+
+  const pinnedQuery = useQuery({
+    queryKey: queryKeys.announcements.pinned(),
+    queryFn: () => fetchAnnouncements({
+      page: 1,
+      limit: 3,
+      pinned: true,
+      status: "published",
+      sort: "updated_desc",
+    }),
+    staleTime: 10 * 60_000,
+    enabled: pathname === "/announcements",
   });
 
   const detailQuery = useQuery({
@@ -246,18 +290,60 @@ export function useAnnouncementsController() {
   });
 
   useEffect(() => {
-    const next = selectionFromRoute(routeSearch);
-    if (isCreatingRef.current && next.kind !== "none") {
-      closeCreatingRef.current();
+    const next = selectionFromRoute(routeAnnouncementId);
+    const nextDraftScope = isCreateRoute ? "new" : routeAnnouncementId ?? "list";
+    if (attachmentDraftScopeRef.current !== nextDraftScope) {
+      abandonPendingAttachmentUpload();
+      attachmentDraftScopeRef.current = nextDraftScope;
     }
+    if (isCreateRoute && canCreate) openCreating();
+    else closeCreating();
     setSelection((current) => sameSelection(current, next) ? current : next);
-  }, [routeSearch.announcementId, routeSearch.selection]);
+  }, [abandonPendingAttachmentUpload, canCreate, closeCreating, isCreateRoute, openCreating, routeAnnouncementId]);
+
+  const recordViewMutation = useMutation({
+    mutationFn: recordAnnouncementView,
+    retry: false,
+    onSuccess: ({ view_count }, id) => {
+      queryClient.setQueryData<Announcement>(queryKeys.announcements.detail(id), (current) =>
+        current ? { ...current, view_count } : current);
+      for (const [key, current] of queryClient.getQueriesData<AnnouncementListCache>({
+        queryKey: queryKeys.announcements.all,
+      })) {
+        if (!Array.isArray(key) || key[1] !== "list") continue;
+        queryClient.setQueryData(key, updateAnnouncementPages(
+          current,
+          (items) => items.map((item) => item.id === id ? { ...item, view_count } : item),
+        ));
+      }
+      queryClient.setQueryData<PaginatedResponse<AnnouncementSummary>>(
+        queryKeys.announcements.pinned(),
+        (current) => current ? {
+          ...current,
+          data: current.data.map((item) => item.id === id ? { ...item, view_count } : item),
+        } : current,
+      );
+    },
+    onError: (error, id) => {
+      console.error(`[announcement-view] failed to count ${id}`, error);
+    },
+  });
+
+  useEffect(() => {
+    if (!routeAnnouncementId) return;
+    if (pathname !== `/announcements/${encodeURIComponent(routeAnnouncementId)}`) return;
+    if (selectedId !== routeAnnouncementId) return;
+    if (!detailQuery.isSuccess || detailQuery.isFetching) return;
+    if (lastViewedAnnouncementRouteEntryRef.current === routeEntryKey) return;
+    lastViewedAnnouncementRouteEntryRef.current = routeEntryKey;
+    recordViewMutation.mutate(selectedId);
+  }, [detailQuery.isFetching, detailQuery.isSuccess, pathname, recordViewMutation, routeAnnouncementId, routeEntryKey, selectedId]);
 
   const createMutation = useMutation({
     mutationFn: createAnnouncement,
     onSuccess: async (data) => {
       notifySuccess(t("message.created"));
-      await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      await invalidateAnnouncementReads(queryClient);
       /*
        * 先把创建态的草稿清干净再跳转。跳转要经过未保存改动拦截器（useBeforeUnloadPrompt），
        * 草稿还在的话，用户刚点完「发布」就会被问「有未保存的改动，确定离开吗」；
@@ -280,7 +366,7 @@ export function useAnnouncementsController() {
     mutationFn: ({ id, payload, ifMatch }: {
       id: string;
       payload: UpdateAnnouncementPayload;
-      ifMatch?: string;
+      ifMatch: string;
       attachments: AnnouncementAttachment[];
     }) => updateAnnouncement(id, payload, ifMatch),
     onMutate: async ({ id, payload, attachments: nextAttachments }) => {
@@ -328,10 +414,7 @@ export function useAnnouncementsController() {
     },
     onSuccess: async () => {
       notifySuccess(t("message.saved"));
-      await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
-      if (selectedId) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.detail(selectedId) });
-      }
+      await invalidateAnnouncementReads(queryClient);
     },
     onError: (error, variables, context) => {
       if (context) {
@@ -348,8 +431,8 @@ export function useAnnouncementsController() {
   });
 
   const archiveMutation = useMutation({
-    mutationFn: archiveAnnouncement,
-    onMutate: async (id) => {
+    mutationFn: ({ id, ifMatch }: { id: string; ifMatch: string }) => archiveAnnouncement(id, ifMatch),
+    onMutate: async ({ id }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
       const previousLists = queryClient
         .getQueriesData<AnnouncementListCache>({ queryKey: queryKeys.announcements.all })
@@ -364,7 +447,7 @@ export function useAnnouncementsController() {
     },
     onSuccess: async () => {
       notifySuccess(t("message.archived"));
-      await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      await invalidateAnnouncementReads(queryClient);
       setAnnouncementSelection({ kind: "none" }, { replace: true });
     },
     onError: (error, _variables, context) => {
@@ -378,8 +461,8 @@ export function useAnnouncementsController() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteAnnouncement,
-    onMutate: async (id) => {
+    mutationFn: ({ id, ifMatch }: { id: string; ifMatch: string }) => deleteAnnouncement(id, ifMatch),
+    onMutate: async ({ id }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
       const previousLists = queryClient
         .getQueriesData<AnnouncementListCache>({ queryKey: queryKeys.announcements.all })
@@ -394,7 +477,7 @@ export function useAnnouncementsController() {
     },
     onSuccess: async () => {
       notifySuccess(t("message.deleted"));
-      await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      await invalidateAnnouncementReads(queryClient);
       setAnnouncementSelection({ kind: "none" }, { replace: true });
     },
     onError: (error, _variables, context) => {
@@ -414,81 +497,62 @@ export function useAnnouncementsController() {
 
   const rows = useMemo(() => {
     let raw = accumulatedAnnouncements;
-    if (!canEdit) {
+    if (!canManageContent) {
       raw = raw.filter((item) => item.status === "published" || item.status === "archived");
     }
-    if (statusFilter) {
-      raw = raw.filter((item) => item.status === statusFilter);
-    } else if (!canEdit) {
+    if (effectiveStatusFilter) {
+      raw = raw.filter((item) => item.status === effectiveStatusFilter);
+    } else if (!canManageContent) {
       raw = raw.filter((item) => item.status === "published");
     }
-    if (pinnedFilter) {
-      raw = raw.filter((item) => item.pinned);
-    }
     return raw;
-  }, [canEdit, accumulatedAnnouncements, pinnedFilter, statusFilter]);
+  }, [accumulatedAnnouncements, canManageContent, effectiveStatusFilter]);
 
   const listHasMore = listQuery.hasNextPage ?? false;
 
   const selected = detailQuery.data ?? null;
 
   useEffect(() => {
-    setAnnouncementsLastSeenAt(readAnnouncementsLastSeenAt(announcementsLastSeenStorageKey));
-  }, [announcementsLastSeenStorageKey]);
-
-  useEffect(() => {
-    if (isCreating || selection.kind !== "auto") return;
-    const firstId = rows[0]?.id;
-    if (firstId) {
-      setAnnouncementSelection({ kind: "selected", id: firstId }, { replace: true });
-    }
-  }, [isCreating, rows, selection.kind, setAnnouncementSelection]);
-
-  useEffect(() => {
     if (isCreating) {
+      editorBaselineRef.current = null;
       setTitle("");
+      setCategory("announcement");
       setBodyJson(TIPTAP_DEFAULT_JSON);
       setPinned(false);
-      setArchived(false);
-      setDraftEnabled(false);
       setPublishAt("");
-      setScheduleEnabled(false);
       setAttachments([]);
     } else if (selected) {
-      setTitle(selected.title);
-      setBodyJson(selected.body_json);
-      setPinned(selected.pinned);
-      setArchived(selected.status === "archived");
-      setDraftEnabled(selected.status === "draft");
-      setPublishAt(toDateTimeLocalValue(selected.publish_at));
-      setScheduleEnabled(selected.status === "scheduled");
-      setAttachments(selected.attachments);
+      const baseline = editorBaselineRef.current;
+      if (!baseline || baseline.id !== selected.id) {
+        editorBaselineRef.current = null;
+        adoptAnnouncementDraft(selected);
+      }
     }
-  }, [isCreating, selected]);
+  }, [adoptAnnouncementDraft, isCreating, selected]);
 
   const isDirty = useMemo(() => {
-    if (!canEdit) return false;
+    if (isCreating ? !canCreate : !canEdit) return false;
     if (isCreating) {
       return title.trim().length > 0
+        || category !== "announcement"
         || bodyJson !== TIPTAP_DEFAULT_JSON
         || pinned
         || publishAt.length > 0
         || attachments.length > 0;
     }
-    if (selected) {
+    const baseline = editorBaselineRef.current ?? selected;
+    if (baseline) {
       return (
-        title !== selected.title ||
-        bodyJson !== selected.body_json ||
-        pinned !== selected.pinned ||
-        publishAt !== toDateTimeLocalValue(selected.publish_at) ||
-        scheduleEnabled !== (selected.status === "scheduled") ||
-        draftEnabled !== (selected.status === "draft") ||
-        archived !== (selected.status === "archived") ||
-        !sameAttachmentOrder(attachments, selected.attachments)
+        title !== baseline.title ||
+        category !== baseline.category ||
+        bodyJson !== baseline.body_json ||
+        pinned !== baseline.pinned ||
+        publishAt !== toDateTimeLocalValue(baseline.publish_at) ||
+        !sameAttachmentOrder(attachments, baseline.attachments)
       );
     }
     return false;
-  }, [archived, attachments, bodyJson, canEdit, draftEnabled, isCreating, pinned, publishAt, scheduleEnabled, selected, title]);
+  }, [attachments, bodyJson, canCreate, canEdit, category, isCreating, pinned, publishAt, selected, title]);
   const isPublishReady = useMemo(
     () => title.trim().length > 0 && extractTipTapText(bodyJson).trim().length > 0,
     [bodyJson, title],
@@ -498,9 +562,13 @@ export function useAnnouncementsController() {
 
   const handleCreateByStatus = useCallback(() => {
     if (!canCreate) return;
+    abandonPendingAttachmentUpload();
+    attachmentDraftScopeRef.current = "new";
+    editorBaselineRef.current = null;
     openCreating();
-    setAnnouncementSelection({ kind: "none" });
-  }, [canCreate, openCreating, setAnnouncementSelection]);
+    setSelection({ kind: "none" });
+    void navigate({ to: "/announcements/new", viewTransition: false });
+  }, [abandonPendingAttachmentUpload, canCreate, navigate, openCreating]);
 
   const handleSelectId = useCallback(async (id: string | null) => {
     if (isDirty) {
@@ -515,72 +583,124 @@ export function useAnnouncementsController() {
         return false;
       }
     }
-    if (id !== null) {
+    if (isCreating) {
+      discardCreateDraft();
+    } else if (selected) {
+      abandonPendingAttachmentUpload();
+      /*
+       * The custom discard confirmation and the router blocker observe the same draft.
+       * Reset it synchronously before navigating so one explicit confirmation cannot be
+       * followed by a second, global "unsaved changes" dialog over the destination page.
+       */
+      flushSync(() => {
+        editorBaselineRef.current = null;
+        adoptAnnouncementDraft(selected);
+      });
+      closeCreating();
+    } else {
+      abandonPendingAttachmentUpload();
+      editorBaselineRef.current = null;
       closeCreating();
     }
     setAnnouncementSelection(
       id === null ? { kind: "none" } : { kind: "selected", id },
     );
     return true;
-  }, [closeCreating, confirm, isDirty, setAnnouncementSelection, t]);
+  }, [
+    adoptAnnouncementDraft,
+    abandonPendingAttachmentUpload,
+    closeCreating,
+    confirm,
+    discardCreateDraft,
+    isCreating,
+    isDirty,
+    selected,
+    setAnnouncementSelection,
+    t,
+  ]);
 
   const resetFilters = useCallback(() => {
     setSearch("");
     setStatusFilter(undefined);
-    setPinnedFilter(false);
+    setCategoryFilter(undefined);
     setSortOrder("updated_desc");
-  }, []);
+  }, [setSearch]);
 
-  const handleFinish = (mode: AnnouncementFinishMode) => {
-    if (!isPublishReady) return;
+  const handleStartEditing = () => {
+    if (!canEdit || !selected) return;
+    editorBaselineRef.current = selected;
+    adoptAnnouncementDraft(selected);
+  };
+
+  const handleFinish = async (mode: AnnouncementFinishMode): Promise<boolean> => {
+    if (mode !== "archived" && !isPublishReady) return false;
 
     if (isCreating) {
-      if (mode === "archived") return;
-      if (savePendingRef.current) return;
+      if (!canCreate || mode === "archived" || savePendingRef.current) return false;
+      if (attachmentUploadPendingRef.current) return false;
       savePendingRef.current = true;
 
       const status = ANNOUNCEMENT_STATUS_BY_FINISH_MODE[mode];
-
-      createMutation.mutate({
-        title,
-        body_json: bodyJson,
-        pinned,
-        status,
-        publish_at: status === "published" ? new Date().toISOString() : fromDateTimeLocalValue(publishAt),
-        attachment_media_ids: attachments.map((attachment) => attachment.media_id),
-      });
-      return;
+      try {
+        await createMutation.mutateAsync({
+          title,
+          category,
+          body_json: bodyJson,
+          pinned,
+          status,
+          publish_at: status === "published" ? new Date().toISOString() : fromDateTimeLocalValue(publishAt),
+          attachment_media_ids: attachments.map((attachment) => attachment.media_id),
+        });
+        return true;
+      } catch {
+        return false;
+      }
     }
 
-    if (!selectedId || !selected) return;
+    const baseline = editorBaselineRef.current ?? selected;
+    if (!selectedId || !baseline || baseline.id !== selectedId) return false;
+    const ifMatch = announcementEtag(baseline);
 
     if (mode === "archived") {
-      archiveMutation.mutate(selectedId);
-      return;
+      if (!canArchive) return false;
+      try {
+        await archiveMutation.mutateAsync({ id: selectedId, ifMatch });
+        editorBaselineRef.current = null;
+        return true;
+      } catch {
+        return false;
+      }
     }
 
-    if (savePendingRef.current) return;
+    if (!canEdit || savePendingRef.current || attachmentUploadPendingRef.current) return false;
     savePendingRef.current = true;
 
     const status = ANNOUNCEMENT_STATUS_BY_FINISH_MODE[mode];
-
-    updateMutation.mutate({
-      id: selectedId,
-      payload: {
-        title,
-        body_json: bodyJson,
-        pinned,
-        status,
-        publish_at: status === "published"
-          ? new Date().toISOString()
-          : fromDateTimeLocalValue(publishAt) ?? null,
-        ...(!sameAttachmentOrder(attachments, selected.attachments)
-          ? { attachment_media_ids: attachments.map((attachment) => attachment.media_id) }
-          : {}),
-      },
-      ifMatch: `"announcement-${selected.id}-${selected.updated_at}"`,
-      attachments,
-    });
+    try {
+      const updated = await updateMutation.mutateAsync({
+        id: selectedId,
+        payload: {
+          title,
+          category,
+          body_json: bodyJson,
+          pinned,
+          status,
+          publish_at: status === "published"
+            ? new Date().toISOString()
+            : fromDateTimeLocalValue(publishAt) ?? null,
+          ...(!sameAttachmentOrder(attachments, baseline.attachments)
+            ? { attachment_media_ids: attachments.map((attachment) => attachment.media_id) }
+            : {}),
+        },
+        ifMatch,
+        attachments,
+      });
+      editorBaselineRef.current = null;
+      adoptAnnouncementDraft(updated);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const handleCloseEditor = () => {
@@ -588,39 +708,33 @@ export function useAnnouncementsController() {
       // 同 createMutation：取消同样要先把草稿清干净，否则这一跳会被未保存拦截器再问一次，
       // 而「取消」本身就是用户在明确表示要丢掉它。
       discardCreateDraft();
-      const firstId = rows[0]?.id;
-      setAnnouncementSelection(
-        firstId ? { kind: "selected", id: firstId } : { kind: "none" },
-      );
+      setAnnouncementSelection({ kind: "none" });
       return;
     }
     if (!selected) return;
-    setTitle(selected.title);
-    setBodyJson(selected.body_json);
-    setPinned(selected.pinned);
-    setArchived(selected.status === "archived");
-    setDraftEnabled(selected.status === "draft");
-    setPublishAt(toDateTimeLocalValue(selected.publish_at));
-    setScheduleEnabled(selected.status === "scheduled");
-    setAttachments(selected.attachments);
+    abandonPendingAttachmentUpload();
+    editorBaselineRef.current = null;
+    adoptAnnouncementDraft(selected);
   };
 
-  const handleDelete = () => {
-    if (!selectedId) return;
-    deleteMutation.mutate(selectedId);
+  const handleDelete = async (): Promise<boolean> => {
+    if (!canDelete) return false;
+    const baseline = editorBaselineRef.current ?? selected;
+    if (!selectedId || !baseline || baseline.id !== selectedId) return false;
+    try {
+      await deleteMutation.mutateAsync({ id: selectedId, ifMatch: announcementEtag(baseline) });
+      editorBaselineRef.current = null;
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const handleUploadAnnouncementImages = async (file: File) => {
-    if (isCreating || !selectedId) {
-      const uploaded = await uploadPendingAnnouncementImages([file]);
-      const mediaId = uploaded.media_ids[0];
-      if (!mediaId) {
-        throw new Error("Image upload returned no media id");
-      }
-      return resolveMediaUrl(mediaId);
+    if (isCreating ? !canCreate : !canEdit) {
+      throw new Error("Announcement media upload is not permitted for this editor session");
     }
-
-    const uploaded = await uploadAnnouncementImages(selectedId, [file]);
+    const uploaded = await uploadPendingAnnouncementImages([file]);
     const mediaId = uploaded.media_ids[0];
     if (!mediaId) {
       throw new Error("Image upload returned no media id");
@@ -629,6 +743,7 @@ export function useAnnouncementsController() {
   };
 
   const handleUploadAnnouncementAttachment = async (file: File) => {
+    if (isCreating ? !canCreate : !canEdit) return;
     if (attachments.length >= attachmentQuota) {
       notifyError(t("validation.attachmentQuota", { count: attachmentQuota }));
       return;
@@ -642,32 +757,42 @@ export function useAnnouncementsController() {
     if (attachmentUploadPendingRef.current) return;
     attachmentUploadPendingRef.current = true;
     setAttachmentUploading(true);
+    const uploadSession = attachmentUploadSessionRef.current;
     try {
       const uploaded = await uploadAnnouncementAttachment(file);
+      if (uploadSession !== attachmentUploadSessionRef.current) return;
       setAttachments((current) => current.some(
         (attachment) => attachment.media_id === uploaded.attachment.media_id,
       ) ? current : [...current, uploaded.attachment]);
     } catch (error) {
+      if (uploadSession !== attachmentUploadSessionRef.current) return;
       showError(error, t("message.attachmentUploadFailed"));
     } finally {
-      attachmentUploadPendingRef.current = false;
-      setAttachmentUploading(false);
+      if (uploadSession === attachmentUploadSessionRef.current) {
+        attachmentUploadPendingRef.current = false;
+        setAttachmentUploading(false);
+      }
     }
   };
 
   const handleRemoveAnnouncementAttachment = (mediaId: string) => {
+    if (isCreating ? !canCreate : !canEdit) return;
     setAttachments((current) => current.filter((attachment) => attachment.media_id !== mediaId));
   };
 
   return {
     canEdit,
     canCreate,
-    pinnedFilter,
+    canManageContent,
+    canArchive,
+    canDelete,
     sortOrder,
     setSortOrder,
-    setPinnedFilter,
     statusFilter,
     setStatusFilter,
+    categoryFilter,
+    setCategoryFilter,
+    categoryOptions: ANNOUNCEMENT_CATEGORIES,
     search,
     setSearch,
     selectedId,
@@ -675,37 +800,36 @@ export function useAnnouncementsController() {
     isCreating,
     title,
     setTitle,
+    category,
+    setCategory,
     bodyJson,
     setBodyJson,
     pinned,
     setPinned,
-    archived,
-    setArchived,
-    draftEnabled,
-    setDraftEnabled,
     publishAt,
     setPublishAt,
-    scheduleEnabled,
-    setScheduleEnabled,
     attachments,
     attachmentUploading,
     attachmentMaxBytes,
     attachmentQuota,
-    announcementsLastSeenAt,
     listQuery,
+    pinnedQuery,
     detailQuery,
     rows,
+    pinnedRows: pinnedQuery.data?.data.slice(0, 3) ?? [],
     selected,
     listHasMore,
     listLoadingMore: listQuery.isFetchingNextPage,
     onLoadMoreList: () => void listQuery.fetchNextPage(),
     isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending || deleteMutation.isPending,
     savePending: createMutation.isPending || updateMutation.isPending,
+    archivePending: archiveMutation.isPending,
     deletePending: deleteMutation.isPending,
     isDirty,
     isPublishReady,
     resetFilters,
     handleCreateByStatus,
+    handleStartEditing,
     handleFinish,
     handleCloseEditor,
     handleDelete,

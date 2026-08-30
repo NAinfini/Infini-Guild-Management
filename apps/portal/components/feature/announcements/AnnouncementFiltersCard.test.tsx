@@ -32,21 +32,18 @@ describe("AnnouncementFiltersCard", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses grouped status, sort, and binary filter controls", async () => {
+  it("keeps status and sort in the filter panel without duplicating the pinned section", async () => {
     const user = userEvent.setup();
     const onSearchChange = vi.fn();
     const onStatusFilterChange = vi.fn();
     const onSortOrderChange = vi.fn();
-    const onPinnedFilterChange = vi.fn();
 
     render(
       <AnnouncementFiltersCard
-        pinnedFilter
         statusFilter="archived"
         sortOrder="updated_asc"
         search="dragon"
         canEdit
-        onPinnedFilterChange={onPinnedFilterChange}
         onStatusFilterChange={onStatusFilterChange}
         onSortOrderChange={onSortOrderChange}
         onSearchChange={onSearchChange}
@@ -60,7 +57,7 @@ describe("AnnouncementFiltersCard", () => {
     expect(search.closest(".content-filter-toolbar")).toHaveClass(
       "announcements-filter-toolbar",
     );
-    await user.click(screen.getByRole("button", { name: "common:filter.toggle (3)" }));
+    await user.click(screen.getByRole("button", { name: "common:filter.toggle (2)" }));
     const filterDialog = await screen.findByRole("dialog", {
       name: /common:filter\.toggle/,
     });
@@ -68,31 +65,27 @@ describe("AnnouncementFiltersCard", () => {
     expect(within(filterDialog).getByRole("radiogroup", { name: "filter.status" })).toBeInTheDocument();
     expect(within(filterDialog).getByRole("radio", { name: "filter.archived" })).toBeChecked();
     expect(within(filterDialog).getByRole("radio", { name: "filter.sort.updated_asc" })).toBeChecked();
+    expect(within(filterDialog).queryByRole("switch", { name: "filter.pinned" })).not.toBeInTheDocument();
     expect(screen.queryByText(/filter.summary.search: dragon/)).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("textbox", { name: "aria.searchAnnouncements" }), {
       target: { value: "guild" },
     });
-    fireEvent.click(within(filterDialog).getByRole("switch", { name: "filter.pinned" }));
-
     expect(onSearchChange).toHaveBeenCalledWith("guild");
-    expect(onPinnedFilterChange).toHaveBeenCalledWith(false);
     expect(screen.queryByRole("button", { name: "common:filter.clearAll" })).not.toBeInTheDocument();
 
     await user.click(within(filterDialog).getByRole("radio", { name: "filter.sort.updated_desc" }));
     expect(onSortOrderChange).toHaveBeenCalledWith("updated_desc");
   });
 
-  it("keeps published as the external user's default status", async () => {
+  it("hides status choices that external users cannot change", async () => {
     const user = userEvent.setup();
     render(
       <AnnouncementFiltersCard
-        pinnedFilter={false}
         statusFilter={undefined}
         sortOrder="updated_desc"
         search=""
         canEdit={false}
-        onPinnedFilterChange={vi.fn()}
         onStatusFilterChange={vi.fn()}
         onSortOrderChange={vi.fn()}
         onSearchChange={vi.fn()}
@@ -100,6 +93,8 @@ describe("AnnouncementFiltersCard", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "common:filter.toggle" }));
-    expect(await screen.findByRole("radio", { name: "filter.published" })).toBeChecked();
+    const filterDialog = await screen.findByRole("dialog", { name: /common:filter\.toggle/ });
+    expect(within(filterDialog).queryByRole("radio", { name: "filter.published" })).not.toBeInTheDocument();
+    expect(within(filterDialog).getByRole("radio", { name: "filter.sort.updated_desc" })).toBeChecked();
   });
 });

@@ -95,7 +95,7 @@ describe("SqliteEmailVerificationStore", () => {
     await expect(store.verify(input)).resolves.toBe("verified");
     await expect(store.verify({ ...input, audit: audit("user-1") })).resolves.toBe("invalid");
 
-    expect(store.getVerifiedEmail("user-1")).resolves.toBe("one@example.com");
+    await expect(store.getVerifiedEmail("user-1")).resolves.toBe("one@example.com");
     expect(count(database, "audit_log")).toBe(1);
   });
 

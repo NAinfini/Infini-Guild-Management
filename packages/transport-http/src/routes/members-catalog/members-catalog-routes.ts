@@ -1,17 +1,20 @@
 import type { MemberCatalogService } from "@guild/server/modules/members";
 import {
   assignBadgeSchema,
+  catalogRecordRevisionSchema,
   createClassCatalogItemSchema,
   createClassTagSchema,
   createMemberBadgeSchema,
   reorderClassCatalogSchema,
   reorderClassTagsSchema,
   reorderMemberBadgesSchema,
+  deleteClassTagSchema,
   unassignBadgeSchema,
   updateClassCatalogItemSchema,
   updateClassTagSchema,
   updateMemberBadgeSchema,
 } from "@guild/shared";
+import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { Hono } from "hono";
 import { requestContext, type HttpEnv } from "../../core/http-env.js";
 import { parseFormData, parseImageUploads, parseJsonBody, validation } from "../../core/parsing.js";
@@ -66,18 +69,33 @@ export function createClassRoutes(dependencies: MembersCatalogRoutesDependencies
     await parseJsonBody(context.req.raw, updateClassCatalogItemSchema, "Invalid class update payload"),
   ))));
   routes.post("/:id/icon", async (context) => {
-    const uploads = await parseImageUploads(await parseFormData(context.req.raw));
+    const request = requestContext(context);
+    request.authorization.require(PERMISSION_ID.ADMIN_CLASSES_MANAGE);
+    const form = await parseFormData(context.req.raw);
+    const revision = catalogRecordRevisionSchema.safeParse({ expected_updated_at: form.get("expected_updated_at") });
+    if (!revision.success) throw validation("Invalid class icon revision");
+    const uploads = await parseImageUploads(form);
     if (uploads.length !== 1) throw validation("Exactly one class icon is required");
     return context.json(presentClass(await dependencies.service.uploadClassIcon(
-      requestContext(context), context.req.param("id"), uploads[0]!,
+      request, context.req.param("id"), uploads[0]!, revision.data.expected_updated_at,
     )), 201);
   });
-  routes.delete("/:id/icon", async (context) => context.json(presentClass(await dependencies.service.deleteClassIcon(
-    requestContext(context), context.req.param("id"),
-  ))));
-  routes.delete("/:id", async (context) => context.json(presentClassDeleted(await dependencies.service.deleteClass(
-    requestContext(context), context.req.param("id"),
-  ))));
+  routes.delete("/:id/icon", async (context) => {
+    const revision = await parseJsonBody(
+      context.req.raw,
+      catalogRecordRevisionSchema,
+      "Invalid class icon revision",
+    );
+    return context.json(presentClass(await dependencies.service.deleteClassIcon(
+      requestContext(context), context.req.param("id"), revision.expected_updated_at,
+    )));
+  });
+  routes.delete("/:id", async (context) => {
+    const revision = await parseJsonBody(context.req.raw, catalogRecordRevisionSchema, "Invalid class delete revision");
+    return context.json(presentClassDeleted(await dependencies.service.deleteClass(
+      requestContext(context), context.req.param("id"), revision.expected_updated_at,
+    )));
+  });
 
   return routes;
 }
@@ -106,9 +124,12 @@ export function createClassTagRoutes(dependencies: MembersCatalogRoutesDependenc
     context.req.param("id"),
     await parseJsonBody(context.req.raw, updateClassTagSchema, "Invalid class tag update payload"),
   ))));
-  routes.delete("/:id", async (context) => context.json(presentClassTagDeleted(await dependencies.service.deleteClassTag(
-    requestContext(context), context.req.param("id"),
-  ))));
+  routes.delete("/:id", async (context) => {
+    const revision = await parseJsonBody(context.req.raw, deleteClassTagSchema, "Invalid class tag delete revision");
+    return context.json(presentClassTagDeleted(await dependencies.service.deleteClassTag(
+      requestContext(context), context.req.param("id"), revision.expected_updated_at, revision.expected_usage_count,
+    )));
+  });
 
   return routes;
 }
@@ -155,9 +176,12 @@ export function createBadgeRoutes(dependencies: MembersCatalogRoutesDependencies
     context.req.param("id"),
     await parseJsonBody(context.req.raw, updateMemberBadgeSchema, "Invalid badge update payload"),
   ))));
-  routes.delete("/:id", async (context) => context.json(presentBadgeDeleted(await dependencies.service.deleteBadge(
-    requestContext(context), context.req.param("id"),
-  ))));
+  routes.delete("/:id", async (context) => {
+    const revision = await parseJsonBody(context.req.raw, catalogRecordRevisionSchema, "Invalid badge delete revision");
+    return context.json(presentBadgeDeleted(await dependencies.service.deleteBadge(
+      requestContext(context), context.req.param("id"), revision.expected_updated_at,
+    )));
+  });
 
   return routes;
 }

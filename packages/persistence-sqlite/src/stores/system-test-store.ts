@@ -173,7 +173,7 @@ export class SqliteSystemTestStore implements SystemTestStore {
     return allRows(await this.sql.execute({
       method: "all",
       sql: `SELECT id FROM system_test_runs
-        WHERE status <> 'completed' AND expires_at <= ?
+        WHERE expires_at <= ?
         ORDER BY expires_at, id LIMIT ?`,
       params: [before, limit],
     })).map((row) => {
@@ -187,7 +187,7 @@ export class SqliteSystemTestStore implements SystemTestStore {
       method: "all",
       columns: ["pending_at"],
       sql: `SELECT expires_at AS pending_at FROM system_test_runs
-        WHERE status IN ('running', 'cleaning', 'cleanup_failed') AND expires_at <= ?
+        WHERE expires_at <= ?
         ORDER BY expires_at, id LIMIT ?`,
       params: [before, SCHEDULED_BACKLOG_READ_LIMIT],
     })).map((row) => {

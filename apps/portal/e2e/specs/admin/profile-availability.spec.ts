@@ -1,4 +1,5 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
+import { profileMutationHeaders } from "../../support/api";
 import { expect, readJson, test, type Flow } from "../../support/test";
 import { field, selectOption } from "../../support/ui";
 
@@ -47,19 +48,24 @@ test.beforeEach(async ({ page, api }) => {
   original = await readProfile(api);
 
   const cleared = await api.patch(`/api/users/${userId}/profile`, {
+    headers: await profileMutationHeaders(api, userId),
     data: { availability: null },
   });
   expect(cleared.ok(), `清空可用时间返回 ${cleared.status()}: ${await cleared.text()}`).toBe(true);
 
   await page.goto("/profile");
-  /* 顺带验一遍标签控件本身：切过去要换屏，并把 tab 写进地址栏。 */
-  await page.getByRole("tab", { name: "Availability", exact: true }).click();
+  /* 顺带验一遍资料分区导航：切过去要换屏，并把 tab 写进地址栏。 */
+  await page
+    .getByRole("navigation", { name: "Profile workspace", exact: true })
+    .getByRole("button", { name: "Availability", exact: true })
+    .click();
   await expect(page.getByRole("heading", { name: "Weekly availability", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/[?&]tab=availability\b/);
 });
 
 test.afterEach(async ({ api }) => {
   const response = await api.patch(`/api/users/${userId}/profile`, {
+    headers: await profileMutationHeaders(api, userId),
     data: { availability: original.availability },
   });
   expect(response.ok(), `还原可用时间返回 ${response.status()}: ${await response.text()}`).toBe(true);
@@ -157,8 +163,8 @@ test("预设：叠加而不是覆盖，清空一键归零，两次都要保存�
 test("单日时段：结束早于开始就不让加，加完能删，两步都要保存才落库", async ({ page, flow, api }) => {
   await dayRow(page, "Wed").locator(".availability-day__add").click();
   const picker = page.getByRole("dialog");
-  await expect(field(picker, "From")).toHaveValue("20:00");
-  await expect(field(picker, "To")).toHaveValue("24:00");
+  await expect(field(picker, "From")).toContainText("20:00");
+  await expect(field(picker, "To")).toContainText("24:00");
 
   /* 结束早于开始时禁用按钮并说明原因，而不是替用户把两个值调个个儿。 */
   await selectOption(picker, "To", "00:30");

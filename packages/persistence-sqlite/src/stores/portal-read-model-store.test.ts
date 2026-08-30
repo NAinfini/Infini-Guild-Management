@@ -177,6 +177,9 @@ describe("SqlitePortalReadModelStore", () => {
       roleName: "Member",
       roleLevel: 100,
     });
+    expect(result.find(({ type }) => type === "gallery")).toMatchObject({
+      title: "Dragon Gallery",
+    });
     expect(value.executor.batches).toHaveLength(1);
     expect(value.executor.batches[0]).toHaveLength(6);
     expect(value.executor.batches[0]!.every((statement) => statement.sql.includes("LIMIT ?"))).toBe(true);
@@ -298,9 +301,17 @@ function seed(database: DatabaseSync): void {
       NOW, NOW, "admin-1", "wiki-deleted-revision-01", NOW, NOW,
     );
   database.prepare(`INSERT INTO gallery_items (
-    id, type, url, caption, uploaded_by, revision_token, created_at
-  ) VALUES (?, 'video', ?, ?, ?, ?, ?)`)
-    .run("gallery-dragon", "https://www.youtube.com/watch?v=dragon", "Dragon Gallery", "admin-1", "gallery-revision-token-01", NOW);
+    id, type, url, caption, uploaded_by, revision_token, created_at, title
+  ) VALUES (?, 'video', ?, ?, ?, ?, ?, ?)`)
+    .run(
+      "gallery-dragon",
+      "https://www.youtube.com/watch?v=dragon",
+      "Guild victory description",
+      "admin-1",
+      "gallery-revision-token-01",
+      NOW,
+      "Dragon Gallery",
+    );
 
   database.prepare(`INSERT INTO guild_wars (
     id, event_id, status, war_name, enemy_name, result, concluded_at,

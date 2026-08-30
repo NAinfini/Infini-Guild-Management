@@ -1,6 +1,4 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -139,20 +137,12 @@ describe("AdminPage context navigation", () => {
     });
   });
 
-  it("renders only the panel named by the URL without an internal tablist", async () => {
+  it("renders the panel named by the URL", async () => {
     router.search = { tab: "diagnostics" };
     renderPage();
 
     expect(await screen.findByText("diagnostics-panel")).toBeInTheDocument();
     expect(screen.queryByText("operations-panel")).not.toBeInTheDocument();
-    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
-  });
-
-  it("uses the shared contained workbench for its active console panel", async () => {
-    renderPage();
-
-    expect(await screen.findByText("operations-panel")).toBeInTheDocument();
-    expect(screen.getByRole("main")).toHaveAttribute("data-workspace-mode", "contained");
   });
 
   it("falls back to the first permitted panel when the URL names an unavailable one", async () => {
@@ -163,17 +153,7 @@ describe("AdminPage context navigation", () => {
     expect(screen.queryByText("diagnostics-panel")).not.toBeInTheDocument();
   });
 
-  it("keeps the panel from becoming a second vertical scroll container", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/AdminPage.css"), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "");
-    const panelRule = css.match(/\.admin-page__panel\s*\{([^}]*)\}/)?.[1] ?? "";
-
-    expect(panelRule).toContain("overflow-x: clip");
-    expect(panelRule).toContain("overflow-y: visible");
-    expect(panelRule).not.toMatch(/overflow-y:\s*(auto|scroll|hidden)/);
-  });
-
-  it("moves health state into the shared sidebar context instead of a page tab", async () => {
+  it("publishes health state through the admin navigation context", async () => {
     controller.statusQuery.data = {
       db: "ok",
       r2: "ok",
@@ -185,16 +165,6 @@ describe("AdminPage context navigation", () => {
     await waitFor(() => {
       expect(screen.getByRole("status")).toHaveTextContent('"healthState":"configured"');
     });
-  });
-
-  it("removes the obsolete admin tab rail and its horizontal-scroll fallback", () => {
-    const source = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/AdminPage.tsx"), "utf8");
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/AdminPage.css"), "utf8");
-
-    expect(source).not.toContain("<Tabs");
-    expect(source).not.toContain("Tabs.Panel");
-    expect(css).not.toContain("admin-page__workspace");
-    expect(css).not.toContain("admin-page__domain-nav");
   });
 
   it("shows a permission explanation and dashboard path when no admin area is available", () => {

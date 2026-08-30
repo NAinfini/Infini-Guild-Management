@@ -105,9 +105,9 @@ describe("Cloudflare local media seed", () => {
           (SELECT site_logo_media_id FROM site_config WHERE singleton = 1) AS siteLogo,
           (SELECT icon_type || ':' || coalesce(vector_icon, 'null') FROM class_catalog WHERE id = 'dev-class-vanguard') AS classIcon
       `).first()).resolves.toEqual({
-        assets: 23,
-        variants: 45,
-        links: 23,
+        assets: 24,
+        variants: 46,
+        links: 24,
         wikiRevisionMedia: 3,
         privateWikiRevisionMedia: 3,
         repairedLinkState: "attached",
@@ -177,12 +177,24 @@ async function prepareDatabase(state: string, seed: boolean): Promise<void> {
 
 function createMiniflare(state: string): Miniflare {
   return new Miniflare({
-    compatibilityDate: "2026-07-28",
-    d1Databases: { DB: LOCAL_D1_DATABASE_ID },
-    r2Buckets: { BLOBS: LOCAL_R2_BUCKET_NAME },
     resourcePersistencePath: path.join(state, "v3"),
-    modules: true,
-    script: "export default {}",
+    workers: [{
+      config: {
+        name: "local-media-seed-test",
+        type: "worker",
+        compatibilityDate: "2026-07-28",
+        manifest: {
+          mainModule: "script-0.mjs",
+          modules: {
+            "script-0.mjs": { type: "esm", contents: "export default {}" },
+          },
+        },
+        env: {
+          DB: { type: "d1", id: LOCAL_D1_DATABASE_ID },
+          BLOBS: { type: "r2", name: LOCAL_R2_BUCKET_NAME },
+        },
+      },
+    }],
   });
 }
 

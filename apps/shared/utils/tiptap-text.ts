@@ -55,3 +55,11 @@ export function extractTipTapText(bodyJson: string): string {
   if (buffer.current.length > 0) lines.push(buffer.current);
   return lines.join("\n");
 }
+
+export function createContentExcerpt(searchText: string): string {
+  return searchText
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, LIMITS.content.contentPreviewExcerpt.max);
+}
+import { LIMITS } from "../config/limits";

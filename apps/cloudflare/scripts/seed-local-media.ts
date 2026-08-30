@@ -36,12 +36,24 @@ export async function seedCloudflareLocalMedia(
 ): Promise<CloudflareLocalMediaSeedResult> {
   const persistTo = path.resolve(options.persistTo);
   const miniflare = new Miniflare({
-    compatibilityDate: "2026-07-28",
-    d1Databases: { DB: options.databaseId },
-    r2Buckets: { BLOBS: options.bucketName },
     resourcePersistencePath: path.join(persistTo, "v3"),
-    modules: true,
-    script: "export default {}",
+    workers: [{
+      config: {
+        name: "local-media-seed",
+        type: "worker",
+        compatibilityDate: "2026-07-28",
+        manifest: {
+          mainModule: "script-0.mjs",
+          modules: {
+            "script-0.mjs": { type: "esm", contents: "export default {}" },
+          },
+        },
+        env: {
+          DB: { type: "d1", id: options.databaseId },
+          BLOBS: { type: "r2", name: options.bucketName },
+        },
+      },
+    }],
   });
   try {
     const database = await miniflare.getD1Database("DB");

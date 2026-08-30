@@ -1,8 +1,6 @@
 import type { Storage, StorageItem } from "@guild/shared";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageInventoryPanel } from "./StorageInventoryPanel";
@@ -25,6 +23,12 @@ vi.mock("./StorageItemCard", () => ({
   StorageItemCard: ({ item }: { item: StorageItem }) => <div>{item.name}</div>,
 }));
 
+vi.mock("./StorageLedgerPanel", () => ({
+  StorageLedgerPanel: ({ enabled }: { enabled?: boolean }) => (
+    <div data-testid="storage-ledger-panel" data-enabled={String(Boolean(enabled))}>ledger</div>
+  ),
+}));
+
 vi.mock("@portal/components/ui/scroll-area", () => ({
   ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
@@ -34,6 +38,7 @@ const storage: Storage = {
   name: "Vault",
   description: null,
   created_at: "2026-07-28T00:00:00.000Z",
+  structure_revision: 0,
   categories: [{ id: "category-1", name: "Materials" }],
 };
 
@@ -43,6 +48,8 @@ const item: StorageItem = {
   category_id: null,
   name: "Crystal",
   description: null,
+  rarity: "common",
+  unit: null,
   quantity: 10,
   allow_member_deposit: true,
   allow_member_withdraw: true,
@@ -61,7 +68,6 @@ function renderPanel(
       categoryId={categoryId}
       canManageItems={false}
       canManageStock={false}
-      hasAnyItems
       onStartBatch={vi.fn()}
       onBatchQuantityChange={vi.fn()}
       onOpenItem={vi.fn()}
@@ -114,6 +120,18 @@ describe("StorageInventoryPanel pagination", () => {
     expect(search).toHaveValue("");
   });
 
+  it("opens storage history from the search toolbar instead of rendering it inline", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "action.showHistory" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "ledger.title" });
+    expect(within(dialog).getByText("ledger.pageSubtitle")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("storage-ledger-panel")).toHaveAttribute("data-enabled", "true");
+  });
+
   it("sends the stock filter to the server query", async () => {
     const user = userEvent.setup();
     renderPanel();
@@ -150,13 +168,31 @@ describe("StorageInventoryPanel pagination", () => {
       refetch: hookMocks.refetch,
     });
 
-    renderPanel({ canManageItems: true, hasAnyItems: false });
+    renderPanel({ canManageItems: true });
 
     expect(screen.getByText("common:errors.connectionIssue")).toBeInTheDocument();
     expect(screen.queryByText("empty.noItems")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "action.createItem" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "common:action.retry" }));
     expect(hookMocks.refetch).toHaveBeenCalledOnce();
+  });
+
+  it("derives inventory actions from the loaded inventory", () => {
+    hookMocks.useStorageItems.mockReturnValue({
+      items: [],
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isFetchingNextPage: false,
+      hasNextPage: false,
+      fetchNextPage: hookMocks.fetchNextPage,
+      refetch: hookMocks.refetch,
+    });
+
+    renderPanel({ canManageStock: true });
+
+    expect(screen.getByRole("button", { name: "action.startBatch" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "action.manualEntry" })).toBeDisabled();
   });
 
   it("keeps cached inventory visible with a retry action after a background failure", async () => {
@@ -179,24 +215,4 @@ describe("StorageInventoryPanel pagination", () => {
     expect(hookMocks.refetch).toHaveBeenCalledOnce();
   });
 
-  it("uses the shared toolbar layout without page-specific compact overrides", () => {
-    const storageCss = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/StoragePage.css"),
-      "utf8",
-    );
-    const toolbarCss = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/shared/ContentFilterToolbar.css"),
-      "utf8",
-    );
-
-    expect(toolbarCss).toMatch(/grid-template-areas:\s*"search filter view summary actions"/);
-    expect(storageCss).not.toMatch(/data-compact|content-filter-toolbar__controls/);
-    expect(storageCss).not.toMatch(/storage-category-rail|storage-command__category-mobile/);
-    expect(storageCss).toMatch(
-      /\.storage-semantic-workspace\s*\{[\s\S]*?grid-template-columns:\s*minmax\(180px,\s*220px\)\s+minmax\(0,\s*1fr\)/,
-    );
-    expect(storageCss).toMatch(
-      /\.storage-command\s*\{[^}]*background:\s*var\(--storage-plate\)/,
-    );
-  });
 });

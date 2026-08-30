@@ -1,8 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTipTapEditorLabels } from "./tiptap-meta";
 import { TipTapEditorContextMenu } from "./TipTapEditorContextMenu";
@@ -115,12 +113,8 @@ describe("TipTapEditorContextMenu", () => {
       name: "toolbar.textColor #1f6feb",
       hidden: true,
     });
-    const rootMenu = document.querySelector(".infini-tiptap-context-menu");
-    const colorMenu = swatch.closest<HTMLElement>('[role="menu"]');
-    expect(rootMenu).not.toBeNull();
-    expect(colorMenu).not.toBeNull();
-    expect(rootMenu).not.toContainElement(colorMenu);
-    expect(colorMenu).toHaveClass("infini-tiptap-context-submenu");
+    expect(swatch.closest('[role="menu"]')).not.toBeNull();
+    expect(screen.getAllByRole("menu", { hidden: true })).toHaveLength(2);
   });
 
   it("keeps dialog commands wired while the menu owns closing", async () => {
@@ -133,20 +127,4 @@ describe("TipTapEditorContextMenu", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("uses Base UI submenus, which portal outside the scrollable context menu", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/shared/TipTapEditorContextMenu.tsx"),
-      "utf8",
-    );
-    const css = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"),
-      "utf8",
-    );
-
-    expect(source).toContain('from "@portal/components/ui/dropdown-menu"');
-    expect(source.match(/<DropdownMenuSub>/g)).toHaveLength(2);
-    expect(source.match(/<DropdownMenuSubContent/g)).toHaveLength(2);
-    expect(css).toContain(".infini-tiptap-context-menu");
-    expect(css).toContain("overflow-y: auto");
-  });
 });

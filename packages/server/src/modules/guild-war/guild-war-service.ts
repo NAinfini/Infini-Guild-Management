@@ -1,5 +1,5 @@
 import { AppError, type RequestContext } from "@guild/kernel";
-import type { AuditChange, SiteAnalyticsSettings } from "@guild/shared";
+import { formatCsvCell, type AuditChange, type SiteAnalyticsSettings } from "@guild/shared";
 import type { PushHint } from "@guild/shared/constants/push-hints";
 import type { WarResult } from "@guild/shared/constants/guild-war";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
@@ -28,6 +28,11 @@ const MAX_PAGE_SIZE = 100;
 const MAX_HISTORY_BATCH = 50;
 const MAX_ANALYTICS_WARS = 20;
 const MAX_ANALYTICS_USERS = 100;
+
+function monotonicTimestamp(now: string, previous: string): string {
+  if (Date.parse(now) > Date.parse(previous)) return now;
+  return new Date(Date.parse(previous) + 1).toISOString();
+}
 
 export type GuildWarActiveView = Readonly<{
   war: GuildWarAggregate["war"] | null;
@@ -93,6 +98,12 @@ type HistoryUpdateInput = Readonly<Partial<Omit<HistoryInput, "event_id" | "dura
 }>;
 
 type MemberStatsUpdate = Readonly<{ stats?: MemberStats; note?: string | null }>;
+
+export function guildWarHistoryEtag(
+  war: Pick<GuildWarRecord, "id" | "rosterVersion">,
+): string {
+  return `"history-${war.id}-${war.rosterVersion}"`;
+}
 
 export class GuildWarService {
   private readonly createId: () => string;
@@ -257,6 +268,8 @@ export class GuildWarService {
       warId: aggregate.war.id,
       eventId,
       expectedVersion: aggregate.war.rosterVersion,
+      expectedEventUpdatedAt: event.event.updatedAt,
+      updatedEventAt: monotonicTimestamp(context.now, event.event.updatedAt),
       actorUserId: actor.userId,
       now: context.now,
       moves: normalizedMoves.map((move) => ({
@@ -526,7 +539,7 @@ export class GuildWarService {
         value: { type: "list", value: sectionKeys.map((value) => ({ type: "code", value })) },
       }],
     });
-    const changed = await this.dependencies.store.updateHistory({
+    const updated = await this.dependencies.store.updateHistory({
       warId,
       expectedVersion: existing.war.rosterVersion,
       actorUserId: actor.userId,
@@ -534,9 +547,9 @@ export class GuildWarService {
       patch,
       audit,
     });
-    if (!changed) throw conflict();
+    if (!updated) throw conflict();
     this.publish(warId, "history_updated", context.now);
-    return (await this.requireHistory(warId)).war;
+    return updated;
   }
 
   async deleteHistory(context: RequestContext, warId: string): Promise<Readonly<{ ok: true }>> {
@@ -598,9 +611,11 @@ export class GuildWarService {
     context: RequestContext,
     warId: string,
     updates: readonly Readonly<{ user_id: string; data: MemberStatsUpdate }>[],
+    ifMatch?: string,
   ): Promise<readonly WarMemberRecord[]> {
     const actor = context.authorization.require(PERMISSION_ID.GUILD_WAR_HISTORY_EDIT);
     const existing = await this.requireHistory(warId);
+    if (ifMatch !== guildWarHistoryEtag(existing.war)) throw conflict();
     const members = existing.teams.flatMap((team) => team.members);
     const memberIds = new Set(members.map(({ userId }) => userId));
     const normalized = [...new Map(updates.map((update) => [update.user_id, update])).values()];
@@ -626,7 +641,7 @@ export class GuildWarService {
         },
       ],
     });
-    const changed = await this.dependencies.store.updateMemberStats({
+    const updatedMembers = await this.dependencies.store.updateMemberStats({
       warId,
       expectedVersion: existing.war.rosterVersion,
       actorUserId: actor.userId,
@@ -634,10 +649,9 @@ export class GuildWarService {
       updates: normalized.map((update) => ({ userId: update.user_id, ...update.data })),
       audit,
     });
-    if (!changed) throw conflict();
-    const refreshed = await this.requireHistory(warId);
+    if (!updatedMembers) throw conflict();
     const requested = new Set(normalized.map(({ user_id }) => user_id));
-    return refreshed.teams.flatMap((team) => team.members).filter(({ userId }) => requested.has(userId));
+    return updatedMembers.filter(({ userId }) => requested.has(userId));
   }
 
   async analytics(
@@ -668,7 +682,12 @@ export class GuildWarService {
   async export(
     context: RequestContext,
     format: "csv" | "json",
-    filters: Readonly<{ eventId?: string; dateFrom?: string; dateTo?: string }>,
+    filters: Readonly<{
+      historyId?: string;
+      eventId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    }>,
   ): Promise<Readonly<{ content: string; contentType: string; filename: string }>> {
     context.authorization.require(PERMISSION_ID.GUILD_WAR_HISTORY_EDIT);
     const rows = await this.dependencies.store.exportHistory(filters);
@@ -706,11 +725,15 @@ export class GuildWarService {
       action: "init",
       context: [],
     });
-    await this.dependencies.store.createActive({ id, eventId, warName, actorUserId, now: context.now, audit });
-    const created = await this.dependencies.store.getByEvent(eventId);
-    if (!created) throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Failed to initialize guild war" });
-    if (created.war.status !== "active") throw eventHistoryConflict(created.war.id);
-    return created;
+    const created = await this.dependencies.store.createActive({ id, eventId, warName, actorUserId, now: context.now, audit });
+    if (created) {
+      if (created.war.status !== "active") throw eventHistoryConflict(created.war.id);
+      return created;
+    }
+    const raced = await this.dependencies.store.getByEvent(eventId);
+    if (!raced) throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Failed to initialize guild war" });
+    if (raced.war.status !== "active") throw eventHistoryConflict(raced.war.id);
+    return raced;
   }
 
   private async requireHistory(warId: string): Promise<GuildWarAggregate> {
@@ -833,13 +856,9 @@ function historyCsv(rows: readonly GuildWarRecord[]): string {
     war.enemyStats?.kills, war.enemyStats?.towers, war.enemyStats?.base_hp, war.enemyStats?.credits, war.enemyStats?.distance,
     war.createdBy, war.updatedBy, war.createdAt, war.updatedAt,
   ]);
-  return [headers, ...values].map((row) => row.map(csvCell).join(",")).join("\r\n");
-}
-
-function csvCell(value: unknown): string {
-  let text = value === null || value === undefined ? "" : String(value);
-  if (/^[=+\-@]/.test(text)) text = `'${text}`;
-  return `"${text.replace(/"/g, '""')}"`;
+  return [headers, ...values]
+    .map((row) => row.map((value) => formatCsvCell(value, { alwaysQuote: true })).join(","))
+    .join("\r\n");
 }
 
 function rounded(value: number, digits: number): number {

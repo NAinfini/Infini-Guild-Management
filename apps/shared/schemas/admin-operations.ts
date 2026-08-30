@@ -18,6 +18,14 @@ export const ADMIN_OPERATION_MEDIA_STATES = [
   "deleting",
 ] as const;
 
+export const ADMIN_OPERATION_JOB_SCHEDULES = [
+  "quarter-hourly",
+  "half-hourly",
+  "hourly-media",
+  "hourly-cleanup",
+  "daily",
+] as const;
+
 const timestampSchema = z.string().datetime({ offset: true });
 const countSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 
@@ -50,7 +58,7 @@ export const adminOperationLeaseSchema = z.discriminatedUnion("state", [
 
 export const adminOperationScheduledJobSchema = z.object({
   name: adminOperationJobNameSchema,
-  schedule: z.enum(["quarter-hourly", "daily"]),
+  schedule: z.enum(ADMIN_OPERATION_JOB_SCHEDULES),
   status: adminOperationJobStatusSchema,
   started_at: timestampSchema.nullable(),
   finished_at: timestampSchema.nullable(),

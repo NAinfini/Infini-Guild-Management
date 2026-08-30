@@ -67,8 +67,8 @@ describe("Drizzle schema and core migration parity", () => {
         database,
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
       );
-      expect(configs).toHaveLength(66);
-      expect(new Set(expectedTableNames).size).toBe(66);
+      expect(configs).toHaveLength(68);
+      expect(new Set(expectedTableNames).size).toBe(68);
       expect(actualTableNames).toEqual(expectedTableNames);
 
       for (const config of configs) {

@@ -131,7 +131,7 @@ export function createAuthRoutes(dependencies: AuthRoutesDependencies): Hono<Htt
     const input = await parseJsonBody(context.req.raw, registerSchema, "Invalid registration payload");
     await consume(dependencies.rateLimiter, "register", clientIdentifier(context));
     const result = await dependencies.service.register(request, {
-      inviteToken: context.req.param("inviteCode"),
+      inviteCode: context.req.param("inviteCode"),
       loginName: input.login_name,
       displayName: input.display_name,
       password: input.password,

@@ -1,5 +1,3 @@
-import { type PushMessage } from "@guild/shared";
-import type { PushEntityType } from "@guild/shared/constants/push-hints";
 import { IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
@@ -8,13 +6,11 @@ import { useTranslation } from "react-i18next";
 import { setI18nLocale } from "../../i18n";
 import { canAccessAdmin, userCanAccessAdmin } from "../../utils/permissions";
 import { ViewingAsProvider } from "../../context/ViewingAsContext";
-import { useNotificationSync } from "../../hooks/useNotificationSync";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { queryKeys } from "../../api/query-keys";
 import { logout as requestLogout } from "../../services/AuthService";
 import { fetchRoles } from "../../services/AdminService";
 import { useAuthStore } from "../../stores/auth";
-import { useNotificationStore } from "../../stores/notifications";
 import { usePreferencesStore } from "../../stores/preferences";
 import { useSiteConfigStore } from "../../stores/site-config";
 import {
@@ -24,7 +20,7 @@ import {
 } from "../../session-transition";
 import { isExternalViewSearch } from "../../utils/external-view";
 import { notifyWarning } from "../../utils/notifications";
-import { currentReturnTo, isSafeReturnTo } from "../../utils/auth-navigation";
+import { currentReturnTo } from "../../utils/auth-navigation";
 import { AppErrorOverlay } from "../shared/AppErrorOverlay";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { VisualThemeScene } from "../shared/VisualThemeArtwork";
@@ -43,30 +39,14 @@ import {
   findPortalRoute,
   groupPortalRoutes,
   PORTAL_ROUTES,
-  type PortalRouteMetadata,
 } from "./route-metadata";
 import {
   AdminContextNavigationProvider,
   useAdminContextNavigationModel,
 } from "./AdminContextNavigation";
+import { useAppShellPushNotifications } from "./useAppShellPushNotifications";
+import { resolveVisualPageScene } from "./resolve-visual-scene";
 import "./AppShell.css";
-
-const ENTITY_QUERY_KEYS = {
-  announcement: [queryKeys.announcements.all],
-  event: [queryKeys.events.all, queryKeys.dashboard.all, queryKeys.guildWar.events()],
-  wiki: [queryKeys.wiki.all],
-  gallery: [queryKeys.gallery.all],
-  storage: [queryKeys.storage.all],
-  guild_war: [queryKeys.guildWar.all],
-  member_profile: [queryKeys.users.all, queryKeys.myProfile.all],
-  member_badge: [queryKeys.users.all, queryKeys.myProfile.all],
-  site_config: [queryKeys.siteConfig.all],
-} satisfies Record<PushEntityType, readonly (readonly string[])[]>;
-
-// Push messages arrive in bursts (batch admin actions, reconnect catch-up).
-// Invalidating per message refetches the same queries once per burst entry,
-// so invalidations collect for this long and flush as a single round.
-const PUSH_INVALIDATION_WINDOW_MS = 300;
 function normalizeViewingAs(role: string | null, isExternalView: boolean): string {
   if (isExternalView) {
     return "external";
@@ -122,9 +102,12 @@ function AppShellContent() {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
 
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const shellLocation = useRouterState({
+    select: (state) => state.resolvedLocation ?? state.location,
+  });
+  const pathname = shellLocation.pathname;
   const activeRoute = useMemo(() => findPortalRoute(pathname), [pathname]);
-  const searchStr = useRouterState({ select: (state) => state.location.searchStr });
+  const searchStr = shellLocation.searchStr;
   const isExternalView = isExternalViewSearch(searchStr);
   const isMobile = useMediaQuery(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`) ?? false;
   const usesCompactNavigation = useMediaQuery(`(max-width: ${COMPACT_NAV_BREAKPOINT_PX}px)`) ?? false;
@@ -148,8 +131,7 @@ function AppShellContent() {
     || activeRoute.to === "/__not-found__"
     || passwordChangeOnly;
   const locale = usePreferencesStore((s) => s.locale);
-  const notificationFeatures = useNotificationStore((state) => state.features);
-  const { markFeatureAsRead } = useNotificationStore.getState();
+  const sessionRefreshFailureMessageRef = useRef(t);
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [permissionBanner, setPermissionBanner] = useState<string | null>(null);
   const [viewingAs, setViewingAs] = useState<string>(() =>
@@ -159,6 +141,10 @@ function AppShellContent() {
   useEffect(() => {
     void setI18nLocale(locale);
   }, [locale]);
+
+  useEffect(() => {
+    sessionRefreshFailureMessageRef.current = t;
+  }, [t]);
 
   useEffect(() => {
     setViewingAs(normalizeViewingAs(user?.role ?? null, isExternalView));
@@ -175,37 +161,28 @@ function AppShellContent() {
     };
   }, []);
 
+  const expirePushSession = useCallback(() => {
+    if (!useAuthStore.getState().user || window.location.pathname === "/login") return;
+    transitionSession(queryClient, null);
+    void navigate({
+      to: "/login",
+      search: {
+        reason: "expired",
+        returnTo: currentReturnTo(),
+      },
+    });
+  }, [navigate, queryClient]);
+
   useEffect(() => {
-    const onUnauthorized = (event: Event) => {
-      const hadSession = Boolean(useAuthStore.getState().user);
-      if (!hadSession) return;
-
-      const detail = (event as CustomEvent<{ returnTo?: string }>).detail;
-      const returnTo = isSafeReturnTo(detail?.returnTo) ? detail.returnTo : currentReturnTo();
-      if (window.location.pathname === "/login") {
-        return;
-      }
-      transitionSession(queryClient, null);
-      void navigate({
-        to: "/login",
-        search: {
-          reason: "expired",
-          returnTo,
-        },
-      });
-    };
-
     const onForbidden = () => {
       setPermissionBanner(t("nav.permissionDenied"));
     };
 
-    window.addEventListener("guild-api-unauthorized", onUnauthorized as EventListener);
     window.addEventListener("guild-api-forbidden", onForbidden as EventListener);
     return () => {
-      window.removeEventListener("guild-api-unauthorized", onUnauthorized as EventListener);
       window.removeEventListener("guild-api-forbidden", onForbidden as EventListener);
     };
-  }, [navigate, queryClient, t]);
+  }, [t]);
 
   useEffect(() => installSessionSynchronization({
     queryClient,
@@ -221,67 +198,23 @@ function AppShellContent() {
     if (!useAuthStore.getState().user || sessionRevalidationRef.current) return;
     const request = revalidateSessionSnapshot(queryClient)
       .catch(() => {
-        notifyWarning(t("admin:message.sessionRefreshFailed"));
+        notifyWarning(sessionRefreshFailureMessageRef.current("admin:message.sessionRefreshFailed"));
       })
       .finally(() => {
         sessionRevalidationRef.current = null;
       });
     sessionRevalidationRef.current = request;
-  }, [queryClient, t]);
+  }, [queryClient]);
 
   useEffect(() => {
-    revalidateSession();
     window.addEventListener("focus", revalidateSession);
     return () => window.removeEventListener("focus", revalidateSession);
   }, [revalidateSession, user?.id]);
 
-  const pendingInvalidationsRef = useRef(new Map<string, readonly unknown[]>());
-  const invalidationTimerRef = useRef<number | null>(null);
-  useEffect(() => () => {
-    if (invalidationTimerRef.current !== null) window.clearTimeout(invalidationTimerRef.current);
-  }, []);
-
-  const queueInvalidations = useCallback(
-    (keys: readonly (readonly unknown[])[]) => {
-      for (const key of keys) pendingInvalidationsRef.current.set(JSON.stringify(key), key);
-      invalidationTimerRef.current ??= window.setTimeout(() => {
-        invalidationTimerRef.current = null;
-        const pending = [...pendingInvalidationsRef.current.values()];
-        pendingInvalidationsRef.current.clear();
-        for (const queryKey of pending) void queryClient.invalidateQueries({ queryKey });
-      }, PUSH_INVALIDATION_WINDOW_MS);
-    },
-    [queryClient],
-  );
-
-  const handlePushMessage = useCallback(
-    (message: PushMessage) => {
-      if (message.type === "entity_changed") {
-        queueInvalidations([queryKeys.cmdk.all, ...(ENTITY_QUERY_KEYS[message.entity_type] ?? [])]);
-      }
-      if (message.type === "announcement_published") {
-        queueInvalidations([queryKeys.announcements.all]);
-      }
-      if (message.type === "inbox_changed") {
-        queueInvalidations([queryKeys.notifications.all]);
-      }
-    },
-    [queueInvalidations],
-  );
-
-  const handleNotificationConnected = useCallback(() => {
-    void queryClient.invalidateQueries();
-  }, [queryClient]);
-
-  const handleNotificationUnauthorized = useCallback(() => {
-    window.dispatchEvent(new CustomEvent("guild-api-unauthorized"));
-  }, []);
-
-  useNotificationSync({
+  useAppShellPushNotifications({
+    queryClient,
     enabled: Boolean(user) && sessionScope === "normal",
-    onMessage: handlePushMessage,
-    onConnected: handleNotificationConnected,
-    onUnauthorized: handleNotificationUnauthorized,
+    onUnauthorized: expirePushSession,
   });
 
   const logoutMutation = useMutation({
@@ -314,7 +247,7 @@ function AppShellContent() {
         if (item.featureFlag && !features[item.featureFlag]) {
           return false;
         }
-        if (isExternalView && (item.to === "/profile" || item.to === "/admin")) {
+        if (isExternalView && item.requiresSession) {
           return false;
         }
         if (item.requiresSession && !user) {
@@ -352,36 +285,6 @@ function AppShellContent() {
     [visiblePortalNavItems],
   );
 
-  const notificationState = useMemo(
-    () => ({
-      announcements: notificationFeatures.announcements.hasNew,
-      members: notificationFeatures.members.hasNew,
-    }),
-    [notificationFeatures.announcements.hasNew, notificationFeatures.members.hasNew],
-  );
-
-  const navHasNew = useCallback(
-    (item: PortalRouteMetadata) =>
-      item.feature === "announcements"
-        ? notificationState.announcements
-        : item.feature === "members"
-          ? notificationState.members
-          : false,
-    [notificationState],
-  );
-
-  const markFeatureAsReadForPath = useCallback(
-    (to: string) => {
-      if (to === "/announcements") {
-        markFeatureAsRead("announcements");
-      }
-      if (to === "/roster") {
-        markFeatureAsRead("members");
-      }
-    },
-    [markFeatureAsRead],
-  );
-
   const portalSidebarGroups = useMemo(
     () => groupPortalRoutes(visiblePortalNavItems).map((group) => ({
       ...group,
@@ -389,14 +292,20 @@ function AppShellContent() {
         id: route.to,
         labelKey: route.labelKey,
         icon: route.icon,
-        isNew: navHasNew(route),
       })),
     })),
-    [navHasNew, visiblePortalNavItems],
+    [visiblePortalNavItems],
   );
   const sidebarNavGroups = adminNavigation.isAdminContext ? adminNavigation.sidebarGroups : portalSidebarGroups;
   const selectedNavKey = adminNavigation.isAdminContext ? adminNavigation.activeTab : activeRoute.to;
   const activeNavigationRoute = adminNavigation.isAdminContext ? adminNavigation.activeRoute : activeRoute;
+  const visualScene = resolveVisualPageScene({
+    baseScene: activeRoute.visualScene,
+    pathname,
+    searchStr,
+    adminTab: adminNavigation.activeTab,
+    isExternalView,
+  });
   const activePageTitle = t(activeNavigationRoute.labelKey);
   const activePageIcon = activeNavigationRoute.icon;
   const previousPathnameRef = useRef(pathname);
@@ -424,7 +333,6 @@ function AppShellContent() {
         to: item.to,
         label: t(item.labelKey),
         icon: item.icon,
-        isNew: navHasNew(item),
       }));
   const compactMoreItems = adminNavigation.isAdminContext
     ? adminNavigation.bottomItems.slice(4)
@@ -432,7 +340,6 @@ function AppShellContent() {
       to: item.to,
       label: t(item.labelKey),
       icon: item.icon,
-      isNew: navHasNew(item),
       groupLabel: t(group.labelKey),
     })));
 
@@ -485,16 +392,16 @@ function AppShellContent() {
       <a href="#main-content" className="app-skip-link">{t("nav.skipToContent", "Skip to content")}</a>
       <div
         className="app-shell-root"
-        data-visual-scene={activeRoute.visualScene}
+        data-visual-scene={visualScene}
         data-compact-navigation={usesCompactNavigation || undefined}
         style={{ "--app-sidebar-width": `${sidebarWidth}px` } as CSSProperties}
       >
         <AppErrorOverlay />
 
-        {activeRoute.visualScene ? (
+        {visualScene ? (
           <VisualThemeScene
             className="app-shell__scene"
-            variant={activeRoute.visualScene}
+            variant={visualScene}
             loading="eager"
             fetchPriority="low"
           />
@@ -512,7 +419,6 @@ function AppShellContent() {
                 adminNavigation.navigateContextItem(item.id);
                 return;
               }
-              markFeatureAsReadForPath(item.id);
               void navigate({ to: item.id as never });
             }}
             onReturnToPortal={adminNavigation.isAdminContext ? () => void navigate({ to: "/dashboard" }) : undefined}
@@ -531,13 +437,17 @@ function AppShellContent() {
           isHeaderCompact={isHeaderCompact}
           activePageTitle={activePageTitle}
           activePageIcon={activePageIcon}
-          visualScene={activeRoute.visualScene}
+          visualScene={visualScene}
           user={user}
           onLogout={logout}
           onLoginClick={() => void navigate({ to: "/login" })}
         />
 
-        <main id="main-content" className={`app-content ${activeRoute.visualScene ? "app-content--with-scene" : ""} ${usesCompactNavigation ? "app-content-mobile" : ""}`}>
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className={`app-content ${visualScene ? "app-content--with-scene" : ""} ${usesCompactNavigation ? "app-content-mobile" : ""}`}
+        >
           <div className="app-main">
             {isExternalView ? (
               <ShellBanner status="neutral">
@@ -558,7 +468,7 @@ function AppShellContent() {
                 {permissionBanner}
               </ShellBanner>
             ) : null}
-            <div key={pathname} className="app-route-container" data-content-width={activeRoute.contentWidth}>
+            <div className="app-route-container" data-content-width={activeRoute.contentWidth}>
               <Outlet />
             </div>
           </div>
@@ -569,7 +479,6 @@ function AppShellContent() {
             pathname={pathname}
             mainItems={compactMainItems}
             moreItems={compactMoreItems}
-            onNavigate={adminNavigation.isAdminContext ? undefined : markFeatureAsReadForPath}
           />
         ) : null}
       </div>

@@ -43,11 +43,6 @@ export type DashboardWarMvp = {
   value: number;
 };
 
-export type DashboardMemberStatsResponse = {
-  active_member_count: number;
-  total_member_count: number;
-};
-
 export type DashboardEventsResponse = {
   active_events_count: number;
   featured_events: DashboardEvent[];
@@ -60,10 +55,6 @@ export type DashboardWarsResponse = {
   recent_wars: ExternalDashboardWar[];
   recent_war_mvps?: Array<DashboardWarMvp[] | null>;
 };
-
-export function fetchDashboardMemberStats(): Promise<DashboardMemberStatsResponse> {
-  return apiRequest<DashboardMemberStatsResponse>("/api/dashboard/members");
-}
 
 export function fetchDashboardEvents(options?: { externalView?: boolean }): Promise<DashboardEventsResponse> {
   const suffix = options?.externalView ? "?external_view=true" : "";

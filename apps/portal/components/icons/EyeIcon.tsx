@@ -10,7 +10,7 @@ export interface EyeIconHandle {
   stopAnimation: () => void;
 }
 
-interface EyeIconProps extends HTMLAttributes<HTMLDivElement> {
+interface EyeIconProps extends HTMLAttributes<HTMLSpanElement> {
   size?: number;
 }
 
@@ -28,7 +28,7 @@ const EyeIcon = forwardRef<EyeIconHandle, EyeIconProps>(
   ({ onMouseEnter, onMouseLeave, className, size = 28, ...props }, ref) => {
     const controls = useAnimation();
     const isControlledRef = useRef(false);
-    const wrapperRef = useParentInteractiveHover(controls, isControlledRef);
+    const wrapperRef = useParentInteractiveHover<HTMLSpanElement>(controls, isControlledRef);
 
     useImperativeHandle(ref, () => {
       isControlledRef.current = true;
@@ -39,26 +39,26 @@ const EyeIcon = forwardRef<EyeIconHandle, EyeIconProps>(
     });
 
     const handleMouseEnter = useCallback(
-      (e: React.MouseEvent<HTMLDivElement>) => {
+      (e: React.MouseEvent<HTMLSpanElement>) => {
         if (isControlledRef.current) { onMouseEnter?.(e); } else { controls.start("animate"); }
       },
       [controls, onMouseEnter],
     );
 
     const handleMouseLeave = useCallback(
-      (e: React.MouseEvent<HTMLDivElement>) => {
+      (e: React.MouseEvent<HTMLSpanElement>) => {
         if (isControlledRef.current) { onMouseLeave?.(e); } else { controls.start("normal"); }
       },
       [controls, onMouseLeave],
     );
 
     return (
-      <div ref={wrapperRef} className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
+      <span ref={wrapperRef} className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
         <svg fill="none" height={size} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width={size} xmlns="http://www.w3.org/2000/svg">
           <motion.path animate={controls} d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" initial="normal" variants={EYE_VARIANTS} />
           <motion.circle animate={controls} cx="12" cy="12" initial="normal" r="3" variants={PUPIL_VARIANTS} />
         </svg>
-      </div>
+      </span>
     );
   },
 );

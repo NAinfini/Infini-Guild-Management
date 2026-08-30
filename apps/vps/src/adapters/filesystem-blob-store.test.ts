@@ -1,10 +1,24 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+  type FileHandle,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { blobInventoryConformance, blobStoreConformance } from "@guild/kernel/testing";
 import { FilesystemBlobStore } from "./filesystem-blob-store.js";
+
+const POSIX_FILE_MODES = process.platform !== "win32";
 
 function bytesStream(bytes: Uint8Array, chunkSize = bytes.byteLength || 1): ReadableStream<Uint8Array> {
   let offset = 0;
@@ -95,7 +109,7 @@ describe("FilesystemBlobStore", () => {
   });
 
   it("does not publish a missing object when streamed content fails digest validation", async () => {
-    const { store } = await fixture();
+    const { root, store } = await fixture();
     const original = new TextEncoder().encode("original");
     const originalHash = createHash("sha256").update(original).digest("hex");
     const replacement = new TextEncoder().encode("replacement");
@@ -107,6 +121,119 @@ describe("FilesystemBlobStore", () => {
     })).rejects.toThrow("sha256");
 
     await expect(store.get("media/item.bin")).resolves.toBeNull();
+    await expect(readdir(path.join(root, ".infini-guild-blob-temp-v1"))).resolves.toEqual([]);
+  });
+
+  it("syncs directory entries after success, failure cleanup, and a write conflict", async () => {
+    const { root, store } = await fixture();
+    const probe = await open(root, "r");
+    const prototype = Object.getPrototypeOf(probe) as { sync: FileHandle["sync"] };
+    const original = prototype.sync;
+    const syncedDirectories: boolean[] = [];
+    const syncSpy = vi.spyOn(prototype, "sync").mockImplementation(async function (this: FileHandle) {
+      syncedDirectories.push((await this.stat()).isDirectory());
+      return await original.call(this);
+    });
+    await probe.close();
+
+    try {
+      await put(store, "media/durable.txt");
+      expect(syncedDirectories.filter(Boolean)).toHaveLength(2);
+
+      syncedDirectories.length = 0;
+      await put(store, "media/durable.txt");
+      expect(syncedDirectories.filter(Boolean)).toHaveLength(1);
+
+      syncedDirectories.length = 0;
+      await store.delete("media/durable.txt");
+      expect(syncedDirectories.filter(Boolean)).toHaveLength(1);
+
+      syncedDirectories.length = 0;
+      const invalid = new TextEncoder().encode("invalid");
+      await expect(store.putIfAbsent("media/invalid.txt", {
+        body: bytesStream(invalid),
+        size: invalid.byteLength,
+        contentType: "text/plain",
+        sha256: "0".repeat(64),
+      })).rejects.toThrow(/sha256/i);
+      expect(syncedDirectories.filter(Boolean)).toHaveLength(1);
+
+      syncedDirectories.length = 0;
+      let arrivals = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const bytes = new TextEncoder().encode("same immutable bytes");
+      const sha256 = createHash("sha256").update(bytes).digest("hex");
+      const input = () => {
+        let delivered = false;
+        return {
+          body: new ReadableStream<Uint8Array>(
+            {
+              async pull(controller) {
+                if (delivered) return;
+                delivered = true;
+                arrivals += 1;
+                if (arrivals === 2) release();
+                await gate;
+                controller.enqueue(bytes);
+                controller.close();
+              },
+            },
+            { highWaterMark: 0 },
+          ),
+          size: bytes.byteLength,
+          contentType: "text/plain",
+          sha256,
+        };
+      };
+      await Promise.all([
+        store.putIfAbsent("media/conflict.txt", input()),
+        store.putIfAbsent("media/conflict.txt", input()),
+      ]);
+      expect(syncedDirectories.filter(Boolean)).toHaveLength(4);
+    } finally {
+      syncSpy.mockRestore();
+    }
+  });
+
+  it("bounds crash-temp recovery and never inventories or removes unrelated files", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "guild-blobs-"));
+    roots.push(root);
+    const tempDirectory = path.join(root, ".infini-guild-blob-temp-v1");
+    await mkdir(tempDirectory);
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1_000);
+    const staleNames = Array.from(
+      { length: 20 },
+      (_, index) => `.igb-00000000-0000-4000-8000-${index.toString().padStart(12, "0")}.pending`,
+    );
+    for (const name of staleNames) {
+      const file = path.join(tempDirectory, name);
+      await writeFile(file, "stale");
+      await utimes(file, old, old);
+    }
+    const recent = ".igb-00000000-0000-4000-8000-999999999999.pending";
+    const ordinary = "ordinary.tmp";
+    await writeFile(path.join(tempDirectory, recent), "active");
+    await writeFile(path.join(tempDirectory, ordinary), "ordinary");
+    await utimes(path.join(tempDirectory, ordinary), old, old);
+
+    const store = new FilesystemBlobStore(root);
+    await expect(store.listPrefix({ prefix: "", limit: 10 })).resolves.toEqual({
+      objects: [],
+      nextCheckpoint: null,
+    });
+    await put(store, "media/recovered.txt");
+
+    const remaining = await readdir(tempDirectory);
+    expect(remaining.filter((name) => staleNames.includes(name))).toHaveLength(4);
+    expect(remaining).toEqual(expect.arrayContaining([recent, ordinary]));
+    await expect(store.listPrefix({ prefix: "", limit: 10 })).resolves.toMatchObject({
+      objects: [expect.objectContaining({ key: "media/recovered.txt" })],
+      nextCheckpoint: null,
+    });
+    await expect(store.head(`${path.basename(tempDirectory)}/hidden`)).rejects.toThrow(/reserved/i);
   });
 
   it("lists lexicographic prefix pages across directories", async () => {
@@ -173,6 +300,31 @@ describe("FilesystemBlobStore", () => {
   it("can require an existing blob root for read-only operations", async () => {
     const root = path.join(tmpdir(), `guild-blobs-missing-${crypto.randomUUID()}`);
     expect(() => new FilesystemBlobStore(root, { createRoot: false })).toThrow(/does not exist/i);
+  });
+
+  it.runIf(POSIX_FILE_MODES)("keeps the blob root, generated directories, and object files private", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "guild-blobs-"));
+    roots.push(root);
+    await chmod(root, 0o755);
+    const store = new FilesystemBlobStore(root);
+
+    await put(store, "media/nested/item.txt");
+
+    expect((await stat(root)).mode & 0o777).toBe(0o700);
+    expect((await stat(path.join(root, "media"))).mode & 0o777).toBe(0o700);
+    expect((await stat(path.join(root, "media", "nested"))).mode & 0o777).toBe(0o700);
+    expect((await stat(path.join(root, "media", "nested", "item.txt"))).mode & 0o777).toBe(0o600);
+  });
+
+  it.runIf(POSIX_FILE_MODES)("tightens only the existing blob hierarchy used by a read", async () => {
+    const { root, store } = await fixture();
+    const parent = path.join(root, "media", "nested");
+    await put(store, "media/nested/item.txt");
+    await chmod(parent, 0o755);
+
+    await expect(store.head("media/nested/item.txt")).resolves.toMatchObject({ key: "media/nested/item.txt" });
+
+    expect((await stat(parent)).mode & 0o777).toBe(0o700);
   });
 
   it("stops a bounded page before a later unrelated subtree", async () => {

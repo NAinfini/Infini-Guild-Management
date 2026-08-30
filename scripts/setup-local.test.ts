@@ -5,11 +5,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parseSetupArguments, setupLocal } from "./setup-local.mjs";
 
 const temporaryDirectories: string[] = [];
-const secrets = {
-  inviteToken: "invite-secret-0123456789abcdef0123456789",
-  auditDownload: "audit-secret-0123456789abcdef0123456789",
-};
-
 async function createFixture() {
   const root = await mkdtemp(join(tmpdir(), "infini-setup-"));
   temporaryDirectories.push(root);
@@ -22,14 +17,11 @@ async function createFixture() {
   );
   await writeFile(
     join(root, "apps", "cloudflare", ".dev.vars.example"),
-    "IG_INVITE_TOKEN_SECRET=replace-with-at-least-32-random-bytes\n"
-      + "IG_AUDIT_DOWNLOAD_SECRET=replace-with-at-least-32-random-bytes\n",
+    "# optional local variables\n",
   );
   await writeFile(
     join(root, "scripts", "templates", "vps.env.example"),
-    "IG_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173\n"
-      + "IG_INVITE_TOKEN_SECRET=replace-with-at-least-32-random-bytes\n"
-      + "IG_AUDIT_DOWNLOAD_SECRET=replace-with-at-least-32-random-bytes\n",
+    "IG_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173\n",
   );
   return root;
 }
@@ -46,9 +38,9 @@ describe("local setup", () => {
     expect(() => parseSetupArguments(["--runtime", "worker"])).toThrow(/cloudflare|vps/);
   });
 
-  it("creates Cloudflare config and two distinct ignored secrets", async () => {
+  it("creates Cloudflare config and its optional local variables file", async () => {
     const root = await createFixture();
-    const result = await setupLocal({ root, runtime: "cloudflare", secrets });
+    const result = await setupLocal({ root, runtime: "cloudflare" });
 
     expect(result.created).toEqual([
       "apps/cloudflare/wrangler.jsonc",
@@ -58,26 +50,23 @@ describe("local setup", () => {
     expect(config).toContain('"IG_PUBLIC_URL":"http://localhost:5173"');
     expect(config).toContain('"IG_ALLOWED_ORIGINS":"http://localhost:5173"');
     const variables = await readFile(join(root, "apps", "cloudflare", ".dev.vars"), "utf8");
-    expect(variables).toContain(`IG_INVITE_TOKEN_SECRET=${secrets.inviteToken}`);
-    expect(variables).toContain(`IG_AUDIT_DOWNLOAD_SECRET=${secrets.auditDownload}`);
+    expect(variables).toBe("# optional local variables\n");
   });
 
   it("creates a VPS env file from the VPS template", async () => {
     const root = await createFixture();
-    const result = await setupLocal({ root, runtime: "vps", secrets });
+    const result = await setupLocal({ root, runtime: "vps" });
 
     expect(result.created).toEqual(["apps/vps/.env"]);
     const variables = await readFile(join(root, "apps", "vps", ".env"), "utf8");
     expect(variables).toContain("IG_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173");
-    expect(variables).toContain(`IG_INVITE_TOKEN_SECRET=${secrets.inviteToken}`);
-    expect(variables).toContain(`IG_AUDIT_DOWNLOAD_SECRET=${secrets.auditDownload}`);
   });
 
   it("does not overwrite existing runtime configuration", async () => {
     const root = await createFixture();
     await writeFile(join(root, "apps", "vps", ".env"), "existing config");
 
-    const result = await setupLocal({ root, runtime: "vps", secrets });
+    const result = await setupLocal({ root, runtime: "vps" });
 
     expect(result.kept).toEqual(["apps/vps/.env"]);
     expect(await readFile(join(root, "apps", "vps", ".env"), "utf8")).toBe("existing config");

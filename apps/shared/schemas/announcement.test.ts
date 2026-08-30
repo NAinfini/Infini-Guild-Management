@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   announcementAttachmentUploadResponseSchema,
+  announcementEtag,
   announcementSchema,
   announcementSummarySchema,
   announcementImageUploadResponseSchema,
@@ -12,6 +13,13 @@ import { createWikiArticleSchema, updateWikiArticleSchema } from "./wiki";
 const mediaId = "media1234567890abcdef";
 
 describe("announcement contracts", () => {
+  it("derives one stable aggregate ETag from the announcement revision", () => {
+    expect(announcementEtag({
+      id: "announcement-1",
+      updated_at: "2026-08-09T12:00:00.000Z",
+    })).toBe('"announcement-announcement-1-2026-08-09T12:00:00.000Z"');
+  });
+
   it("applies create defaults without accepting upload-owned media fields", () => {
     expect(
       createAnnouncementSchema.parse({
@@ -22,6 +30,7 @@ describe("announcement contracts", () => {
     ).toEqual({
       title: "Maintenance",
       body_json: '{"type":"doc","content":[]}',
+      category: "announcement",
       pinned: false,
       status: "draft",
       attachment_media_ids: [],
@@ -64,7 +73,9 @@ describe("announcement contracts", () => {
     const summary = {
       id: "announcement-1",
       title: "Maintenance",
+      category: "announcement",
       pinned: true,
+      view_count: 12,
       status: "published",
       publish_at: "2026-07-29T00:00:00.000Z",
       expires_at: null,
@@ -73,6 +84,8 @@ describe("announcement contracts", () => {
       updated_by: null,
       created_at: "2026-07-29T00:00:00.000Z",
       updated_at: "2026-07-29T00:00:00.000Z",
+      excerpt: "Planned maintenance starts after guild war.",
+      preview_media_id: null,
       author: { id: "author-1", display_name: "Guild Master", avatar_media_id: null },
     };
     expect(announcementSummarySchema.parse(summary)).toEqual(summary);
@@ -94,11 +107,11 @@ describe("announcement contracts", () => {
       expires_at: "2026-07-29T00:00:00.000Z",
       attachment: {
         media_id: mediaId,
-        name: "schedule.xlsx",
-        content_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        name: "strategy.guildpack",
+        content_type: "application/octet-stream",
         byte_size: 2048,
       },
-    }).attachment.name).toBe("schedule.xlsx");
+    }).attachment.name).toBe("strategy.guildpack");
   });
 
   it("rejects malformed media IDs", () => {
@@ -129,4 +142,33 @@ describe("announcement contracts", () => {
       expect(updateWikiArticleSchema.safeParse({ body_json }).success).toBe(false);
     },
   );
+
+  it("rejects a hand-crafted opener link in announcement and wiki API payloads", () => {
+    const body_json = JSON.stringify({
+      type: "doc",
+      content: [{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "Unsafe link",
+          marks: [{
+            type: "link",
+            attrs: {
+              href: "https://external.example/guide",
+              target: "_blank",
+              rel: "opener",
+              class: null,
+            },
+          }],
+        }],
+      }],
+    });
+
+    expect(createAnnouncementSchema.safeParse({ title: "Unsafe", body_json }).success).toBe(false);
+    expect(createWikiArticleSchema.safeParse({
+      title: "Unsafe",
+      category_id: "category-1",
+      body_json,
+    }).success).toBe(false);
+  });
 });

@@ -12,7 +12,7 @@ Describe the user-facing problem and the smallest change that fixes it.
 - [ ] No real `apps/cloudflare/wrangler.jsonc`, account/resource identifiers, or unreviewed production binding changes are included
 - [ ] Shared schemas, Drizzle schema, SQL, Cloudflare, VPS, and portal consumers are synchronized where applicable
 - [ ] User-facing text and shared documentation are present in both English and Chinese
-- [ ] `CHANGELOG.md` is updated for notable behavior, security, data, or operational changes
+- [ ] `docs/CHANGELOG.md` is updated for notable behavior, security, data, or operational changes
 
 Commands/results:
 

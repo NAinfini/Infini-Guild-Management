@@ -6,7 +6,7 @@ import {
   type RequestContext,
 } from "@guild/kernel";
 import { MediaRangeError, type MediaRangeRequest } from "@guild/server/modules/media";
-import type { MediaVariant } from "@guild/shared";
+import type { MediaEntityType, MediaVariant } from "@guild/shared";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { createHttpErrorHandler } from "../../core/error-handler.js";
@@ -17,19 +17,36 @@ import { createMediaRoutes } from "./media-routes.js";
 const bytes = new TextEncoder().encode("0123456789");
 
 describe("media HTTP route", () => {
-  it("shares only public non-range media at the edge", async () => {
+  it("shares only public non-range media and never stores protected responses", async () => {
     const publicMedia = buildApp("public");
     const publicResponse = await publicMedia.app.request("/api/media/media-1/view");
-    expect(publicResponse.headers.get("Cache-Control")).toBe("public, max-age=3600, s-maxage=60");
+    expect(publicResponse.headers.get("Cache-Control")).toBe("public, max-age=3600, s-maxage=60, must-revalidate");
+
+    const publicLogo = buildApp("public", undefined, ["site_config"]);
+    const logoResponse = await publicLogo.app.request("/api/media/media-1/view");
+    expect(logoResponse.headers.get("Cache-Control"))
+      .toBe("public, max-age=31536000, s-maxage=60, immutable");
 
     const ranged = await publicMedia.app.request("/api/media/media-1/view", {
       headers: { Range: "bytes=0-2" },
     });
-    expect(ranged.headers.get("Cache-Control")).toBe("private, max-age=3600");
+    expect(ranged.headers.get("Cache-Control")).toBe("private, no-store");
 
-    const privateMedia = buildApp("private");
-    const privateResponse = await privateMedia.app.request("/api/media/media-1/view");
-    expect(privateResponse.headers.get("Cache-Control")).toBe("private, max-age=3600");
+    const authenticatedMedia = buildApp("authenticated");
+    const authenticatedGet = await authenticatedMedia.app.request("/api/media/media-1/view");
+    const authenticatedHead = await authenticatedMedia.app.request("/api/media/media-1/view", { method: "HEAD" });
+    const authenticatedRange = await authenticatedMedia.app.request("/api/media/media-1/view", {
+      headers: { Range: "bytes=0-2" },
+    });
+    expect(authenticatedGet.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(authenticatedHead.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(authenticatedRange.headers.get("Cache-Control")).toBe("private, no-store");
+
+    const privateAttachment = buildApp("private", "guild-guide.pdf");
+    const privateGet = await privateAttachment.app.request("/api/media/media-1/full");
+    const privateHead = await privateAttachment.app.request("/api/media/media-1/full", { method: "HEAD" });
+    expect(privateGet.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(privateHead.headers.get("Cache-Control")).toBe("private, no-store");
   });
 
   it("pushes explicit and suffix ranges into the media service", async () => {
@@ -57,13 +74,22 @@ describe("media HTTP route", () => {
     expect(read).toHaveBeenCalledWith(expect.anything(), "media-1", "view", { kind: "suffix", length: 3 });
   });
 
-  it("uses one read for conditional GET and head without opening a body for HEAD", async () => {
+  it("answers a matching conditional GET from metadata without opening a body", async () => {
     const { app, head, read } = buildApp();
     const cached = await app.request("/api/media/media-1/full", {
       headers: { "If-None-Match": "\"media-etag\"" },
     });
     expect(cached.status).toBe(304);
-    expect(head).not.toHaveBeenCalled();
+    expect(head).toHaveBeenCalledOnce();
+    expect(read).not.toHaveBeenCalled();
+
+    head.mockClear();
+    const changed = await app.request("/api/media/media-1/full", {
+      headers: { "If-None-Match": "\"older-etag\"" },
+    });
+    expect(changed.status).toBe(200);
+    expect(await changed.text()).toBe("0123456789");
+    expect(head).toHaveBeenCalledOnce();
     expect(read).toHaveBeenCalledOnce();
 
     head.mockClear();
@@ -131,6 +157,7 @@ describe("media HTTP route", () => {
 function buildApp(
   audience: "public" | "authenticated" | "private" = "public",
   downloadName?: string,
+  entityTypes: readonly MediaEntityType[] = ["announcement"],
 ) {
   const metadata: BlobMetadata = {
     key: "media/media-1/full.webp",
@@ -140,7 +167,7 @@ function buildApp(
     etag: "media-etag",
     lastModified: "2026-08-09T12:00:00.000Z",
   };
-  const head = vi.fn(async () => ({ metadata, audience, ...(downloadName ? { downloadName } : {}) }));
+  const head = vi.fn(async () => ({ metadata, audience, entityTypes, ...(downloadName ? { downloadName } : {}) }));
   const read = vi.fn(async (
     _context: RequestContext,
     _mediaId: string,
@@ -162,6 +189,7 @@ function buildApp(
         ...(range ? { range: { offset, length, total: bytes.byteLength } } : {}),
       } satisfies BlobRead,
       audience,
+      entityTypes,
       ...(downloadName ? { downloadName } : {}),
     };
   });

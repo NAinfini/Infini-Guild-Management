@@ -11,8 +11,8 @@ import type {
   pushMessageSchema,
 } from "../schemas/notifications";
 import type {
-  importantNoticeAcknowledgementSchema,
   importantNoticeActiveSchema,
+  importantNoticeAudienceRoleSchema,
   importantNoticeSchema,
 } from "../schemas/important-notices";
 import type { userSchema, memberProfileSchema } from "../schemas/user";
@@ -118,4 +118,4 @@ export type InboxNotificationListResponse = z.infer<typeof inboxNotificationList
 export type PushMessage = z.infer<typeof pushMessageSchema>;
 export type ImportantNotice = z.infer<typeof importantNoticeSchema>;
 export type ImportantNoticeActive = z.infer<typeof importantNoticeActiveSchema>;
-export type ImportantNoticeAcknowledgement = z.infer<typeof importantNoticeAcknowledgementSchema>;
+export type ImportantNoticeAudienceRole = z.infer<typeof importantNoticeAudienceRoleSchema>;

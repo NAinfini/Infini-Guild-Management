@@ -1,4 +1,5 @@
 import type {
+  CatalogRevisionEntry,
   ClassTag,
   MemberAbsence,
   MemberAvailability,
@@ -25,6 +26,7 @@ export type MemberUserRecord = Readonly<{
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  revisionToken: string;
   /** 最近一次成功登录；从未登录或对外视图为 null。 */
   lastLoginAt: string | null;
 }>;
@@ -42,6 +44,7 @@ export type MemberProfileRecord = Readonly<{
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  revisionToken: string;
 }>;
 
 export type MemberMediaRecord = Readonly<{
@@ -61,12 +64,22 @@ export type MemberWireRecord = Readonly<{
   user: User;
   profile: MemberProfile;
   badges: readonly UserBadge[];
+  edit_revisions?: Readonly<{
+    user_revision_token: string;
+    profile_revision_token: string;
+  }>;
+}>;
+
+export type MemberProfileUpdate = Readonly<{
+  profile: MemberProfile;
+  revisionToken: string;
 }>;
 
 export type MemberView = Readonly<{
   record: MemberRecord;
   media: MemberMediaRecord;
   projection: MemberProjection;
+  includeEditRevisions?: boolean;
 }>;
 
 export type MemberTarget = Readonly<{
@@ -128,6 +141,22 @@ export type ClassCatalogStoreRecord = Readonly<{
 
 export type ClassTagStoreRecord = Omit<ClassTag, "usage_count">;
 
+export type CatalogCreateResult<TRecord> =
+  | Readonly<{ outcome: "created"; record: TRecord }>
+  | Readonly<{ outcome: "conflict" | "limit_reached" }>;
+
+export type ClassIconMutationSnapshot = Readonly<{
+  iconType: "vector" | "image";
+  vectorIcon: ClassVectorIconId | null;
+  updatedAt: string;
+  iconMediaId: string | null;
+}>;
+
+export type BadgeAssignmentMutationResult = Readonly<{
+  changed: number;
+  updatedAt: string | null;
+}>;
+
 export type BadgeAssignmentRecord = Readonly<{
   badgeId: string;
   userId: string;
@@ -138,6 +167,11 @@ export type BadgeAssignmentRecord = Readonly<{
 }>;
 
 export type BadgeAssignmentCursor = Readonly<{ display_name: string; userId: string }>;
+
+export type ClassIconUpdate = Readonly<{
+  expectedUpdatedAt: string;
+  updatedAt: string;
+}>;
 
 export interface AbsencePolicyReader {
   readAbsencePolicy(): Promise<AbsencePolicy>;
@@ -154,14 +188,54 @@ export interface MemberMediaPort {
     userId: string,
     uploads: readonly ImageUpload[],
     audit: AuditMutation,
+    expectedProfileRevisionToken: string,
   ): Promise<readonly string[]>;
-  deleteProfileImages(context: RequestContext, userId: string, mediaIds: readonly string[], audit: AuditMutation): Promise<number>;
-  uploadAvatar(context: RequestContext, userId: string, upload: ImageUpload, audit: AuditMutation): Promise<string>;
-  deleteAvatar(context: RequestContext, userId: string, audit: AuditMutation): Promise<void>;
-  uploadAudio(context: RequestContext, userId: string, upload: AudioUpload, audit: AuditMutation): Promise<string>;
-  deleteAudio(context: RequestContext, userId: string, audit: AuditMutation): Promise<void>;
-  uploadClassIcon(context: RequestContext, classId: string, upload: ImageUpload, audit: AuditMutation): Promise<string>;
-  deleteClassIcon(context: RequestContext, classId: string, audit: AuditMutation): Promise<void>;
+  deleteProfileImages(
+    context: RequestContext,
+    userId: string,
+    mediaIds: readonly string[],
+    audit: AuditMutation,
+    expectedProfileRevisionToken: string,
+  ): Promise<number>;
+  uploadAvatar(
+    context: RequestContext,
+    userId: string,
+    upload: ImageUpload,
+    audit: AuditMutation,
+    expectedProfileRevisionToken: string,
+  ): Promise<string>;
+  deleteAvatar(
+    context: RequestContext,
+    userId: string,
+    audit: AuditMutation,
+    expectedProfileRevisionToken: string,
+  ): Promise<boolean>;
+  uploadAudio(
+    context: RequestContext,
+    userId: string,
+    upload: AudioUpload,
+    audit: AuditMutation,
+    expectedProfileRevisionToken: string,
+  ): Promise<string>;
+  deleteAudio(
+    context: RequestContext,
+    userId: string,
+    audit: AuditMutation,
+    expectedProfileRevisionToken: string,
+  ): Promise<boolean>;
+  uploadClassIcon(
+    context: RequestContext,
+    classId: string,
+    upload: ImageUpload,
+    update: ClassIconUpdate,
+    audit: AuditMutation,
+  ): Promise<ClassIconMutationSnapshot>;
+  deleteClassIcon(
+    context: RequestContext,
+    classId: string,
+    update: ClassIconUpdate,
+    audit: AuditMutation,
+  ): Promise<ClassIconMutationSnapshot>;
   listClassIcons(classIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
 }
 
@@ -207,16 +281,21 @@ export interface MembersStore {
     vectorIcon: string;
     sortOrder?: number;
     now: string;
-  }>, audit: AuditMutation): Promise<"created" | "conflict" | "limit_reached">;
+  }>, audit: AuditMutation): Promise<CatalogCreateResult<ClassCatalogStoreRecord>>;
   updateClass(id: string, input: Readonly<{
     label?: string;
     color?: string;
     vectorIcon?: string;
     sortOrder?: number;
+    expectedUpdatedAt: string;
     now: string;
-  }>, audit: AuditMutation): Promise<"updated" | "not_found" | "conflict">;
-  reorderClasses(ids: readonly string[], now: string, audit: AuditMutation): Promise<"updated" | "stale_order">;
-  deleteClass(id: string, audit: AuditMutation): Promise<"deleted" | "not_found" | "referenced">;
+  }>, audit: AuditMutation): Promise<"updated" | "not_found" | "stale" | "conflict">;
+  reorderClasses(input: Readonly<{
+    order: readonly string[];
+    expected: readonly CatalogRevisionEntry[];
+    next: readonly CatalogRevisionEntry[];
+  }>, audit: AuditMutation): Promise<"updated" | "stale_order">;
+  deleteClass(id: string, expectedUpdatedAt: string, audit: AuditMutation): Promise<"deleted" | "not_found" | "stale" | "referenced">;
 
   listClassTags(): Promise<readonly ClassTagStoreRecord[]>;
   findClassTag(id: string): Promise<ClassTagStoreRecord | null>;
@@ -226,15 +305,25 @@ export interface MembersStore {
     classIds: readonly string[];
     sortOrder?: number;
     now: string;
-  }>, audit: AuditMutation): Promise<"created" | "conflict" | "limit_reached">;
+  }>, audit: AuditMutation): Promise<CatalogCreateResult<ClassTagStoreRecord>>;
   updateClassTag(id: string, input: Readonly<{
     label?: string;
     classIds?: readonly string[];
     sortOrder?: number;
+    expectedUpdatedAt: string;
     now: string;
-  }>, audit: AuditMutation): Promise<"updated" | "not_found" | "conflict">;
-  reorderClassTags(ids: readonly string[], now: string, audit: AuditMutation): Promise<"updated" | "stale_order">;
-  deleteClassTag(id: string, audit: AuditMutation): Promise<boolean>;
+  }>, audit: AuditMutation): Promise<"updated" | "not_found" | "stale" | "conflict">;
+  reorderClassTags(input: Readonly<{
+    order: readonly string[];
+    expected: readonly CatalogRevisionEntry[];
+    next: readonly CatalogRevisionEntry[];
+  }>, audit: AuditMutation): Promise<"updated" | "stale_order">;
+  deleteClassTag(
+    id: string,
+    expectedUpdatedAt: string,
+    expectedUsageCount: number,
+    audit: AuditMutation,
+  ): Promise<"deleted" | "not_found" | "stale">;
 
   listBadges(): Promise<readonly MemberBadge[]>;
   findBadge(id: string): Promise<MemberBadge | null>;
@@ -246,21 +335,37 @@ export interface MembersStore {
     description: string | null;
     sortOrder?: number;
     now: string;
-  }>, audit: AuditMutation): Promise<"created" | "conflict" | "limit_reached">;
+  }>, audit: AuditMutation): Promise<CatalogCreateResult<MemberBadge>>;
   updateBadge(id: string, input: Readonly<{
     name?: string;
     labelHtml?: string;
     color?: string;
     description?: string | null;
     sortOrder?: number;
+    expectedUpdatedAt: string;
     now: string;
-  }>, audit: AuditMutation): Promise<"updated" | "not_found" | "conflict">;
-  reorderBadges(ids: readonly string[], now: string, audit: AuditMutation): Promise<"updated" | "stale_order">;
-  deleteBadge(id: string, audit: AuditMutation): Promise<boolean>;
+  }>, audit: AuditMutation): Promise<"updated" | "not_found" | "stale" | "conflict">;
+  reorderBadges(input: Readonly<{
+    order: readonly string[];
+    expected: readonly CatalogRevisionEntry[];
+    next: readonly CatalogRevisionEntry[];
+  }>, audit: AuditMutation): Promise<"updated" | "stale_order">;
+  deleteBadge(id: string, expectedUpdatedAt: string, audit: AuditMutation): Promise<"deleted" | "not_found" | "stale">;
   listBadgeAssignments(
     badgeId: string,
     query: Readonly<{ limit: number; cursor: BadgeAssignmentCursor | null }>,
   ): Promise<Readonly<{ records: readonly BadgeAssignmentRecord[]; hasMore: boolean }>>;
-  assignBadge(badgeId: string, userIds: readonly string[], actorUserId: string, now: string, audit: AuditMutation): Promise<number>;
-  unassignBadge(badgeId: string, userIds: readonly string[], audit: AuditMutation): Promise<number>;
+  assignBadge(
+    badgeId: string,
+    userIds: readonly string[],
+    actorUserId: string,
+    updatedAt: string,
+    audit: AuditMutation,
+  ): Promise<BadgeAssignmentMutationResult>;
+  unassignBadge(
+    badgeId: string,
+    userIds: readonly string[],
+    updatedAt: string,
+    audit: AuditMutation,
+  ): Promise<BadgeAssignmentMutationResult>;
 }

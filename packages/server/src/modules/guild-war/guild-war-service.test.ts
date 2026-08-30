@@ -153,6 +153,8 @@ describe("GuildWarService authorization and concurrency", () => {
     }])).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
     expect(moveMembers.mock.calls[0]![0]).toMatchObject({
       expectedVersion: 1,
+      expectedEventUpdatedAt: NOW,
+      updatedEventAt: "2026-08-09T12:00:00.001Z",
       audit: {
         action: "move_member",
         payload: {
@@ -287,10 +289,102 @@ describe("GuildWarService authorization and concurrency", () => {
     expect(getHistoryMany).toHaveBeenCalledWith(["war-1"]);
   });
 
-  it("clears nullable history fields without resolving a null event", async () => {
-    const updateHistory = vi.fn().mockResolvedValue(true);
+  it("uses the atomic active snapshot instead of fetching after initialization", async () => {
+    const created = aggregate("active", 0);
+    const getByEvent = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error("post-commit active fetch must not run"));
+    const createActive = vi.fn().mockResolvedValue(created);
+    const replaceRoster = vi.fn().mockResolvedValue(true);
+    const fixture = service(fakeStore({ getByEvent, createActive, replaceRoster }));
+
+    await expect(fixture.value.saveTeams(context(["guildwar.teams.edit"]), {
+      event_id: "event-1",
+      teams: [],
+      pool_members: [],
+    })).resolves.toEqual({ ok: true });
+
+    expect(createActive).toHaveBeenCalledOnce();
+    expect(getByEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the atomic history snapshot instead of fetching after an update", async () => {
+    const current = aggregate("concluded");
+    const updated = { ...current.war, warName: "Renamed", rosterVersion: 2, updatedBy: "admin-1" };
+    const getById = vi.fn()
+      .mockResolvedValueOnce(current)
+      .mockRejectedValueOnce(new Error("post-commit history fetch must not run"));
+    const updateHistory = vi.fn().mockResolvedValue(updated);
+    const fixture = service(fakeStore({ getById, updateHistory }));
+
+    await expect(fixture.value.updateHistory(context(["guildwar.history.edit"]), "war-1", {
+      war_name: "Renamed",
+    })).resolves.toEqual(updated);
+
+    expect(updateHistory).toHaveBeenCalledOnce();
+    expect(getById).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires the history revision captured by a full member-stats editor", async () => {
+    const current = aggregate("concluded");
+    const updateMemberStats = vi.fn().mockResolvedValue(current.teams[0]!.members);
     const fixture = service(fakeStore({
-      getById: vi.fn().mockResolvedValue(aggregate("concluded")),
+      getById: vi.fn().mockResolvedValue(current),
+      updateMemberStats,
+    }));
+    const updates = [{ user_id: "user-1", data: { stats: { kills: 9, deaths: 2 } } }];
+    const request = context(["guildwar.history.edit"]);
+
+    await expect(fixture.value.updateMemberStats(request, "war-1", updates))
+      .rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    await expect(fixture.value.updateMemberStats(
+      request,
+      "war-1",
+      updates,
+      '"history-war-1-0"',
+    )).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    expect(updateMemberStats).not.toHaveBeenCalled();
+
+    await expect(fixture.value.updateMemberStats(
+      request,
+      "war-1",
+      updates,
+      '"history-war-1-1"',
+    )).resolves.toHaveLength(1);
+    expect(updateMemberStats).toHaveBeenCalledWith(expect.objectContaining({
+      warId: "war-1",
+      expectedVersion: 1,
+    }));
+  });
+
+  it("uses the atomic member snapshot instead of fetching after stat updates", async () => {
+    const current = aggregate("concluded");
+    const updatedMember = {
+      ...current.teams[0]!.members[0]!,
+      stats: { kills: 9, deaths: 2 },
+    };
+    const getById = vi.fn()
+      .mockResolvedValueOnce(current)
+      .mockRejectedValueOnce(new Error("post-commit member fetch must not run"));
+    const updateMemberStats = vi.fn().mockResolvedValue([updatedMember]);
+    const fixture = service(fakeStore({ getById, updateMemberStats }));
+
+    await expect(fixture.value.updateMemberStats(
+      context(["guildwar.history.edit"]),
+      "war-1",
+      [{ user_id: "user-1", data: { stats: { kills: 9, deaths: 2 } } }],
+      '"history-war-1-1"',
+    )).resolves.toEqual([updatedMember]);
+
+    expect(updateMemberStats).toHaveBeenCalledOnce();
+    expect(getById).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears nullable history fields without resolving a null event", async () => {
+    const current = aggregate("concluded");
+    const updateHistory = vi.fn().mockResolvedValue({ ...current.war, rosterVersion: 2 });
+    const fixture = service(fakeStore({
+      getById: vi.fn().mockResolvedValue(current),
       updateHistory,
     }));
 

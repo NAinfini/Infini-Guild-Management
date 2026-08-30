@@ -93,10 +93,8 @@ vi.mock("../../components/shared/ImageGridEditor", () => ({
 
 function EventEditHarness({
   updateEvent,
-  uploadEventImages,
 }: {
   updateEvent: ReturnType<typeof vi.fn>;
-  uploadEventImages: ReturnType<typeof vi.fn>;
 }) {
   const attachmentService = new AttachmentService();
   const eventService = new EventService({
@@ -104,7 +102,6 @@ function EventEditHarness({
     queryClient: { invalidateQueries: vi.fn().mockResolvedValue(undefined) } as unknown as QueryClient,
     createEvent: vi.fn(),
     updateEvent: updateEvent as never,
-    uploadEventImages: uploadEventImages as never,
   });
   const [attachmentItems, setAttachmentItems] = useState<Array<{ id: string; src?: string; alt?: string; file?: File }>>([
     { id: "exist1234567890abcdef", src: "/api/media/exist1234567890abcdef/view", alt: "Existing" },
@@ -150,6 +147,7 @@ function EventEditHarness({
           void eventService.saveEvent({
             mode: "edit",
             editingEventId: "evt-1",
+            expectedUpdatedAt: "2026-03-22T20:00:00.000Z",
             eventType: "social",
             title: "Guild Review",
             description: "",
@@ -169,28 +167,26 @@ function EventEditHarness({
 }
 
 describe("event edit flow", () => {
-  it("uploads new files and preserves existing attachments during edit", async () => {
+  it("sends new files with the revision-protected event edit", async () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:new");
-    const uploadEventImages = vi.fn().mockResolvedValue({
-      media_ids: ["newid1234567890abcdef"],
-    });
     const updateEvent = vi.fn().mockResolvedValue({ id: "evt-1" });
     const user = userEvent.setup();
 
-    render(<EventEditHarness updateEvent={updateEvent} uploadEventImages={uploadEventImages} />);
+    render(<EventEditHarness updateEvent={updateEvent} />);
 
     await user.click(screen.getByRole("button", { name: "Upload Images" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      expect(uploadEventImages).toHaveBeenCalledWith("evt-1", [expect.any(File)]);
       expect(updateEvent).toHaveBeenCalledWith(
         "evt-1",
         expect.objectContaining({
-          attachments: ["exist1234567890abcdef", "newid1234567890abcdef"],
+          attachments: ["exist1234567890abcdef"],
+          expected_updated_at: "2026-03-22T20:00:00.000Z",
           pinned: true,
           signup_locked: true,
         }),
+        [expect.any(File)],
       );
     });
   });

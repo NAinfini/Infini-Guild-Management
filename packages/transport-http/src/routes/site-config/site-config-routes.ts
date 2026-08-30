@@ -3,9 +3,11 @@ import {
   adminSiteConfigResponseSchema,
   analyticsSettingsSchema,
   publicSiteConfigSchema,
+  siteConfigRevisionTokenSchema,
   siteAnalyticsSettingsSchema,
   updateSiteConfigSchema,
 } from "@guild/shared";
+import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { Hono } from "hono";
 import type { HttpEnv } from "../../core/http-env.js";
 import { requestContext } from "../../core/http-env.js";
@@ -45,10 +47,15 @@ export function createAdminSiteConfigRoutes(
   )));
 
   routes.post("/logo", async (context) => {
-    const uploads = await parseImageUploads(await parseFormData(context.req.raw));
+    const request = requestContext(context);
+    request.authorization.require(PERMISSION_ID.ADMIN_SITE_CONFIG_MANAGE);
+    const form = await parseFormData(context.req.raw);
+    const expectedRevision = siteConfigRevisionTokenSchema.safeParse(form.get("expected_revision_token"));
+    if (!expectedRevision.success) throw validation("Invalid site configuration revision");
+    const uploads = await parseImageUploads(form);
     if (uploads.length !== 1) throw validation("Exactly one logo is required");
     return context.json(adminSiteConfigResponseSchema.parse(
-      await dependencies.service.uploadLogo(requestContext(context), uploads[0]!),
+      await dependencies.service.uploadLogo(request, uploads[0]!, expectedRevision.data),
     ));
   });
 

@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { assertBlobPutMatches, type BlobMetadata, type BlobPutInput, type BlobRead, type BlobStore } from "@guild/kernel";
-import { AuditArchiveService } from "@guild/server/modules/audit";
+import { AUDIT_ARCHIVE_CLEANUP_BATCH_SIZE, AuditArchiveService } from "@guild/server/modules/audit";
 import { createSchedulerAuditFactory } from "@guild/server/modules/jobs";
 import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteAuditArchiveStore } from "./audit-archive-store.js";
@@ -15,6 +15,7 @@ const databases: DatabaseSync[] = [];
 class MemoryBlobs implements BlobStore {
   readonly objects = new Map<string, Readonly<{ bytes: Uint8Array; metadata: BlobMetadata }>>();
   failPuts = 0;
+  failDeletes = 0;
   metadataMismatch: "key" | "size" | "contentType" | "sha256" | null = null;
 
   async putIfAbsent(key: string, input: BlobPutInput): Promise<BlobMetadata> {
@@ -61,6 +62,10 @@ class MemoryBlobs implements BlobStore {
   }
 
   async delete(key: string | readonly string[]): Promise<void> {
+    if (this.failDeletes > 0) {
+      this.failDeletes -= 1;
+      throw new Error("injected blob delete failure");
+    }
     for (const item of typeof key === "string" ? [key] : key) this.objects.delete(item);
   }
 }
@@ -90,14 +95,52 @@ describe("audit archive", () => {
       .toThrow(/only be deleted after archive finalization/i);
     expect(() => harness.database.prepare("UPDATE audit_archives SET month = '2026-07' WHERE status = 'ready'").run())
       .toThrow(/ready audit archives are immutable/i);
-    expect(() => harness.database.prepare("DELETE FROM audit_archives WHERE status = 'ready'").run())
-      .toThrow(/ready audit archives cannot be deleted/i);
-
     expect(await archive(harness.service, CUTOFF, "2026-08-09T12:01:00.000Z"))
       .toMatchObject({ archived: 5 });
     expect(scalar(harness.database, "SELECT COUNT(*) FROM audit_log")).toBe(3);
     expect(scalar(harness.database, `SELECT COUNT(*) FROM audit_log
       WHERE actor_id = 'system:scheduler' AND subject_type = 'audit_archive_export'`)).toBe(2);
+  });
+
+  it("deletes expired archive blobs before their manifests and records the retention action", async () => {
+    const harness = setup(2, false);
+    await archive(harness.service, CUTOFF, NOW);
+
+    await expect(harness.store.inspectExpiredBacklog(NOW)).resolves.toEqual({
+      status: "known",
+      pendingCount: 1,
+      countPrecision: "exact",
+      oldestPendingAt: NOW,
+    });
+    const retentionPlan = harness.database.prepare(`EXPLAIN QUERY PLAN
+      SELECT id FROM audit_archives
+      WHERE status = 'ready' AND completed_at <= ?
+      ORDER BY completed_at, id LIMIT ?`).all(NOW, 100) as Array<Record<string, unknown>>;
+    expect(retentionPlan.some((row) => String(row.detail ?? "").includes("idx_audit_archives_retention"))).toBe(true);
+    const cleanupAudit = (archiveId: string, rowCount: number) => createSchedulerAuditFactory(
+      `audit-retention-${archiveId}`,
+      NOW,
+    )({
+      subjectType: "audit_archive_export",
+      subjectId: archiveId,
+      action: "delete",
+      context: [
+        { field: "reason", value: { type: "code", value: "retention_expired" } },
+        { field: "row_count", value: { type: "number", value: rowCount } },
+      ],
+    });
+
+    harness.blobs.failDeletes = 1;
+    await expect(harness.service.cleanupExpired(NOW, AUDIT_ARCHIVE_CLEANUP_BATCH_SIZE, cleanupAudit))
+      .rejects.toThrow("injected blob delete failure");
+    expect(scalar(harness.database, "SELECT COUNT(*) FROM audit_archives WHERE status = 'ready'")).toBe(1);
+
+    await expect(harness.service.cleanupExpired(NOW, AUDIT_ARCHIVE_CLEANUP_BATCH_SIZE, cleanupAudit)).resolves.toEqual({ deleted: 1 });
+    expect(harness.blobs.objects.size).toBe(0);
+    expect(scalar(harness.database, "SELECT COUNT(*) FROM audit_archives")).toBe(0);
+    expect(scalar(harness.database, `SELECT COUNT(*) FROM audit_log
+      WHERE subject_type = 'audit_archive_export' AND action = 'delete'`)).toBe(1);
+    await expect(harness.store.inspectExpiredBacklog(NOW)).resolves.toMatchObject({ pendingCount: 0 });
   });
 
   it("leaves hot rows intact across blob and finalize failures and resumes the same pending claim", async () => {
@@ -238,6 +281,7 @@ function setup(oldRows: number, addRecent: boolean) {
     CREATE UNIQUE INDEX ux_audit_archives_object_key ON audit_archives(object_key);
     CREATE UNIQUE INDEX ux_audit_archives_one_pending ON audit_archives(status) WHERE status = 'pending';
     CREATE INDEX idx_audit_archives_month_ready ON audit_archives(month, status, created_at, id);
+    CREATE INDEX idx_audit_archives_retention ON audit_archives(status, completed_at, id);
     CREATE TABLE audit_archive_items (
       archive_id TEXT NOT NULL REFERENCES audit_archives(id) ON DELETE CASCADE,
       audit_id TEXT NOT NULL REFERENCES audit_log(id) ON DELETE CASCADE,

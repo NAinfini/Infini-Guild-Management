@@ -57,12 +57,12 @@ describe("EventService", () => {
       queryClient: { invalidateQueries } as unknown as QueryClient,
       createEvent,
       updateEvent: vi.fn(),
-      uploadEventImages: vi.fn(),
     });
 
     await service.saveEvent({
       mode: "create",
       editingEventId: null,
+      expectedUpdatedAt: null,
       eventType: "social",
       title: "  Guild Run  ",
       description: "  Bring food  ",
@@ -94,28 +94,25 @@ describe("EventService", () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.dashboard.all });
   });
 
-  it("updates events by uploading new files and merging existing attachment media IDs", async () => {
+  it("updates events with new files and existing attachment media IDs in one mutation", async () => {
     const newFile = new File(["image"], "new.png", { type: "image/png" });
     const attachmentService = {
       extractNewFiles: vi.fn(() => [newFile]),
       extractExistingMediaIds: vi.fn(() => ["exist1234567890abcdef"]),
     };
     const updateEvent = vi.fn().mockResolvedValue({ id: "evt-1" });
-    const uploadEventImages = vi.fn().mockResolvedValue({
-      media_ids: ["newid1234567890abcdef"],
-    });
     const invalidateQueries = vi.fn().mockResolvedValue(undefined);
     const service = new EventService({
       attachmentService,
       queryClient: { invalidateQueries } as unknown as QueryClient,
       createEvent: vi.fn(),
       updateEvent,
-      uploadEventImages,
     });
 
     await service.saveEvent({
       mode: "edit",
       editingEventId: "evt-1",
+      expectedUpdatedAt: "2026-03-20T12:00:00.000Z",
       eventType: "social",
       title: "War Review",
       description: "",
@@ -133,7 +130,6 @@ describe("EventService", () => {
       ],
     });
 
-    expect(uploadEventImages).toHaveBeenCalledWith("evt-1", [newFile]);
     expect(updateEvent).toHaveBeenCalledWith(
       "evt-1",
       expect.objectContaining({
@@ -144,8 +140,10 @@ describe("EventService", () => {
         pinned: true,
         signup_locked: true,
         auto_archive: false,
-        attachments: ["exist1234567890abcdef", "newid1234567890abcdef"],
+        attachments: ["exist1234567890abcdef"],
+        expected_updated_at: "2026-03-20T12:00:00.000Z",
       }),
+      [newFile],
     );
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.events.all });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.dashboard.all });
@@ -160,13 +158,13 @@ describe("EventService", () => {
       },
       createEvent,
       updateEvent: vi.fn(),
-      uploadEventImages: vi.fn(),
     });
 
     await expect(
       service.saveEvent({
         mode: "create",
         editingEventId: null,
+        expectedUpdatedAt: null,
         eventType: "social",
         title: " ",
         description: "",
@@ -195,12 +193,12 @@ describe("EventService", () => {
       },
       createEvent,
       updateEvent: vi.fn(),
-      uploadEventImages: vi.fn(),
     });
 
     await service.saveEvent({
       mode: "create",
       editingEventId: null,
+      expectedUpdatedAt: null,
       eventType: "poll",
       title: "Next activity?",
       description: "",

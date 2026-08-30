@@ -4,7 +4,6 @@ import {
   emailVerificationChallenges,
   externalIdentities,
   inviteLinks,
-  loginFailures,
   oauthChallenges,
   rolePermissions,
   roles,
@@ -27,10 +26,16 @@ import {
   recurringTemplateWeekdays,
 } from "./events.js";
 import { errorLog } from "./error-log.js";
-import { galleryItems } from "./gallery.js";
+import { galleryItems, galleryLikes } from "./gallery.js";
 import { guildWars, warMembers, warTeams } from "./guild-war.js";
 import { mediaAssets, mediaLinks, mediaVariants } from "./media.js";
-import { importantNoticeAcknowledgements, importantNotices, notificationInbox } from "./notifications.js";
+import {
+  importantNoticeAudienceRoles,
+  importantNoticeReceipts,
+  importantNotices,
+  notificationInbox,
+  notificationPreferences,
+} from "./notifications.js";
 import {
   classCatalog,
   classTagMembers,
@@ -89,15 +94,17 @@ export const appSchema = {
   events,
   externalIdentities,
   galleryItems,
+  galleryLikes,
   guildWars,
   inviteLinks,
-  loginFailures,
   mediaAssets,
   mediaLinks,
   mediaVariants,
-  importantNoticeAcknowledgements,
+  importantNoticeAudienceRoles,
+  importantNoticeReceipts,
   importantNotices,
   notificationInbox,
+  notificationPreferences,
   oauthChallenges,
   memberAbsences,
   memberAvailabilityWindows,

@@ -1,7 +1,12 @@
 import type { AdminRole, InviteLink } from "@guild/shared";
 import { Combobox } from "@base-ui/react/combobox";
-import { AlertTriangleIcon, BanIcon, CircleCheckIcon, CircleXIcon, CopyIcon, DotsIcon, InfoCircleIcon, PlusIcon, SearchIcon, TrashIcon } from "@portal/components/icons";
-import { Badge } from "@portal/components/ui/badge";
+import { PlusIcon, SearchIcon, XIcon } from "@portal/components/icons";
+import {
+  ContentFilterGroup,
+  ContentFilterOption,
+  ContentFilterToolbar,
+} from "@portal/components/shared/ContentFilterToolbar";
+import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import { Button } from "@portal/components/ui/button";
 import {
   Dialog,
@@ -9,98 +14,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@portal/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@portal/components/ui/dropdown-menu";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@portal/components/ui/input-group";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@portal/components/ui/input-group";
 import { Label } from "@portal/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
 import { Skeleton } from "@portal/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
-import { useMediaQuery } from "@portal/hooks/useMediaQuery";
-import {
-  type ColumnDef,
-  getCoreRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
-import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
-import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
-import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
-import { IconLoader2 } from "@tabler/icons-react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useEffectivePermissions } from "../../../hooks/useEffectivePermissions";
-import { formatDateTime } from "../../../utils/datetime";
-import { copyPlainText } from "../../../utils/copy";
-import { resolveInviteStatus, type InviteStatus } from "../../../utils/invite-status";
 import type { InviteLinkStatsSummary } from "../../../services/AdminService";
+import { copyPlainText } from "../../../utils/copy";
+import { AdminInviteTable } from "./AdminInviteTable";
 import { AdminLoadError } from "./AdminLoadError";
 
 type InviteRow = InviteLink;
 type InviteStats = InviteLinkStatsSummary;
-
-function InviteRole({ invite }: { invite: InviteRow }) {
-  return (
-    <span className="flex min-w-0 items-center gap-1.5">
-      <span
-        aria-hidden="true"
-        className="size-3 shrink-0 rounded-full bg-(--role-color) ring-1 ring-foreground/10"
-        style={{ "--role-color": invite.role_color ?? "var(--border-strong)" } as CSSProperties}
-      />
-      <span className="truncate text-sm">{invite.role_name}</span>
-    </span>
-  );
-}
-
-const INVITE_STATUS_PRESENTATION = {
-  revoked: { variant: "destructive", iconClassName: "bg-destructive/10 text-destructive", Icon: AlertTriangleIcon },
-  fullyUsed: { variant: "outline", iconClassName: "bg-muted text-foreground", Icon: CircleXIcon },
-  expired: { variant: "outline", iconClassName: "bg-muted text-foreground", Icon: InfoCircleIcon },
-  active: { variant: "default", iconClassName: "bg-primary/15 text-primary", Icon: CircleCheckIcon },
-} as const satisfies Record<InviteStatus, {
-  variant: "default" | "outline" | "destructive";
-  iconClassName: string;
-  Icon: typeof AlertTriangleIcon;
-}>;
-
-function InviteStatusBadge({ invite }: { invite: InviteRow }) {
-  const { t } = useTranslation("admin");
-  const status = resolveInviteStatus(invite);
-  const { variant, iconClassName, Icon } = INVITE_STATUS_PRESENTATION[status];
-  const label = t(`invite.status.${status}`);
-
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<Badge data-animate-icon-trigger variant={variant} />}>
-        {label}
-      </TooltipTrigger>
-      <TooltipContent className="admin-invite-status-popover max-w-[16.25rem] whitespace-normal">
-        <div className="flex items-start gap-2.5">
-          <span className={`admin-invite-status-icon inline-flex size-8 shrink-0 items-center justify-center rounded-md ${iconClassName}`}>
-            <Icon size={16} />
-          </span>
-          <div className="admin-invite-status-copy">
-            <strong className="block text-sm leading-snug">{label}</strong>
-            <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-              {t(`invite.tooltip.${status}`)}
-            </span>
-          </div>
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
 
 type AdminInviteSectionProps = {
   inviteVisibility: "active" | "expired" | "revoked";
   onInviteVisibilityChange: (value: "active" | "expired" | "revoked") => void;
   onCreateInvite: (
     input: { roleId: string; maxUses: number; expiresAt: string },
-    onSuccess: () => void,
+    onSuccess: (invite: InviteLink) => void,
   ) => void;
   roles: AdminRole[];
   createInvitePending: boolean;
@@ -150,7 +85,7 @@ export function AdminInviteSection({
   const { canManage: canManagePermission } = useEffectivePermissions();
   const isAdmin = canManagePermission(["admin.invite.manage"]);
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const isCompactLayout = useMediaQuery("(max-width: 64em)");
+  const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null);
   const [inviteMaxUses, setInviteMaxUses] = useState(10);
   const [inviteExpiresAt, setInviteExpiresAt] = useState("");
   const [inviteRoleId, setInviteRoleId] = useState<string | null>(null);
@@ -159,6 +94,9 @@ export function AdminInviteSection({
     [roles],
   );
   const selectedInviteRole = inviteRoleOptions.find((role) => role.value === inviteRoleId) ?? null;
+  const createdInviteUrl = createdInviteCode
+    ? `${window.location.origin}/register/${createdInviteCode}`
+    : null;
 
   const resetCreateForm = useCallback(() => {
     setInviteMaxUses(10);
@@ -167,235 +105,49 @@ export function AdminInviteSection({
   }, []);
   const handleOpenCreateModal = useCallback(() => {
     resetCreateForm();
+    setCreatedInviteCode(null);
     setCreateModalOpen(true);
   }, [resetCreateForm]);
   const handleCloseCreateModal = useCallback(() => {
     setCreateModalOpen(false);
+    setCreatedInviteCode(null);
     resetCreateForm();
   }, [resetCreateForm]);
   const handleCreateInvite = useCallback(() => {
-    if (!inviteRoleId) {
-      return;
-    }
+    if (!inviteRoleId) return;
     onCreateInvite(
       { roleId: inviteRoleId, maxUses: inviteMaxUses, expiresAt: inviteExpiresAt },
-      handleCloseCreateModal,
+      (invite) => setCreatedInviteCode(invite.code),
     );
-  }, [handleCloseCreateModal, inviteExpiresAt, inviteMaxUses, inviteRoleId, onCreateInvite]);
-
-  const handleCopyInviteLink = useCallback((row: InviteRow) => {
-    void copyPlainText(`${window.location.origin}/register/${row.code}`);
-  }, []);
-
+  }, [inviteExpiresAt, inviteMaxUses, inviteRoleId, onCreateInvite]);
   const handleRevokeInvite = useCallback((row: InviteRow) => {
-    if (isInviteActionPending(row.id, "revoke") || isInviteActionPending(row.id, "delete")) {
-      return;
-    }
+    if (isInviteActionPending(row.id, "revoke") || isInviteActionPending(row.id, "delete")) return;
     void (async () => {
       const confirmed = await confirm({
         title: t("confirm.revokeInvite.title"),
-        description: t("confirm.revokeInvite.description", { code: row.code }),
+        description: t("confirm.revokeInvite.description"),
         confirmLabel: t("invite.revoke"),
         cancelLabel: t("common:action.cancel"),
         intent: "danger",
       });
-      if (!confirmed) {
-        return;
-      }
-      onRevokeInvite(row.id);
+      if (confirmed) onRevokeInvite(row.id);
     })();
   }, [confirm, isInviteActionPending, onRevokeInvite, t]);
-
   const handleDeleteInvite = useCallback((row: InviteRow) => {
-    if (isInviteActionPending(row.id, "revoke") || isInviteActionPending(row.id, "delete")) {
-      return;
-    }
+    if (isInviteActionPending(row.id, "revoke") || isInviteActionPending(row.id, "delete")) return;
     void (async () => {
       const confirmed = await confirm({
         title: t("confirm.deleteInvite.title"),
-        description: t("confirm.deleteInvite.description", { code: row.code }),
+        description: t("confirm.deleteInvite.description"),
         confirmLabel: t("common:action.delete"),
         cancelLabel: t("common:action.cancel"),
         intent: "danger",
       });
-      if (!confirmed) {
-        return;
-      }
-      onDeleteInvite(row.id);
+      if (confirmed) onDeleteInvite(row.id);
     })();
   }, [confirm, isInviteActionPending, onDeleteInvite, t]);
 
-  const columns = useMemo<ColumnDef<InviteRow, unknown>[]>(() => {
-    const cols: ColumnDef<InviteRow, unknown>[] = [];
-
-    if (isAdmin) {
-      cols.push({
-        header: t("invite.table.code"),
-        id: "code",
-        accessorKey: "code",
-      });
-    }
-
-    cols.push({
-      header: t("invite.table.role"),
-      id: "role",
-      accessorFn: (row) => row.role_name,
-      cell: ({ row }) => <InviteRole invite={row.original} />,
-    });
-
-    cols.push({
-      header: t("invite.table.usage"),
-      id: "usage",
-      accessorFn: (row) => row.used_count / Math.max(row.max_uses, 1),
-      /* 「还剩几次能用」是这张表最该一眼看懂的东西，光给个分数看不出程度。 */
-      cell: ({ row }) => {
-        const used = row.original.used_count;
-        const max = row.original.max_uses;
-        const ratio = max > 0 ? Math.min(100, (used / max) * 100) : 0;
-        return (
-          <span className="admin-invite-usage">
-            <span className="admin-invite-usage__track">
-              <span
-                className={`admin-invite-usage__fill${ratio >= 100 ? " admin-invite-usage__fill--full" : ""}`}
-                style={{ width: `${ratio}%` }}
-              />
-            </span>
-            <span className="admin-invite-usage__value">{used}/{max}</span>
-          </span>
-        );
-      },
-    });
-
-    cols.push({
-      header: t("invite.table.status"),
-      id: "status",
-      enableSorting: false,
-      cell: ({ row }) => <InviteStatusBadge invite={row.original} />,
-    });
-
-    cols.push(
-      {
-        header: t("invite.table.expires"),
-        id: "expires",
-        accessorFn: (row) => row.expires_at ?? "",
-        cell: ({ row }) => formatDateTime(row.original.expires_at),
-      },
-      {
-        header: t("invite.table.created"),
-        id: "created",
-        accessorFn: (row) => row.created_at ?? "",
-        cell: ({ row }) => formatDateTime(row.original.created_at),
-      },
-    );
-
-    if (isAdmin) {
-      cols.push({
-        header: t("invite.table.actions"),
-        id: "actions",
-        enableSorting: false,
-        cell: ({ row }) => {
-          const inactive = isInviteInactive(row.original);
-          const revokePending = isInviteActionPending(row.original.id, "revoke");
-          const deletePending = isInviteActionPending(row.original.id, "delete");
-          const destructivePending = revokePending || deletePending;
-          const inactiveReason = t(`invite.tooltip.${resolveInviteStatus(row.original)}`);
-          // Keep the frequent copy action visible; destructive actions stay in the row menu.
-          return (
-            <div className="flex items-center justify-end gap-1.5">
-              <Tooltip disabled={!inactive}>
-                <TooltipTrigger render={<span data-disabled-tooltip-target={inactive || undefined} />}>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleCopyInviteLink(row.original)}
-                    disabled={inactive}
-                  >
-                    <CopyIcon size={14} data-icon="inline-start" />
-                    {t("invite.copy")}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{inactiveReason}</TooltipContent>
-              </Tooltip>
-              <DropdownMenu>
-                <DropdownMenuTrigger render={(
-                  <Button variant="ghost" size="icon-sm" aria-label={t("invite.table.actions")} />
-                )}>
-                  <DotsIcon size={16} />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-45">
-                  {/* 收进菜单之后同样要说清「为什么点不了」，不能只把它置灰。 */}
-                  <Tooltip disabled={!inactive}>
-                    <TooltipTrigger render={<span data-disabled-tooltip-target={inactive || undefined} />}>
-                      <DropdownMenuItem
-                        disabled={inactive || destructivePending}
-                        onClick={() => handleRevokeInvite(row.original)}
-                      >
-                        {revokePending ? <IconLoader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <BanIcon size={14} />}
-                        {t("invite.revoke")}
-                      </DropdownMenuItem>
-                    </TooltipTrigger>
-                    <TooltipContent side="left">{inactiveReason}</TooltipContent>
-                  </Tooltip>
-                  <DropdownMenuItem
-                    variant="destructive"
-                    disabled={destructivePending}
-                    onClick={() => handleDeleteInvite(row.original)}
-                  >
-                    {deletePending ? <IconLoader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <TrashIcon size={14} />}
-                    {t("invite.delete")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          );
-        },
-      });
-    }
-
-    return cols;
-   
-  }, [
-    handleCopyInviteLink,
-    handleDeleteInvite,
-    handleRevokeInvite,
-    isAdmin,
-    isInviteActionPending,
-    isInviteInactive,
-    t,
-  ]);
-
-  const table = useReactTable({
-    data: inviteRows,
-    columns,
-    enableSorting: false,
-    getCoreRowModel: getCoreRowModel(),
-    getRowId: (row) => row.id,
-  });
-
-  const inviteCountControls = (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <span className="text-sm text-muted-foreground">
-        {t("invite.loadedCount", {
-          loaded: inviteRows.length,
-          total: inviteTotal,
-        })}
-      </span>
-      {hasMoreInvites ? (
-        <Button
-          size="sm"
-          variant="outline"
-          loading={loadingMoreInvites}
-          disabled={loadingMoreInvites}
-          onClick={onLoadMoreInvites}
-        >
-          {t("invite.loadMore")}
-        </Button>
-      ) : null}
-    </div>
-  );
-
   return (
-    /* admin-fill：把 .admin-page__panel 给的高度原样传给下面的表格卡片。 */
     <div className="admin-fill flex flex-col gap-3">
       <ContentFilterToolbar
         search={(
@@ -404,17 +156,25 @@ export function AdminInviteSection({
               <SearchIcon size={14} aria-hidden="true" />
             </InputGroupAddon>
             <InputGroupInput
-              placeholder={t(isAdmin ? "invite.search" : "invite.searchDateOnly")}
-              aria-label={t(isAdmin ? "invite.search" : "invite.searchDateOnly")}
+              placeholder={t("invite.search")}
+              aria-label={t("invite.search")}
               value={inviteSearch}
               onChange={(event) => onInviteSearchChange(event.currentTarget.value)}
             />
+            {inviteSearch ? (
+              <InputGroupAddon align="inline-end">
+                <InputGroupButton aria-label={t("common:action.clear")} onClick={() => onInviteSearchChange("")} size="icon-xs">
+                  <XIcon size={14} aria-hidden="true" />
+                </InputGroupButton>
+              </InputGroupAddon>
+            ) : null}
           </InputGroup>
         )}
         filterControls={(
           <ContentFilterGroup label={t("invite.filter.status")}>
             <RadioGroup
-              className="grid grid-cols-3 gap-2"
+              aria-label={t("invite.filter.status")}
+              className="content-filter-toolbar__option-list content-filter-toolbar__option-list--columns"
               value={inviteVisibility}
               onValueChange={(value) => onInviteVisibilityChange(value as "active" | "expired" | "revoked")}
             >
@@ -423,10 +183,10 @@ export function AdminInviteSection({
                 { value: "expired", label: t("invite.segExpired") },
                 { value: "revoked", label: t("invite.segRevoked") },
               ].map((option) => (
-                <Label key={option.value} className="flex min-h-7 items-center gap-1.5 rounded-md border border-input px-2 text-sm">
+                <ContentFilterOption key={option.value}>
                   <RadioGroupItem value={option.value} />
-                  <span className="min-w-0 truncate">{option.label}</span>
-                </Label>
+                  <span>{option.label}</span>
+                </ContentFilterOption>
               ))}
             </RadioGroup>
           </ContentFilterGroup>
@@ -454,28 +214,17 @@ export function AdminInviteSection({
         </div>
       ) : inviteStats ? (
         <div className="admin-panel admin-stats">
-          <div className="admin-stat">
-            <div className="admin-stat__value">{inviteStats.total}</div>
-            <div className="admin-stat__label">{t("invite.stats.total")}</div>
-          </div>
-          <div className="admin-stat">
-            <div className="admin-stat__value admin-stat__value--ok">{inviteStats.active}</div>
-            <div className="admin-stat__label">{t("invite.stats.active")}</div>
-          </div>
-          <div className="admin-stat">
-            <div className={`admin-stat__value${inviteStats.expired > 0 ? " admin-stat__value--warn" : ""}`}>
-              {inviteStats.expired}
-            </div>
-            <div className="admin-stat__label">{t("invite.stats.expired")}</div>
-          </div>
-          <div className="admin-stat">
-            <div className="admin-stat__value">{inviteStats.revoked}</div>
-            <div className="admin-stat__label">{t("invite.stats.revoked")}</div>
-          </div>
+          <InviteStatistic value={inviteStats.total} label={t("invite.stats.total")} />
+          <InviteStatistic value={inviteStats.active} label={t("invite.stats.active")} className="admin-stat__value--ok" />
+          <InviteStatistic
+            value={inviteStats.expired}
+            label={t("invite.stats.expired")}
+            className={inviteStats.expired > 0 ? "admin-stat__value--warn" : undefined}
+          />
+          <InviteStatistic value={inviteStats.revoked} label={t("invite.stats.revoked")} />
         </div>
       ) : null}
 
-      {/* Table */}
       {inviteLinksLoading ? (
         <div className="flex flex-col gap-2">
           {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-[18px]" />)}
@@ -483,134 +232,20 @@ export function AdminInviteSection({
       ) : null}
       {inviteLinksError ? <AdminLoadError onRetry={onRetryInviteLinks} /> : null}
       {!inviteLinksLoading && !inviteLinksError ? (
-        isCompactLayout ? (
-          <div className="flex flex-col gap-4">
-            <div className="admin-invite-card-list">
-              {inviteRows.map((row) => {
-                const inactive = isInviteInactive(row);
-                const revokePending = isInviteActionPending(row.id, "revoke");
-                const deletePending = isInviteActionPending(row.id, "delete");
-                const destructivePending = revokePending || deletePending;
-                const inactiveReason = t(`invite.tooltip.${resolveInviteStatus(row)}`);
-                return (
-                  <article
-                    key={row.id}
-                    className="admin-panel"
-                    aria-label={t("invite.cardAria")}
-                  >
-                    <div className="admin-invite-card-content">
-                      <div className="flex flex-col gap-4">
-                        <div className="flex items-start justify-between gap-3">
-                          {isAdmin ? (
-                            <div className="admin-invite-card__code-block">
-                              <span className="text-xs text-muted-foreground">{t("invite.table.code")}</span>
-                              <code className="admin-invite-card__code">
-                                {row.code}
-                              </code>
-                            </div>
-                          ) : null}
-                          <InviteStatusBadge invite={row} />
-                        </div>
-
-                        <dl className="admin-invite-card__details">
-                          <div>
-                            <dt>{t("invite.table.role")}</dt>
-                            <dd><InviteRole invite={row} /></dd>
-                          </div>
-                          <div>
-                            <dt>{t("invite.table.usage")}</dt>
-                            <dd>{row.used_count}/{row.max_uses}</dd>
-                          </div>
-                          <div>
-                            <dt>{t("invite.table.expires")}</dt>
-                            <dd>
-                              {row.expires_at ? (
-                                <time dateTime={row.expires_at}>{formatDateTime(row.expires_at)}</time>
-                              ) : formatDateTime(null)}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>{t("invite.table.created")}</dt>
-                            <dd><time dateTime={row.created_at}>{formatDateTime(row.created_at)}</time></dd>
-                          </div>
-                        </dl>
-
-                        {isAdmin ? (
-                          <div className="admin-invite-card__actions">
-                            <Tooltip disabled={!inactive}>
-                              <TooltipTrigger render={<span data-disabled-tooltip-target={inactive || undefined} />}>
-                                <Button
-                                  className="w-full"
-                                  size="lg"
-                                  variant="outline"
-                                  onClick={() => handleCopyInviteLink(row)}
-                                  disabled={inactive}
-                                >
-                                  <CopyIcon size={16} data-icon="inline-start" />
-                                  {t("invite.copy")}
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>{inactiveReason}</TooltipContent>
-                            </Tooltip>
-                            <Tooltip disabled={!inactive}>
-                              <TooltipTrigger render={<span data-disabled-tooltip-target={inactive || undefined} />}>
-                                <Button
-                                  className="w-full"
-                                  size="lg"
-                                  variant="outline"
-                                  loading={revokePending}
-                                  disabled={inactive || destructivePending}
-                                  onClick={() => handleRevokeInvite(row)}
-                                >
-                                  <BanIcon size={16} data-icon="inline-start" />
-                                  {t("invite.revoke")}
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>{inactiveReason}</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger render={<span />}>
-                                <Button
-                                  className="w-full"
-                                  size="lg"
-                                  variant="destructive"
-                                  loading={deletePending}
-                                  disabled={destructivePending}
-                                  onClick={() => handleDeleteInvite(row)}
-                                >
-                                  <TrashIcon size={16} data-icon="inline-start" />
-                                  {t("invite.delete")}
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>{t("invite.delete")}</TooltipContent>
-                            </Tooltip>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-            {inviteCountControls}
-          </div>
-        ) : (
-          <section className="admin-panel admin-table-card admin-table-card--fill">
-            <div className="admin-table-card__scroll">
-              <DataTableAdapter
-                className="admin-table"
-                table={table}
-                appearance="rows"
-                rowHover
-                striped={false}
-              />
-            </div>
-            <div className="admin-table-card__footer">{inviteCountControls}</div>
-          </section>
-        )
+        <AdminInviteTable
+          isAdmin={isAdmin}
+          inviteRows={inviteRows}
+          inviteTotal={inviteTotal}
+          hasMoreInvites={hasMoreInvites}
+          loadingMoreInvites={loadingMoreInvites}
+          onLoadMoreInvites={onLoadMoreInvites}
+          isInviteInactive={isInviteInactive}
+          isInviteActionPending={isInviteActionPending}
+          onRevokeInvite={handleRevokeInvite}
+          onDeleteInvite={handleDeleteInvite}
+        />
       ) : null}
 
-      {/* Create Invite Modal */}
       <Dialog open={createModalOpen} onOpenChange={(open) => { if (!open) handleCloseCreateModal(); }}>
         <DialogContent
           closeLabel={t("common:action.close")}
@@ -621,7 +256,43 @@ export function AdminInviteSection({
           <DialogHeader>
             <DialogTitle>{t("invite.createTitle")}</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-3">
+          {createdInviteUrl ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">{t("invite.createdCodeNotice")}</p>
+              <InputGroup>
+                <InputGroupInput aria-label={t("invite.createdLink")} readOnly value={createdInviteUrl} />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton onClick={() => { void copyPlainText(createdInviteUrl); }}>
+                    {t("invite.copy")}
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
+              <div className="grid gap-1.5">
+                <div className="grid gap-0.5">
+                  <p className="text-sm font-medium text-foreground">{t("invite.createdCode")}</p>
+                  <p className="text-xs text-muted-foreground">{t("invite.manualCodeHint")}</p>
+                </div>
+                <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-2.5">
+                  <code
+                    aria-label={t("invite.createdCode")}
+                    className="min-w-0 flex-1 break-all font-mono text-xs leading-5 text-foreground"
+                  >
+                    {createdInviteCode}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { if (createdInviteCode) void copyPlainText(createdInviteCode); }}
+                  >
+                    {t("invite.copyCode")}
+                  </Button>
+                </div>
+              </div>
+              <Button className="w-full" onClick={handleCloseCreateModal}>{t("common:action.close")}</Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
             <div className="grid gap-2">
               <Label htmlFor="admin-invite-role">{t("invite.role")}</Label>
               <Combobox.Root
@@ -655,7 +326,7 @@ export function AdminInviteSection({
                 </Combobox.Portal>
               </Combobox.Root>
             </div>
-          {/* 两个字段共用一个标签列。各自成行时标签宽度不同，输入框的左边缘会错开。 */}
+            {/* 两个字段共用一个标签列。各自成行时标签宽度不同，输入框的左边缘会错开。 */}
             <div className="admin-invite-form__fields">
               <span className="text-sm text-muted-foreground">{t("invite.maxUses")}</span>
               <input
@@ -686,9 +357,27 @@ export function AdminInviteSection({
               <PlusIcon size={16} data-icon="inline-start" />
               {t("invite.create")}
             </Button>
-          </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function InviteStatistic({
+  value,
+  label,
+  className,
+}: {
+  value: number;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <div className="admin-stat">
+      <div className={`admin-stat__value${className ? ` ${className}` : ""}`}>{value}</div>
+      <div className="admin-stat__label">{label}</div>
     </div>
   );
 }

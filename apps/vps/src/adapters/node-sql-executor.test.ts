@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createAppDatabase } from "@guild/persistence-sqlite";
@@ -6,6 +6,8 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineSqlExecutorConformance } from "@guild/kernel/testing";
 import { NodeSqlExecutor, type NodeSqlExecutorOptions } from "./node-sql-executor.js";
+
+const POSIX_FILE_MODES = process.platform !== "win32";
 
 /* 读池按文件路径开多条连接，:memory: 无法在连接间共享，测试一律走临时文件。 */
 function tempDatabase(): Readonly<{ path: string; cleanup(): void }> {
@@ -167,12 +169,50 @@ describe("NodeSqlExecutor", () => {
     })).rejects.toThrow(/readonly/i);
   });
 
+  it.runIf(POSIX_FILE_MODES)("uses private modes for SQLite and its WAL sidecars", async () => {
+    const database = tempDatabase();
+    cleanup = database.cleanup;
+    const sql = open(database.path);
+    await sql.execute({
+      sql: "CREATE TABLE rows (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
+      method: "run",
+    });
+
+    expect(statSync(path.dirname(database.path)).mode & 0o777).toBe(0o700);
+    expect(statSync(database.path).mode & 0o777).toBe(0o600);
+    for (const sidecar of [`${database.path}-wal`, `${database.path}-shm`]) {
+      expect(existsSync(sidecar)).toBe(true);
+      expect(statSync(sidecar).mode & 0o777).toBe(0o600);
+    }
+  });
+
   it("refuses work after close and keeps close idempotent", async () => {
     const sql = await fixture();
     await sql.close();
     await expect(sql.execute({ sql: "SELECT 1", method: "get" }))
       .rejects.toThrow("SQLite executor is closed");
     await expect(sql.close()).resolves.toBeUndefined();
+  });
+
+  it("waits for failed startup workers to exit before close resolves", async () => {
+    const database = tempDatabase();
+    cleanup = database.cleanup;
+    writeFileSync(database.path, "not a sqlite database");
+    const sql = open(database.path, { readers: 0 });
+
+    await expect(sql.execute({ sql: "SELECT 1", method: "get" }))
+      .rejects.toThrow(/database|disk image|file/i);
+
+    const lane = (sql as unknown as {
+      writer: { exited: Promise<void>; worker: { threadId: number } | null };
+    }).writer;
+    let exited = false;
+    void lane.exited.then(() => { exited = true; });
+
+    await sql.close();
+
+    expect(exited).toBe(true);
+    expect(lane.worker?.threadId).toBe(-1);
   });
 
   it("backs the shared Drizzle sqlite-proxy callback and atomic batch", async () => {

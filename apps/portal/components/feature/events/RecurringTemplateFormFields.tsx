@@ -96,7 +96,7 @@ function TimingFields({ formState, setFormState }: FormFieldsProps) {
       <NativeDateTimeInput label={t("recurring.field.startTime")} type="time" value={startTime} onChange={(event) => { const value = event.currentTarget.value; setFormState((current) => ({ ...current, startTime: value })); }} />
       <div className="rtf-duration-row">
         <div className="rtf-field"><Label htmlFor="recurring-template-duration">{t("recurring.field.duration")}</Label><Input id="recurring-template-duration" type="number" min={0} value={String(durationValue)} onChange={(event) => { const value = event.currentTarget.value; setFormState((current) => ({ ...current, durationValue: Number.parseInt(value, 10) || 0 })); }} /></div>
-        <SelectField id="recurring-template-duration-unit" value={durationUnit} onChange={(value) => setFormState((current) => ({ ...current, durationUnit: value as DurationUnit }))} options={[{ value: "minutes", label: t("recurring.field.durationUnit.minutes") }, { value: "hours", label: t("recurring.field.durationUnit.hours") }]} />
+        <SelectField id="recurring-template-duration-unit" label={t("recurring.field.durationUnitLabel")} value={durationUnit} onChange={(value) => setFormState((current) => ({ ...current, durationUnit: value as DurationUnit }))} options={[{ value: "minutes", label: t("recurring.field.durationUnit.minutes") }, { value: "hours", label: t("recurring.field.durationUnit.hours") }]} />
       </div>
       <div className="rtf-recurrence-divider" />
       <div className="rtf-interval-row">

@@ -3,7 +3,12 @@ import { CalendarEventIcon } from "@portal/components/icons";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
-import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@portal/components/ui/preview-card";
+import {
+  TOOLTIP_CLOSE_DELAY_MS,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@portal/components/ui/tooltip";
 import { memo, useMemo, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { UserCheckOutlined } from "../../utils/icons";
@@ -96,10 +101,10 @@ export const MySignupsCard = memo(function MySignupsCard({
                     const color = eventTypeTagColor(item.event.type);
 
                     return (
-                      <PreviewCard key={item.event.id}>
-                        <PreviewCardTrigger
+                      <Tooltip key={item.event.id}>
+                        <TooltipTrigger
                           delay={350}
-                          closeDelay={80}
+                          closeDelay={TOOLTIP_CLOSE_DELAY_MS}
                           render={(
                             <button
                               type="button"
@@ -114,8 +119,8 @@ export const MySignupsCard = memo(function MySignupsCard({
                             />
                             <span className="signup-box-event-title">{item.event.title}</span>
                             <span className="signup-box-event-time">{formatEventTime(item.event.start_at, i18n.language)}</span>
-                        </PreviewCardTrigger>
-                        <PreviewCardContent side="top" className="signup-event-preview">
+                        </TooltipTrigger>
+                        <TooltipContent variant="card" side="top" className="signup-event-preview">
                           <div className="signup-event-preview__layout">
                             <span
                               className="signup-event-preview__icon"
@@ -143,8 +148,8 @@ export const MySignupsCard = memo(function MySignupsCard({
                               ) : null}
                             </div>
                           </div>
-                        </PreviewCardContent>
-                      </PreviewCard>
+                        </TooltipContent>
+                      </Tooltip>
                     );
                   })
                 )}

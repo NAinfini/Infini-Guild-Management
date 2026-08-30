@@ -2,12 +2,13 @@
  * 职业默认图标。这个数组的顺序就是图标库网格里的顺序，所以按「近战 → 远程 → 施法 →
  * 其它」摆，别按加进来的先后追加——同一类武器散在四处的话，挑图标得整片扫一遍。
  *
- * 新图标必须在 24px 下与现有选项有可辨识差异，避免重复占位。
+ * 新图标必须在 20px 下与现有选项有可辨识差异，避免重复占位。职业图标使用
+ * ClassGlyphIcon.tsx 内的本地、经过授权的实心游戏徽记，不复用通用 UI 图标。
  *
  * 只是加 id 的话不用动数据库：class_catalog.vector_icon 是裸 TEXT，取值范围由
  * apps/shared/schemas/class-catalog.ts 里的 zod enum 管。但每加一个都得配齐三样：
- * apps/portal/components/icons 下的组件、ClassIcon.tsx 里的映射、两份 admin.json
- * 里的 classes.icon.<id> 名字。漏了映射会在渲染时回退成长剑，漏了名字则回退成 id。
+ * ClassGlyphIcon.tsx 里的路径、两份 admin.json 里的 classes.icon.<id> 名字，以及
+ * docs/THIRD_PARTY_ASSETS.md 里的来源归属。漏了名字则回退成 id。
  *
  * 删 id 就不是加的逆操作了：ClassCatalogService 读表时会拿这个 enum 校验每一行
  * （classCatalogItemSchema.parse），库里还留着被删的 id 的话，整个职业列表接口会抛。

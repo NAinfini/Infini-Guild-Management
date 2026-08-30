@@ -1,4 +1,4 @@
-import { loginLockErrorDetailsSchema, type MemberProfile } from "@guild/shared";
+import type { MemberProfile } from "@guild/shared";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import {
   AppError,
@@ -15,11 +15,11 @@ import {
   createOpaqueToken,
   createPasswordHash,
   digestToken,
+  normalizeInviteCode,
   PASSWORD_HASH_ITERATIONS,
-  readPasswordHashIterations,
   requireSafePasswordIterations,
   verifyPassword,
-  type InviteTokenCodec,
+  verifyPasswordWithinBudget,
 } from "./crypto";
 import type {
   AuthProfileReader,
@@ -29,7 +29,6 @@ import type {
   AuthUserRecord,
   ResolvedSession,
 } from "./auth-types";
-import { projectLoginLock } from "./login-lock";
 import { assertPasswordPolicy } from "./password-policy";
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -37,11 +36,6 @@ const PASSWORD_CHANGE_SESSION_TTL_MS = 15 * 60 * 1_000;
 const SESSION_ABSOLUTE_TTL_MS = 90 * 24 * 60 * 60 * 1_000;
 const LAST_LOGIN_REFRESH_MS = 60 * 60 * 1_000;
 const MAX_SESSIONS_PER_USER = 3;
-const LOGIN_FREE_ATTEMPTS = 3;
-const LOGIN_LOCK_SECONDS = [30, 60, 300, 900, 1_800, 3_600] as const;
-const LOGIN_FAILURE_RETENTION_MS = 24 * 60 * 60 * 1_000;
-const LOGIN_FAILURE_PRUNE_LIMIT = 100;
-
 function dateMs(value: string): number {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
@@ -62,7 +56,6 @@ export type AuthServiceOptions = Readonly<{
   store: AuthStore;
   provisioning: AccountProvisioningStore;
   profiles: AuthProfileReader;
-  inviteTokens: InviteTokenCodec;
   loginIpRateLimiter?: RateLimiter;
   loginNameRateLimiter?: RateLimiter;
   passwordIterations?: number;
@@ -73,14 +66,12 @@ export type AuthServiceOptions = Readonly<{
 }>;
 
 export class AuthService {
-  private readonly dummyPasswordHash: string;
   private readonly generateId: () => string;
   private readonly generateToken: () => string;
   private readonly passwordIterations: number;
 
   constructor(private readonly options: AuthServiceOptions) {
     this.passwordIterations = requireSafePasswordIterations(options.passwordIterations ?? PASSWORD_HASH_ITERATIONS);
-    this.dummyPasswordHash = `pbkdf2-sha256$${this.passwordIterations}$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`;
     this.generateId = options.generateId ?? (() => crypto.randomUUID());
     this.generateToken = options.generateToken ?? (() => createOpaqueToken());
   }
@@ -137,41 +128,33 @@ export class AuthService {
     password: string;
     stayLoggedIn: boolean;
     now: string;
-    clientIdentifier?: string;
+    clientIdentifier: string;
   }>): Promise<AuthSessionResult> {
     const normalizedLoginName = input.loginName.trim().toLowerCase();
-    await this.consumeLoginRateLimit(input.clientIdentifier, normalizedLoginName);
-    // A lock is deliberately checked before lookup or PBKDF2 work.
-    const failure = await this.options.store.readLoginFailure(normalizedLoginName);
-    this.throwIfLoginLocked(projectLoginLock(failure, input.now));
+    const clientIdentifier = input.clientIdentifier.trim();
+    if (!clientIdentifier) throw new TypeError("Login client identifier is required");
+    await this.consumeLoginRateLimit(clientIdentifier, normalizedLoginName);
     const account = await this.options.store.findLoginAccount(normalizedLoginName);
     const usable = account?.isActive === true && account.deletedAt === null;
     const temporaryUsable = usable
       && account?.temporaryPasswordExpiresAt !== null
       && account?.temporaryPasswordUsedAt === null
       && dateMs(account.temporaryPasswordExpiresAt) > dateMs(input.now);
-    const passwordValid = await verifyPassword(input.password, usable ? account.passwordHash : this.dummyPasswordHash);
+    const verification = await verifyPasswordWithinBudget(
+      input.password,
+      usable ? account.passwordHash : "",
+      this.passwordIterations,
+    );
+    const storedIterations = verification.iterations;
+    const passwordValid = verification.valid;
 
     if (!account || !usable || !passwordValid) {
-      const nextFailure = await this.options.store.recordLoginFailure({
-        normalizedLoginName,
-        now: input.now,
-        freeAttempts: LOGIN_FREE_ATTEMPTS,
-        lockSeconds: LOGIN_LOCK_SECONDS,
-      });
-      await this.options.store.pruneLoginFailures(
-        new Date(dateMs(input.now) - LOGIN_FAILURE_RETENTION_MS).toISOString(),
-        input.now,
-        LOGIN_FAILURE_PRUNE_LIMIT,
-      );
-      this.throwIfLoginLocked(projectLoginLock(nextFailure, input.now));
       throw new AppError({ code: "UNAUTHORIZED", status: 401, message: "Invalid credentials" });
     }
 
     if (account.temporaryPasswordExpiresAt !== null && !temporaryUsable) {
       throw new AppError({ code: "UNAUTHORIZED", status: 401, message: "Invalid credentials" });
     }
-    await this.options.store.clearLoginFailures(normalizedLoginName);
     if (temporaryUsable) {
       const rawToken = this.generateToken();
       const tokenDigest = await digestToken(rawToken);
@@ -188,7 +171,6 @@ export class AuthService {
       if (!consumed) throw new AppError({ code: "UNAUTHORIZED", status: 401, message: "Invalid credentials" });
       return this.sessionResult(account, rawToken, tokenDigest, expiresAt, false, input.now, "password_change");
     }
-    const storedIterations = readPasswordHashIterations(account.passwordHash);
     if (storedIterations !== null && storedIterations < this.passwordIterations) {
       const upgraded = await createPasswordHash(input.password, this.passwordIterations);
       const rehashed = await this.options.store.rehashPassword({
@@ -205,11 +187,15 @@ export class AuthService {
   }
 
   async logout(rawToken: string | null): Promise<{ ok: true }> {
-    if (rawToken) await this.options.store.deleteSession(await digestToken(rawToken));
+    if (rawToken) {
+      const tokenDigest = await digestToken(rawToken);
+      await this.options.store.deleteSession(tokenDigest);
+      this.signalAuthorizationRefresh({ session_ids: [tokenDigest] });
+    }
     return { ok: true };
   }
 
-  async verifyInvite(token: string, now: string): Promise<Readonly<{
+  async verifyInvite(code: string, now: string): Promise<Readonly<{
     valid: false;
   }> | Readonly<{
     valid: true;
@@ -218,9 +204,9 @@ export class AuthService {
     roleColor: string | null;
     roleLevel: number;
   }>> {
-    const code = this.options.inviteTokens.normalize(token);
-    if (!code) return { valid: false };
-    const invite = await this.options.store.findActiveInvite(await digestToken(code), now);
+    const inviteCode = normalizeInviteCode(code);
+    if (!inviteCode) return { valid: false };
+    const invite = await this.options.store.findActiveInvite(inviteCode, now);
     return invite
       ? {
           valid: true,
@@ -233,7 +219,7 @@ export class AuthService {
   }
 
   async register(context: RequestContext, input: Readonly<{
-    inviteToken: string;
+    inviteCode: string;
     loginName: string;
     displayName: string;
     password: string;
@@ -244,11 +230,10 @@ export class AuthService {
       throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Name is reserved" });
     }
     assertPasswordPolicy(input.password);
-    const inviteCode = this.options.inviteTokens.normalize(input.inviteToken);
-    if (!inviteCode) throw new AppError({ code: "CONFLICT", status: 409, message: "Invite link is no longer available" });
-    const tokenDigest = await digestToken(inviteCode);
-    const invite = await this.options.store.findActiveInvite(tokenDigest, context.now);
-    if (!invite) throw new AppError({ code: "CONFLICT", status: 409, message: "Invite link is no longer available" });
+    const inviteCode = normalizeInviteCode(input.inviteCode);
+    if (!inviteCode) throw new AppError({ code: "CONFLICT", status: 409, message: "Invite code is no longer available" });
+    const invite = await this.options.store.findActiveInvite(inviteCode, context.now);
+    if (!invite) throw new AppError({ code: "CONFLICT", status: 409, message: "Invite code is no longer available" });
 
     const userId = this.generateId();
     const passwordHash = await createPasswordHash(input.password, this.passwordIterations);
@@ -268,7 +253,7 @@ export class AuthService {
     });
     const outcome = await this.options.provisioning.redeemInviteAndCreateMember({
       inviteId: invite.id,
-      tokenDigest,
+      inviteCode,
       userId,
       loginName,
       displayName,
@@ -279,7 +264,7 @@ export class AuthService {
       throw new AppError({ code: "CONFLICT", status: 409, message: "Name already taken" });
     }
     if (outcome === "invite_unavailable") {
-      throw new AppError({ code: "CONFLICT", status: 409, message: "Invite link is no longer available" });
+      throw new AppError({ code: "CONFLICT", status: 409, message: "Invite code is no longer available" });
     }
     this.signalInboxChanged();
 
@@ -348,6 +333,7 @@ export class AuthService {
       }),
     });
     if (!changed) this.throwAuthenticationStateChanged();
+    this.signalAuthorizationRefresh({ user_ids: [actor.userId] });
     return { ok: true };
   }
 
@@ -385,6 +371,7 @@ export class AuthService {
       throw new AppError({ code: "CONFLICT", status: 409, message: "Login name already taken" });
     }
     if (outcome !== "updated") this.throwAuthenticationStateChanged();
+    this.signalAuthorizationRefresh({ user_ids: [actor.userId] });
     return { ok: true };
   }
 
@@ -433,6 +420,7 @@ export class AuthService {
     if (completed !== "completed") {
       throw new AppError({ code: "UNAUTHORIZED", status: 401, message: "Password-reset session is no longer valid" });
     }
+    this.signalAuthorizationRefresh({ user_ids: [user.id] });
     return this.sessionResult(user, rawToken, tokenDigest, expiresAt, false, context.now, "normal");
   }
 
@@ -497,26 +485,13 @@ export class AuthService {
     };
   }
 
-  private throwIfLoginLocked(state: ReturnType<typeof projectLoginLock>): void {
-    if (!state.isLocked || !state.lockedUntil) return;
-    throw new AppError({
-      code: "RATE_LIMITED",
-      status: 429,
-      message: `Too many failed login attempts. Try again in ${formatRetryDuration(state.retryAfterSeconds)}.`,
-      details: loginLockErrorDetailsSchema.parse({
-        retry_after_seconds: state.retryAfterSeconds,
-        locked_until: state.lockedUntil,
-      }),
-    });
-  }
-
   private throwAuthenticationStateChanged(): never {
     throw new AppError({ code: "UNAUTHORIZED", status: 401, message: "Authentication state changed" });
   }
 
-  private async consumeLoginRateLimit(clientIdentifier: string | undefined, normalizedLoginName: string): Promise<void> {
+  private async consumeLoginRateLimit(clientIdentifier: string, normalizedLoginName: string): Promise<void> {
     if (!this.options.loginIpRateLimiter && !this.options.loginNameRateLimiter) return;
-    const client = clientIdentifier?.trim();
+    const client = clientIdentifier.trim();
     if (!client) throw new TypeError("Login rate-limit client identifier is required");
     const ipDecision = await this.options.loginIpRateLimiter?.consume(`auth:login:ip:${encodeURIComponent(client)}`);
     if (ipDecision && !ipDecision.allowed) {
@@ -545,18 +520,15 @@ export class AuthService {
     if (!deferred || !notifications) return;
     deferred.defer(() => notifications.publish({ type: "inbox_changed" }));
   }
-}
 
-function formatRetryDuration(totalSeconds: number): string {
-  const seconds = Math.max(1, Math.ceil(totalSeconds));
-  const hours = Math.floor(seconds / 3_600);
-  const minutes = Math.floor((seconds % 3_600) / 60);
-  const remainder = seconds % 60;
-  const parts: string[] = [];
-  if (hours > 0) parts.push(`${hours} hour${hours === 1 ? "" : "s"}`);
-  if (minutes > 0) parts.push(`${minutes} minute${minutes === 1 ? "" : "s"}`);
-  if (remainder > 0 || parts.length === 0) parts.push(`${remainder} second${remainder === 1 ? "" : "s"}`);
-  return parts.join(" ");
+  private signalAuthorizationRefresh(targets: Readonly<{
+    session_ids?: readonly string[];
+    user_ids?: readonly string[];
+  }>): void {
+    const { deferred, notifications } = this.options;
+    if (!deferred || !notifications) return;
+    deferred.defer(() => notifications.publish({ type: "authorization_refresh", ...targets }));
+  }
 }
 
 export const ROLE_MANAGER_PERMISSION = PERMISSION_ID.ADMIN_ROLES_MANAGE;

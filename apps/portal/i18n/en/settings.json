@@ -4,6 +4,7 @@
   "field.theme": "Theme",
   "field.accent": "Accent color",
   "field.locale": "Language",
+  "field.notifications": "Notifications",
   "theme.aria.useTheme": "Use theme {{themeId}}",
   "theme.light": "Light",
   "theme.light.desc": "Clean, bright interface",
@@ -29,5 +30,16 @@
   "locale.zh.desc": "Chinese (Simplified)",
   "subtitle": "Preferences",
   "section.appearance": "Appearance",
-  "section.preferences": "Preferences"
+  "section.preferences": "Preferences",
+  "notification.description": "Choose which activity appears in your server-synced notification inbox.",
+  "notification.retry": "Retry loading notification preferences",
+  "notification.saveFailed": "Failed to save notification preferences",
+  "notification.member_joined.label": "New members",
+  "notification.member_joined.description": "Notify me when a member joins the guild.",
+  "notification.announcement_published.label": "Published announcements",
+  "notification.announcement_published.description": "Notify me when an announcement is published.",
+  "notification.event_created.label": "New events",
+  "notification.event_created.description": "Notify me when an event is created.",
+  "notification.wiki_article_created.label": "New wiki articles",
+  "notification.wiki_article_created.description": "Notify me when a wiki article is created."
 }

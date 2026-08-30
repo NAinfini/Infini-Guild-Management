@@ -7,7 +7,9 @@ BEGIN
   SELECT lower(hex(randomblob(16))), recipients.id, 'member_joined', 'member', NEW.id,
     'member_joined:' || NEW.id, json_object('display_name', NEW.display_name), NEW.created_at, NULL
   FROM users AS recipients
+  LEFT JOIN notification_preferences AS preferences ON preferences.user_id = recipients.id
   WHERE recipients.is_active = 1 AND recipients.deleted_at IS NULL AND recipients.id <> NEW.id
+    AND coalesce(preferences.member_joined, 1) = 1
   ON CONFLICT(user_id, source_key) DO NOTHING;
 END;
 
@@ -21,7 +23,9 @@ BEGIN
   SELECT lower(hex(randomblob(16))), recipients.id, 'announcement_published', 'announcement', NEW.id,
     'announcement_published:' || NEW.id, json_object('title', NEW.title), NEW.publish_at, NULL
   FROM users AS recipients
+  LEFT JOIN notification_preferences AS preferences ON preferences.user_id = recipients.id
   WHERE recipients.is_active = 1 AND recipients.deleted_at IS NULL
+    AND coalesce(preferences.announcement_published, 1) = 1
   ON CONFLICT(user_id, source_key) DO NOTHING;
 END;
 
@@ -35,7 +39,9 @@ BEGIN
   SELECT lower(hex(randomblob(16))), recipients.id, 'announcement_published', 'announcement', NEW.id,
     'announcement_published:' || NEW.id, json_object('title', NEW.title), NEW.publish_at, NULL
   FROM users AS recipients
+  LEFT JOIN notification_preferences AS preferences ON preferences.user_id = recipients.id
   WHERE recipients.is_active = 1 AND recipients.deleted_at IS NULL
+    AND coalesce(preferences.announcement_published, 1) = 1
   ON CONFLICT(user_id, source_key) DO NOTHING;
 END;
 
@@ -47,7 +53,9 @@ BEGIN
   SELECT lower(hex(randomblob(16))), recipients.id, 'event_created', 'event', NEW.id,
     'event_created:' || NEW.id, json_object('title', NEW.title, 'start_at', NEW.start_at), NEW.created_at, NULL
   FROM users AS recipients
+  LEFT JOIN notification_preferences AS preferences ON preferences.user_id = recipients.id
   WHERE recipients.is_active = 1 AND recipients.deleted_at IS NULL
+    AND coalesce(preferences.event_created, 1) = 1
   ON CONFLICT(user_id, source_key) DO NOTHING;
 END;
 
@@ -60,6 +68,8 @@ BEGIN
   SELECT lower(hex(randomblob(16))), recipients.id, 'wiki_article_created', 'wiki_article', NEW.id,
     'wiki_article_created:' || NEW.id, json_object('title', NEW.title, 'slug', NEW.slug), NEW.created_at, NULL
   FROM users AS recipients
+  LEFT JOIN notification_preferences AS preferences ON preferences.user_id = recipients.id
   WHERE recipients.is_active = 1 AND recipients.deleted_at IS NULL
+    AND coalesce(preferences.wiki_article_created, 1) = 1
   ON CONFLICT(user_id, source_key) DO NOTHING;
 END;

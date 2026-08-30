@@ -24,6 +24,7 @@ export type ApplicationDependencies = Readonly<{
   emailSender?: TransactionalEmailSender | null;
   readRateLimiter: RateLimiter;
   expensiveReadRateLimiter: RateLimiter;
+  contentViewRateLimiter: RateLimiter;
   mutationRateLimiter: RateLimiter;
   uploadRateLimiter: RateLimiter;
   clientIdentifier(request: Request): string;
@@ -31,7 +32,6 @@ export type ApplicationDependencies = Readonly<{
 }>;
 
 export type ApplicationConfig = PortalApiConfig & Readonly<{
-  inviteTokenSecret: string;
   passwordIterations: number;
   oauth: OAuthRuntimeConfig;
   emailFrom: string | null;
@@ -43,7 +43,6 @@ export function createApplication(dependencies: ApplicationDependencies, config:
     authRateLimiter: dependencies.authRateLimiter,
     authIpRateLimiter: dependencies.authIpRateLimiter,
   }, {
-    inviteTokenSecret: config.inviteTokenSecret,
     passwordIterations: config.passwordIterations,
     oauth: config.oauth,
     publicUrl: config.publicUrl,
@@ -53,6 +52,7 @@ export function createApplication(dependencies: ApplicationDependencies, config:
     authRateLimiter: dependencies.authRateLimiter,
     readRateLimiter: dependencies.readRateLimiter,
     expensiveReadRateLimiter: dependencies.expensiveReadRateLimiter,
+    contentViewRateLimiter: dependencies.contentViewRateLimiter,
     mutationRateLimiter: dependencies.mutationRateLimiter,
     uploadRateLimiter: dependencies.uploadRateLimiter,
     deferred: dependencies.deferred,

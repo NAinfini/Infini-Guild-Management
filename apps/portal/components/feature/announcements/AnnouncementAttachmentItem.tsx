@@ -2,6 +2,7 @@ import type { AnnouncementAttachment } from "@guild/shared";
 import { ArrowDownIcon, FileTextIcon, XIcon } from "@portal/components/icons";
 import { Button, buttonVariants } from "@portal/components/ui/button";
 import {
+  TOOLTIP_CLOSE_DELAY_MS,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -34,7 +35,11 @@ export function AnnouncementAttachmentItem({
       <FileTextIcon size={24} className="announcement-attachment-icon" aria-hidden="true" />
       <div className="announcement-attachment-copy">
         <Tooltip>
-          <TooltipTrigger delay={500} render={<span className="announcement-attachment-name" />}>
+          <TooltipTrigger
+            delay={500}
+            closeDelay={TOOLTIP_CLOSE_DELAY_MS}
+            render={<span className="announcement-attachment-name" />}
+          >
             {attachment.name}
           </TooltipTrigger>
           <TooltipContent>{attachment.name}</TooltipContent>

@@ -58,7 +58,7 @@ function availability(
 }
 
 describe("useProfileFormState", () => {
-  it("preserves unsaved fields when a same-profile media refresh arrives", async () => {
+  it("freezes a dirty form until a same-profile refresh can be adopted atomically", async () => {
     const initialProfile = createProfile();
     const { result, rerender } = renderHook(
       ({ profile, displayName }) => useProfileFormState({ profile, displayName }),
@@ -82,10 +82,7 @@ describe("useProfileFormState", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.imageList).toEqual([
-        "image1234567890abcdef",
-        "second1234567890abcde",
-      ]);
+      expect(result.current.imageList).toEqual(["image1234567890abcdef"]);
     });
     expect(result.current.bio).toBe("Unsaved bio");
     expect(result.current.availabilityData).toEqual({
@@ -101,6 +98,154 @@ describe("useProfileFormState", () => {
       },
     });
     expect(result.current.isDirty).toBe(true);
+  });
+
+  it("keeps the editor-open profile revision when a dirty draft receives a background refresh", async () => {
+    const initialProfile = createProfile();
+    const { result, rerender } = renderHook(
+      ({ profile, profileRevisionToken }) => useProfileFormState({
+        profile,
+        displayName: "Member",
+        profileRevisionToken,
+      }),
+      {
+        initialProps: {
+          profile: initialProfile,
+          profileRevisionToken: "profile-v1",
+        },
+        wrapper: QueryHarness,
+      },
+    );
+
+    act(() => {
+      result.current.setBio("Unsaved bio");
+    });
+    rerender({
+      profile: createProfile({ bio: "Remote bio", updated_at: "2026-07-02T00:00:00.000Z" }),
+      profileRevisionToken: "profile-v2",
+    });
+
+    await waitFor(() => {
+      expect(result.current.profileRevisionToken).toBe("profile-v1");
+    });
+    expect(result.current.bio).toBe("Unsaved bio");
+    expect(result.current.isDirty).toBe(true);
+  });
+
+  it("adopts the newest deferred profile snapshot and revision together when a draft is reverted", async () => {
+    const initialProfile = createProfile();
+    const refreshedProfile = createProfile({
+      bio: "Server C bio",
+      video_urls: ["https://vimeo.com/server-c"],
+      images: ["c-image1234567890abcdef"],
+      updated_at: "2026-07-03T00:00:00.000Z",
+    });
+    const { result, rerender } = renderHook(
+      ({ profile, displayName, profileRevisionToken }) => useProfileFormState({
+        profile,
+        displayName,
+        profileRevisionToken,
+      }),
+      {
+        initialProps: {
+          profile: initialProfile,
+          displayName: "Member A",
+          profileRevisionToken: "profile-v1",
+        },
+        wrapper: QueryHarness,
+      },
+    );
+
+    act(() => result.current.setBio("Local B draft"));
+    rerender({
+      profile: refreshedProfile,
+      displayName: "Member C",
+      profileRevisionToken: "profile-v2",
+    });
+    // A delayed GET for the editor-open revision must not replace the newer deferred snapshot.
+    rerender({
+      profile: initialProfile,
+      displayName: "Member A",
+      profileRevisionToken: "profile-v1",
+    });
+
+    act(() => result.current.setBio("Server bio"));
+
+    await waitFor(() => {
+      expect(result.current.profileRevisionToken).toBe("profile-v2");
+      expect(result.current.displayName).toBe("Member C");
+      expect(result.current.bio).toBe("Server C bio");
+      expect(result.current.videoList).toEqual(["https://vimeo.com/server-c"]);
+      expect(result.current.imageList).toEqual(["c-image1234567890abcdef"]);
+      expect(result.current.isDirty).toBe(false);
+    });
+  });
+
+  it("adopts a newer profile revision only while the form is clean", async () => {
+    const profile = createProfile();
+    const { result, rerender } = renderHook(
+      ({ profileRevisionToken }) => useProfileFormState({
+        profile,
+        displayName: "Member",
+        profileRevisionToken,
+      }),
+      { initialProps: { profileRevisionToken: "profile-v1" }, wrapper: QueryHarness },
+    );
+
+    rerender({ profileRevisionToken: "profile-v2" });
+
+    await waitFor(() => {
+      expect(result.current.profileRevisionToken).toBe("profile-v2");
+    });
+    expect(result.current.isDirty).toBe(false);
+  });
+
+  it("rejects a late editor-open revision after its own profile save advances the token", async () => {
+    const initialProfile = createProfile();
+    const savedProfile = createProfile({ bio: "Saved v2 bio", updated_at: "2026-07-03T00:00:00.000Z" });
+    const { result, rerender } = renderHook(
+      ({ profile, profileRevisionToken }) => useProfileFormState({
+        profile,
+        displayName: "Member",
+        profileRevisionToken,
+      }),
+      {
+        initialProps: { profile: initialProfile, profileRevisionToken: "profile-v1" },
+        wrapper: QueryHarness,
+      },
+    );
+
+    act(() => result.current.setBio("Saved v2 bio"));
+    const submitted = {
+      displayName: result.current.displayName,
+      bio: result.current.bio,
+      titleHtml: result.current.titleHtml,
+      power: result.current.power,
+      classList: result.current.classList,
+      videoList: result.current.videoList,
+      imageList: result.current.imageList,
+      availabilityData: result.current.availabilityData,
+    };
+    act(() => result.current.acceptServerProfile(savedProfile, "Member", submitted, "profile-v2"));
+    rerender({ profile: initialProfile, profileRevisionToken: "profile-v1" });
+
+    expect(result.current.profileRevisionToken).toBe("profile-v2");
+    expect(result.current.bio).toBe("Saved v2 bio");
+  });
+
+  it("accepts its own media revision without turning that media change into a stale draft", () => {
+    const profile = createProfile();
+    const { result } = renderHook(
+      () => useProfileFormState({ profile, displayName: "Member", profileRevisionToken: "profile-v1" }),
+      { wrapper: QueryHarness },
+    );
+
+    act(() => {
+      result.current.acceptOwnImageUpload(["second1234567890abcde"], "profile-v2");
+    });
+
+    expect(result.current.profileRevisionToken).toBe("profile-v2");
+    expect(result.current.isDirty).toBe(false);
   });
 
   it("clears the unsaved marker when an availability edit is undone", () => {

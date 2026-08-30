@@ -137,6 +137,22 @@ export class VpsNotificationWebSocketHub implements NotificationPublisher {
   }
 
   async publish(input: NotificationMessage): Promise<void> {
+    const refresh = this.policy.parseAuthorizationRefresh(input);
+    if (refresh) {
+      const entries = [...this.connections.entries()].filter(([, connection]) => (
+        this.policy.matchesAuthorizationRefresh(connection, refresh)
+      ));
+      const decisions = await this.policy.refreshAuthorization(entries.map(([, connection]) => connection));
+      decisions.forEach((decision, index) => {
+        const entry = entries[index];
+        if (!entry) return;
+        const [socket, original] = entry;
+        if (this.connections.get(socket) !== original) return;
+        if ("close" in decision) this.close(socket, decision.close.code, decision.close.reason);
+        else this.connections.set(socket, decision.state);
+      });
+      return;
+    }
     const message = this.policy.parseOutbound(input);
     const payload = JSON.stringify(message);
     for (const [socket, connection] of [...this.connections]) {

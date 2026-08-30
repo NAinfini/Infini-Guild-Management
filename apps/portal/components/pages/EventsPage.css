@@ -2,28 +2,6 @@
   width: 100%;
 }
 
-.events-filter-status {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  padding: 3px;
-  border-radius: var(--radius-control);
-  background: var(--surface-sunken);
-}
-
-.events-filter-option-list {
-  display: grid;
-  gap: var(--space-xs);
-}
-
-.events-filter-option {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  color: var(--text-primary);
-  font-size: var(--text-meta);
-}
-
 .events-page__toolbar-stack,
 .event-route-stack,
 .event-route-loading {
@@ -37,11 +15,6 @@
 
 .events-page__error-card {
   width: 100%;
-}
-
-/* 类型与状态筛选统一收进共享筛选面板。 */
-.events-filter-type {
-  width: 150px;
 }
 
 .events-filter-view-controls {
@@ -68,8 +41,8 @@
   min-width: 0;
 }
 
-.event-route-header__title h1,
-.recurring-template-editor-page__header h1 {
+.event-route-header__title h2,
+.recurring-template-editor-page__header h2 {
   margin: 0;
   overflow-wrap: anywhere;
   font-size: var(--text-h1);
@@ -145,27 +118,6 @@
 
 .recurring-template-list--loading {
   gap: var(--space-sm);
-}
-
-.recurring-template-filter-status {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  padding: 3px;
-  border-radius: var(--radius-control);
-  background: var(--surface-sunken);
-}
-
-.recurring-template-type-options {
-  gap: var(--space-xs);
-}
-
-.recurring-template-type-option {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  color: var(--text-primary);
-  font-size: var(--text-meta);
 }
 
 .recurring-template-empty [data-slot="card-content"] {
@@ -293,12 +245,12 @@
   gap: var(--space-sm);
 }
 
-.recurring-template-status-tooltip > span:last-child,
+.recurring-template-status-tooltip > span:last-of-type,
 .recurring-template-generated-tooltip {
   align-content: start;
 }
 
-.recurring-template-status-tooltip > span:last-child,
+.recurring-template-status-tooltip > span:last-of-type,
 .recurring-template-generated-tooltip > span,
 .recurring-template-generated-tooltip > strong {
   display: grid;
@@ -307,10 +259,6 @@
 
 .recurring-template-generated-tooltip {
   grid-template-columns: minmax(0, 1fr);
-}
-
-.recurring-template-filter-type {
-  width: 150px;
 }
 
 .recurring-template-icon-wrap {
@@ -343,22 +291,6 @@
 }
 
 @media (max-width: 47.99em) {
-  .events-filter-status,
-  .events-filter-type,
-  .recurring-template-filter-status,
-  .recurring-template-filter-type {
-    width: 100%;
-  }
-
-  .events-filter-toggles {
-    width: 100%;
-  }
-
-  .events-filter-view-controls {
-    width: 100%;
-    justify-content: space-between;
-  }
-
   .event-route-header__actions {
     width: 100%;
   }

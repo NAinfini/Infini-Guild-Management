@@ -9,6 +9,8 @@ import {
   createInitialTestRunContext,
   filterApiCategoriesForPermissions,
   prepareEndpointRequest,
+  redactInviteCredentialPath,
+  redactInviteCreationResult,
   requestSystemTestCleanup,
   resolveEndpointPath,
   runEndpointTest,
@@ -51,7 +53,7 @@ describe("AdminApiTestEngine request preparation", () => {
   it("uses a public fixture UID without exposing the cleanup run UID", () => {
     const runId = "014f27f1-6ca1-4c5e-924f-f111b76b9efd";
     const fixtureId = "488488b7-b293-4149-88ba-5eef4f202dcb";
-    const registerContext = contextWith({ runId, fixtureId, registerInviteCode: "INVITE" });
+    const registerContext = contextWith({ runId, fixtureId, registerInviteCode: "A1B2C3D4E5" });
     const adminContext = contextWith({ runId, fixtureId, adminRoleId: "raid-lead" });
 
     expect(parseJsonBody(prepareEndpointRequest(
@@ -251,8 +253,11 @@ describe("AdminApiTestEngine request preparation", () => {
 
     expect(parseJsonBody(prepareEndpointRequest(
       { label: "Batch Update Categories", method: "PATCH", path: "/api/wiki/categories/batch" },
-      contextWith({ createdWikiCategoryId: "cat-1" }),
-    ))).toEqual({ updates: [{ id: "cat-1", sort_order: 0 }] });
+      contextWith({ createdWikiCategoryId: "cat-1", wikiCategoryRevisionToken: "catalog-v2" }),
+    ))).toEqual({
+      expected_revision_token: "catalog-v2",
+      updates: [{ id: "cat-1", sort_order: 0 }],
+    });
   });
 
   it("uses the recurring-template contract and runs the read-only auth profile check", () => {
@@ -274,7 +279,11 @@ describe("AdminApiTestEngine request preparation", () => {
   });
 
   it("sends guild war member stats in the nested route contract shape", () => {
-    const ctx = contextWith({ createdConcludedWarHistoryId: "concluded-war", warMemberUserId: "user-1" });
+    const ctx = contextWith({
+      createdConcludedWarHistoryId: "concluded-war",
+      warHistoryEtag: '"history-concluded-war-2"',
+      warMemberUserId: "user-1",
+    });
 
     const single = prepareEndpointRequest(
       { label: "Stats", method: "PATCH", path: "/api/guild-war/history/:id/member-stats/:userId" },
@@ -287,6 +296,8 @@ describe("AdminApiTestEngine request preparation", () => {
 
     expect(parseJsonBody(single)).toEqual({ stats: { kills: 1 } });
     expect(parseJsonBody(batch)).toEqual({ updates: [{ user_id: "user-1", stats: { stats: { kills: 2 } } }] });
+    expect(single.headers?.["If-Match"]).toBe('"history-concluded-war-2"');
+    expect(batch.headers?.["If-Match"]).toBe('"history-concluded-war-2"');
   });
 
   it("prepares guild-war smoke mutations against a guild-war-local disposable event", () => {
@@ -329,18 +340,18 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys.indexOf("POST /api/guild-war/save-teams")).toBeLessThan(endpointKeys.indexOf("POST /api/guild-war/conclude"));
   });
 
-  it("creates an announcement before uploading its media without a staging token", () => {
+  it("uses the aggregate-neutral pending announcement image endpoint", () => {
     const endpoints = buildApiCategories((key) => key)
       .find((category) => category.key === "announcements")
       ?.endpoints ?? [];
     const endpointKeys = endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`);
-    expect(endpointKeys).not.toContain("POST /api/announcements/images/stage");
+    expect(endpointKeys).not.toContain("POST /api/announcements/:id/images");
     expect(endpointKeys.indexOf("POST /api/announcements"))
-      .toBeLessThan(endpointKeys.indexOf("POST /api/announcements/:id/images"));
+      .toBeLessThan(endpointKeys.indexOf("POST /api/announcements/images"));
 
     const uploadedContext = captureContextFromResponse(
-      contextWith({ createdAnnouncementId: "announcement-1" }),
-      { label: "Upload Announcement Image", method: "POST", path: "/api/announcements/:id/images" },
+      createInitialTestRunContext(),
+      { label: "Upload Announcement Image", method: "POST", path: "/api/announcements/images" },
       {
         status: 201,
         latencyMs: 1,
@@ -360,8 +371,8 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(createBody).not.toHaveProperty("staging_token");
 
     const uploadRequest = prepareEndpointRequest(
-      { label: "Upload Announcement Image", method: "POST", path: "/api/announcements/:id/images" },
-      contextWith({ createdAnnouncementId: "announcement-1" }),
+      { label: "Upload Announcement Image", method: "POST", path: "/api/announcements/images" },
+      createInitialTestRunContext(),
     );
     const form = uploadRequest.body as FormData;
     expect(form.get("full")).toBeInstanceOf(File);
@@ -369,11 +380,105 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(form.has("original_name")).toBe(false);
   });
 
+  it("carries exact announcement, wiki, history, and role revisions into mutations", () => {
+    const announcement = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "Announcement", method: "GET", path: "/api/announcements/:id" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-08-26T00:00:00.000Z",
+        parsedJson: { id: "announcement-1", updated_at: "2026-08-26T00:00:00.000Z" },
+        etag: '"announcement-1-response"',
+      },
+    );
+    const announcementPatch = prepareEndpointRequest(
+      { label: "Update", method: "PATCH", path: "/api/announcements/:id" },
+      { ...announcement, createdAnnouncementId: "announcement-1" },
+    );
+    expect(announcementPatch.headers?.["If-Match"])
+      .toBe('"announcement-announcement-1-2026-08-26T00:00:00.000Z"');
+
+    const categories = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "Categories", method: "GET", path: "/api/wiki/categories?fixture=after-create" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-08-26T00:00:00.000Z",
+        parsedJson: {
+          categories: [{ id: "category-1" }],
+          revision_token: "catalog-v3",
+        },
+      },
+    );
+    expect(categories.wikiCategoryRevisionToken).toBe("catalog-v3");
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Update Category", method: "PATCH", path: "/api/wiki/categories/:id" },
+      { ...categories, createdWikiCategoryId: "category-1" },
+    ))).toMatchObject({ expected_revision_token: "catalog-v3" });
+
+    const wiki = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "Article", method: "GET", path: "/api/wiki/articles/:slug" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-08-26T00:00:00.000Z",
+        parsedJson: { id: "article-1", updated_at: "2026-08-26T01:00:00.000Z" },
+      },
+    );
+    const wikiRestore = prepareEndpointRequest(
+      { label: "Restore", method: "POST", path: "/api/wiki/articles/:id/revisions/1/restore" },
+      { ...wiki, createdWikiArticleId: "article-1" },
+    );
+    expect(wikiRestore.headers?.["If-Match"])
+      .toBe('"wiki-article-1-2026-08-26T01:00:00.000Z"');
+
+    const history = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "History", method: "GET", path: "/api/guild-war/history/:id?fixture=concluded" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-08-26T00:00:00.000Z",
+        parsedJson: { id: "history-1", etag: '"history-history-1-4"' },
+      },
+    );
+    expect(history.warHistoryEtag).toBe('"history-history-1-4"');
+
+    const role = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "Role", method: "POST", path: "/api/admin/roles" },
+      {
+        status: 201,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-08-26T00:00:00.000Z",
+        parsedJson: { id: "role-1", revision_token: "role-v2" },
+      },
+    );
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Update Role", method: "PATCH", path: "/api/admin/roles/:id" },
+      role,
+    ))).toMatchObject({ expected_revision_token: "role-v2" });
+  });
+
   it("uses concluded history for member stats requests", () => {
     const ctx = contextWith({
       warHistoryId: "seed-war",
       createdWarHistoryId: "manual-war",
       createdConcludedWarHistoryId: "concluded-war",
+      warHistoryEtag: '"history-concluded-war-3"',
       adminCreatedUserId: "user-1",
     });
 
@@ -388,6 +493,7 @@ describe("AdminApiTestEngine request preparation", () => {
 
     expect(resolved.path).toBe("/api/guild-war/history/concluded-war/member-stats/user-1");
     expect(parseJsonBody(prepared)).toEqual({ updates: [{ user_id: "user-1", stats: { stats: { kills: 2 } } }] });
+    expect(prepared.headers?.["If-Match"]).toBe('"history-concluded-war-3"');
     expect(prepared.skipReason).toBeUndefined();
   });
 
@@ -491,11 +597,24 @@ describe("AdminApiTestEngine request preparation", () => {
         body: "{}",
         error: null,
         ranAt: "2026-05-18T00:00:00.000Z",
-        parsedJson: { data: [{ id: "gallery-1", type: "image", media_id: "abcdefghijklmnopqrstu", url: null }] },
+        parsedJson: {
+          data: [{
+            id: "gallery-1",
+            type: "image",
+            media_id: "abcdefghijklmnopqrstu",
+            url: null,
+            revision_token: "gallery-v1",
+          }],
+        },
       },
     );
 
     expect(imageCtx.galleryImageMediaId).toBe("abcdefghijklmnopqrstu");
+    expect(imageCtx.galleryItemEtag).toBe('"gallery-gallery-1-gallery-v1"');
+    expect(prepareEndpointRequest(
+      { label: "Delete Gallery Item", method: "DELETE", path: "/api/gallery/:id" },
+      imageCtx,
+    ).headers?.["If-Match"]).toBe('"gallery-gallery-1-gallery-v1"');
   });
 
   it("never reuses an existing invite from the cursor response", () => {
@@ -509,7 +628,7 @@ describe("AdminApiTestEngine request preparation", () => {
         error: null,
         ranAt: "2026-07-28T00:00:00.000Z",
         parsedJson: {
-          data: [{ id: "invite-1", code: "A1b2C3d4E5" }],
+          data: [{ id: "invite-1" }],
           next_cursor: null,
           total: 1,
         },
@@ -521,6 +640,41 @@ describe("AdminApiTestEngine request preparation", () => {
       { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
       next,
     ).skipReason).toContain("register invite code");
+  });
+
+  it("retains a newly created invite code only in the transient request context", () => {
+    const code = "A1B2C3D4E5";
+    const endpoint = { label: "Create Invite", method: "POST" as const, path: "/api/admin/invite-links" };
+    const result = {
+      status: 201,
+      latencyMs: 1,
+      body: JSON.stringify({ id: "invite-1", code }),
+      error: null,
+      ranAt: "2026-08-27T00:00:00.000Z",
+      parsedJson: { id: "invite-1", code },
+    };
+    const context = captureContextFromResponse(createInitialTestRunContext(), endpoint, result);
+    const visible = redactInviteCreationResult(endpoint, result);
+
+    expect(context.registerInviteCode).toBe(code);
+    expect(resolveEndpointPath(
+      { label: "Verify Invite", method: "GET", path: "/api/auth/verify-invite/:code" },
+      context,
+    ).path).toBe(`/api/auth/verify-invite/${code}`);
+    expect(resolveEndpointPath(
+      { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
+      context,
+    ).path).toBe(`/api/auth/register/${code}`);
+    expect(visible.body).not.toContain(code);
+    expect(visible.parsedJson).toEqual({ id: "invite-1", code: "[redacted]" });
+  });
+
+  it("redacts invite codes from production test-console paths", () => {
+    expect(redactInviteCredentialPath("/api/auth/verify-invite/A1B2C3D4E5"))
+      .toBe("/api/auth/verify-invite/:redacted");
+    expect(redactInviteCredentialPath("/api/auth/register/A1B2C3D4E5?source=test"))
+      .toBe("/api/auth/register/:redacted?source=test");
+    expect(redactInviteCredentialPath("/api/auth/me")).toBe("/api/auth/me");
   });
 
   it("captures profile media IDs without interpreting R2 path prefixes", () => {
@@ -549,7 +703,7 @@ describe("AdminApiTestEngine request preparation", () => {
 
   it("uses the registered disposable user as a fallback target", () => {
     const next = captureContextFromResponse(
-      contextWith({ meId: "admin-1" }),
+      contextWith({ meId: "admin-1", registerInviteCode: "A1B2C3D4E5" }),
       { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
       {
         status: 201,
@@ -562,6 +716,7 @@ describe("AdminApiTestEngine request preparation", () => {
     );
 
     expect(next.registeredUserId).toBe("registered-1");
+    expect(next.registerInviteCode).toBeNull();
   });
 
   it("keeps manually created history available after concluded history batch-delete", () => {
@@ -785,6 +940,7 @@ describe("AdminApiTestEngine request preparation", () => {
     const safeContext = contextWith({
       ...unsafeContext,
       adminCreatedUserId: "disposable-member",
+      warHistoryEtag: '"history-war-history-1-1"',
     });
 
     for (const endpoint of mutationEndpoints) {
@@ -937,9 +1093,11 @@ describe("AdminApiTestEngine request preparation", () => {
       "PATCH /api/announcements/:id",
       "DELETE /api/announcements/:id",
       "DELETE /api/announcements/:id/permanent",
-      "POST /api/announcements/:id/images",
+      "POST /api/announcements/images",
       "GET /api/gallery?limit=5",
       "POST /api/gallery/images",
+      "PUT /api/gallery/:id/like",
+      "DELETE /api/gallery/:id/like",
       "POST /api/gallery/videos",
       "DELETE /api/gallery/:id",
       "POST /api/gallery/batch-delete",
@@ -1008,7 +1166,6 @@ describe("AdminApiTestEngine request preparation", () => {
       "PATCH /api/admin/users/:id/deactivate",
       "PATCH /api/admin/users/:id/reactivate",
       "POST /api/admin/users/:id/reset-password",
-      "POST /api/admin/users/:id/reset-login-lock",
       "GET /api/admin/roles",
       "POST /api/admin/roles",
       "PATCH /api/admin/roles/:id",
@@ -1207,11 +1364,17 @@ describe("AdminApiTestEngine request preparation", () => {
 
     const updateStorageBody = parseJsonBody(prepareEndpointRequest(
       { label: "Update Storage", method: "PATCH", path: "/api/storage/storages/:id" },
-      contextWith({ ...fixtureContext, createdStorageId: "storage-1" }),
+      contextWith({
+        ...fixtureContext,
+        createdStorageId: "storage-1",
+        storageName: "Original storage",
+        storageDescription: null,
+        storageStructureRevision: 0,
+      }),
     )) as Record<string, unknown>;
     const createCategoryBody = parseJsonBody(prepareEndpointRequest(
       { label: "Create Category", method: "POST", path: "/api/storage/storages/:storageId/categories" },
-      contextWith({ ...fixtureContext, createdStorageId: "storage-1" }),
+      contextWith({ ...fixtureContext, createdStorageId: "storage-1", storageStructureRevision: 0 }),
     )) as Record<string, unknown>;
     const updateCategoryBody = parseJsonBody(prepareEndpointRequest(
       { label: "Update Category", method: "PATCH", path: "/api/storage/storages/:storageId/categories/:id" },
@@ -1219,11 +1382,21 @@ describe("AdminApiTestEngine request preparation", () => {
         ...fixtureContext,
         createdStorageId: "storage-1",
         createdStorageCategoryId: "category-1",
+        storageCategoryName: "Original category",
+        storageStructureRevision: 1,
       }),
     )) as Record<string, unknown>;
     expect(String(updateStorageBody.name).length).toBeLessThanOrEqual(50);
+    expect(updateStorageBody).toMatchObject({
+      expected_name: "Original storage",
+      expected_description: null,
+      expected_structure_revision: 0,
+    });
     expect(String(createCategoryBody.name).length).toBeLessThanOrEqual(50);
+    expect(createCategoryBody.expected_structure_revision).toBe(0);
     expect(String(updateCategoryBody.name).length).toBeLessThanOrEqual(50);
+    expect(updateCategoryBody.expected_name).toBe("Original category");
+    expect(updateCategoryBody.expected_structure_revision).toBe(1);
 
     const ctx = contextWith({
       storageId: "seed-storage",
@@ -1233,6 +1406,8 @@ describe("AdminApiTestEngine request preparation", () => {
       createdStorageCategoryId: "category-1",
       createdStorageItemId: "item-1",
       storageImageMediaId: "abcdefghijklmnopqrstu",
+      storageStructureRevision: 2,
+      storageItemUpdatedAt: "2026-08-11T00:00:00.000Z",
       adminCreatedUserId: "member-1",
     } as Partial<TestRunContext>);
 
@@ -1328,7 +1503,7 @@ describe("AdminApiTestEngine request preparation", () => {
         body: "{}",
         error: null,
         ranAt: "2026-08-11T00:00:00.000Z",
-        parsedJson: { id: "transaction-storage" },
+        parsedJson: { id: "transaction-storage", structure_revision: 0 },
       },
     );
     expect(captured.createdStorageId).toBe("transaction-storage");
@@ -1344,7 +1519,7 @@ describe("AdminApiTestEngine request preparation", () => {
         body: "{}",
         error: null,
         ranAt: "2026-06-11T00:00:00.000Z",
-        parsedJson: { id: "storage-1", name: "[systemtest] Storage" },
+        parsedJson: { id: "storage-1", name: "[systemtest] Storage", structure_revision: 0 },
       },
     );
     const categoryCtx = captureContextFromResponse(
@@ -1356,7 +1531,10 @@ describe("AdminApiTestEngine request preparation", () => {
         body: "{}",
         error: null,
         ranAt: "2026-06-11T00:00:00.000Z",
-        parsedJson: { id: "category-1", name: "[systemtest] Category" },
+        parsedJson: {
+          category: { id: "category-1", name: "[systemtest] Category" },
+          structure_revision: 1,
+        },
       },
     );
     const itemCtx = captureContextFromResponse(
@@ -1368,7 +1546,7 @@ describe("AdminApiTestEngine request preparation", () => {
         body: "{}",
         error: null,
         ranAt: "2026-06-11T00:00:00.000Z",
-        parsedJson: { id: "item-1", name: "[systemtest] Item" },
+        parsedJson: { id: "item-1", name: "[systemtest] Item", updated_at: "2026-06-11T00:00:00.000Z" },
       },
     );
     const imageCtx = captureContextFromResponse(
@@ -1380,7 +1558,10 @@ describe("AdminApiTestEngine request preparation", () => {
         body: "{}",
         error: null,
         ranAt: "2026-06-11T00:00:00.000Z",
-        parsedJson: [{ media_id: "abcdefghijklmnopqrstu" }],
+        parsedJson: {
+          data: [{ media_id: "abcdefghijklmnopqrstu" }],
+          updated_at: "2026-06-11T00:00:01.000Z",
+        },
       },
     );
 
@@ -1437,17 +1618,6 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(deleted.createdInviteLinkId).toBeNull();
   });
 
-  it("sends the strict empty JSON payload required by login-lock reset", () => {
-    const prepared = prepareEndpointRequest(
-      { label: "Reset Login Lock", method: "POST", path: "/api/admin/users/:id/reset-login-lock" },
-      contextWith({ adminCreatedUserId: "created-user" }),
-    );
-
-    expect(prepared.path).toBe("/api/admin/users/created-user/reset-login-lock");
-    expect(prepared.headers).toEqual({ "Content-Type": "application/json" });
-    expect(parseJsonBody(prepared)).toEqual({});
-  });
-
   it("covers website read actions that were missing from the smoke registry", () => {
     const endpointKeys = buildApiCategories((key) => key)
       .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
@@ -1489,8 +1659,8 @@ describe("AdminApiTestEngine request preparation", () => {
       "GET /api/users/:id/absences",
       "GET /api/wiki/articles/:id/revisions",
       "GET /api/wiki/articles/:id/revisions/1",
-      "GET /api/admin/audit-archive/download",
-      "GET /api/admin/audit-archive/download/file",
+      "GET /api/admin/audit-archive/files",
+      "GET /api/admin/audit-archive/files/:archiveId",
     ]));
   });
 
@@ -1542,7 +1712,7 @@ describe("AdminApiTestEngine request preparation", () => {
       adminCreatedUserId: "test-user",
       wikiArticleId: "wiki-article",
       auditArchiveMonth: "2026-06",
-      auditArchiveDownloadToken: "download-token",
+      auditArchiveId: "archive-id",
     });
 
     expect(resolveEndpointPath(
@@ -1558,13 +1728,13 @@ describe("AdminApiTestEngine request preparation", () => {
       ctx,
     ).path).toBe("/api/wiki/articles/wiki-article/revisions/1");
     expect(prepareEndpointRequest(
-      { label: "Archive Download", method: "GET", path: "/api/admin/audit-archive/download" },
+      { label: "Archive Download", method: "GET", path: "/api/admin/audit-archive/files" },
       ctx,
-    ).path).toBe("/api/admin/audit-archive/download?month=2026-06&format=raw_ndjson_gz");
+    ).path).toBe("/api/admin/audit-archive/files?month=2026-06");
     expect(prepareEndpointRequest(
-      { label: "Archive File", method: "GET", path: "/api/admin/audit-archive/download/file" },
+      { label: "Archive File", method: "GET", path: "/api/admin/audit-archive/files/:archiveId" },
       ctx,
-    ).path).toBe("/api/admin/audit-archive/download/file?token=download-token");
+    ).path).toBe("/api/admin/audit-archive/files/archive-id");
   });
 
   it("requires status permission for admin production health endpoints", () => {
@@ -1721,11 +1891,11 @@ describe("AdminApiTestEngine request preparation", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response("{}", {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ETag: '"event-v2"' },
       }),
     );
 
-    await runEndpointTest(
+    const result = await runEndpointTest(
       { label: "Create Event", method: "POST", path: "/api/events" },
       buildJsonRequest("/api/events", { title: "[systemtest] Event" }),
       "014f27f1-6ca1-4c5e-924f-f111b76b9efd",
@@ -1741,6 +1911,7 @@ describe("AdminApiTestEngine request preparation", () => {
         }),
       }),
     );
+    expect(result.etag).toBe('"event-v2"');
   });
 
   it("logs binary media as metadata instead of copying control bytes", async () => {

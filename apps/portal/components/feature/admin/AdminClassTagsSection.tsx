@@ -15,6 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { LIMITS, type ClassTag } from "@guild/shared";
+import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
 import { Input } from "@portal/components/ui/input";
@@ -112,6 +113,8 @@ export function AdminClassTagsSection({ masterNavigation }: { masterNavigation?:
   const catalog = useClassCatalog();
   /* 保留服务端或乐观更新提供的顺序，避免未确认的 sort_order 覆盖拖拽结果。 */
   const tags = controller.query.data;
+  const listBlockingError = controller.query.isError && tags === undefined;
+  const listRefreshError = controller.query.isError && tags !== undefined;
   const existing = draft.id ? tags?.find((tag) => tag.id === draft.id) ?? null : null;
   const [query, setQuery] = useState("");
   const picked = useMemo(() => new Set(draft.classIds), [draft.classIds]);
@@ -165,6 +168,8 @@ export function AdminClassTagsSection({ masterNavigation }: { masterNavigation?:
   };
 
   const handleDelete = async (tag: ClassTag) => {
+    const expectedUpdatedAt = tag.updated_at;
+    const expectedUsageCount = tag.usage_count;
     const accepted = await confirm({
       title: t("classTags.confirmDelete.title"),
       /* 删标签会连同正在用它的配额格一起删掉，所以这句话必须报出有多少格在用。
@@ -177,7 +182,7 @@ export function AdminClassTagsSection({ masterNavigation }: { masterNavigation?:
       cancelLabel: tc("action.cancel"),
       intent: "danger",
     });
-    if (accepted) await controller.remove(tag.id);
+    if (accepted) await controller.remove(tag.id, expectedUpdatedAt, expectedUsageCount);
   };
 
   return (
@@ -202,11 +207,22 @@ export function AdminClassTagsSection({ masterNavigation }: { masterNavigation?:
 
         <ScrollArea className="admin-md__list">
           <div className="admin-md__list-stack">
+            {listRefreshError ? (
+              <Alert variant="destructive">
+                <AlertTitle>{tc("loadError")}</AlertTitle>
+                <AlertDescription>
+                  <span>{tc("loadErrorRetry")}</span>
+                  <Button size="sm" variant="outline" loading={controller.query.isFetching} onClick={() => void controller.query.refetch()}>
+                    {tc("action.retry")}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            ) : null}
             {controller.query.isLoading ? (
               Array.from({ length: 5 }).map((_, index) => (
                 <Skeleton key={index} className="admin-md__skeleton" />
               ))
-            ) : controller.query.isError ? (
+            ) : listBlockingError ? (
               <EmptyState
                 status="error"
                 title={tc("loadError")}

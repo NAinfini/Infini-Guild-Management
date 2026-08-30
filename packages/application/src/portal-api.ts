@@ -5,7 +5,6 @@ import {
   type DeferredTasks,
   type RateLimiter,
 } from "@guild/kernel";
-import { AuditArchiveDownloadTokens } from "@guild/server";
 import {
   createAdminRoutes,
   createAdminAnalyticsSettingsRoutes,
@@ -53,13 +52,13 @@ export type PortalApiConfig = Readonly<{
   publicUrl: string;
   allowedOrigins?: readonly string[];
   sessionCookieName?: string;
-  auditDownloadSecret: Uint8Array;
 }>;
 
 export type PortalApiRuntime = Readonly<{
   authRateLimiter: RateLimiter;
   readRateLimiter: RateLimiter;
   expensiveReadRateLimiter: RateLimiter;
+  contentViewRateLimiter: RateLimiter;
   mutationRateLimiter: RateLimiter;
   uploadRateLimiter: RateLimiter;
   deferred: DeferredTasks;
@@ -74,7 +73,6 @@ export function createPortalApiApp(
 ): Hono<HttpEnv> {
   const publicOrigin = resolvePublicOrigin(config.publicUrl);
   const cookieName = resolveSessionCookieName(config.sessionCookieName, publicOrigin);
-  const downloadTokens = new AuditArchiveDownloadTokens(config.auditDownloadSecret);
   const app = new Hono<HttpEnv>();
 
   app.onError(createHttpErrorHandler({
@@ -109,17 +107,20 @@ export function createPortalApiApp(
     const client = context.get("clientIdentifier");
     const method = context.req.method;
     const read = method === "GET" || method === "HEAD";
+    const contentView = method === "POST" && isContentViewPath(context.req.path);
     const upload = MUTATION_METHODS.has(method)
       && context.req.header("Content-Type")?.toLowerCase().startsWith("multipart/form-data") === true;
     const limiter = read
       ? runtime.readRateLimiter
-      : upload
+      : contentView
+        ? runtime.contentViewRateLimiter
+        : upload
         ? runtime.uploadRateLimiter
         : MUTATION_METHODS.has(method)
           ? runtime.mutationRateLimiter
           : null;
     if (!limiter) return next();
-    const bucket = read ? "read" : upload ? "upload" : "mutation";
+    const bucket = read ? "read" : contentView ? "content-view:client" : upload ? "upload" : "mutation";
     const decision = await limiter.consume(`api:${bucket}:${encodeURIComponent(client)}`);
     if (!decision.allowed) {
       throw new AppError({
@@ -163,6 +164,23 @@ export function createPortalApiApp(
       now: new Date().toISOString(),
       signal: context.req.raw.signal,
     }));
+    return next();
+  });
+  app.use("/api/*", async (context, next) => {
+    if (context.req.method !== "POST" || !isContentViewPath(context.req.path)) return next();
+    const actor = context.get("requestContext").authorization.actor;
+    if (!actor) return next();
+    const decision = await runtime.contentViewRateLimiter.consume(
+      `api:content-view:account:${encodeURIComponent(actor.userId)}`,
+    );
+    if (!decision.allowed) {
+      throw new AppError({
+        code: "RATE_LIMITED",
+        status: 429,
+        message: "Too many content views",
+        details: { retry_after_seconds: decision.retryAfterSeconds ?? 1 },
+      });
+    }
     return next();
   });
   // A one-time administrator reset password only establishes enough authority
@@ -262,7 +280,7 @@ export function createPortalApiApp(
   app.route("/api/admin", createErrorLogRoutes({ service: services.errorLog }));
   app.route("/api/admin", createSystemTestRoutes(services.systemTest));
   app.route("/api/admin", createAuditRoutes({ service: services.audit }));
-  app.route("/api/admin", createAuditArchiveRoutes({ service: services.auditArchive, tokens: downloadTokens }));
+  app.route("/api/admin", createAuditArchiveRoutes({ service: services.auditArchive }));
   app.route("/api/admin", createBlobReconciliationRoutes({ service: services.blobReconciliation }));
 
   app.notFound((context) => {
@@ -329,4 +347,9 @@ const EXPENSIVE_READ_PATHS = new Set([
 
 function isExpensiveRead(pathname: string): boolean {
   return EXPENSIVE_READ_PATHS.has(pathname);
+}
+
+function isContentViewPath(pathname: string): boolean {
+  return /^\/api\/announcements\/[^/]+\/view$/.test(pathname)
+    || /^\/api\/wiki\/articles\/[^/]+\/view$/.test(pathname);
 }

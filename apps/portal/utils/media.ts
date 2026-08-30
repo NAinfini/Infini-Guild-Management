@@ -16,3 +16,14 @@ export function withMediaVariant(source: string, variant: MediaVariant): string 
     `$1/${variant}`,
   );
 }
+
+export function withMediaRetry(source: string, attempt: number): string {
+  if (attempt <= 0 || source.startsWith("data:") || source.startsWith("blob:")) return source;
+
+  const hashIndex = source.indexOf("#");
+  const path = hashIndex === -1 ? source : source.slice(0, hashIndex);
+  const hash = hashIndex === -1 ? "" : source.slice(hashIndex);
+  const separator = path.includes("?") ? "&" : "?";
+
+  return `${path}${separator}media_retry=${attempt}${hash}`;
+}

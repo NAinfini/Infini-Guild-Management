@@ -1,6 +1,7 @@
 import type { RequestContext } from "@guild/kernel";
 import type { GalleryService } from "@guild/server/modules/gallery";
-import { createGalleryItemSchema } from "@guild/shared";
+import { createGalleryItemSchema, updateGalleryItemSchema } from "@guild/shared";
+import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { Hono } from "hono";
 import { z } from "zod";
 import { jsonWithEtag } from "../../core/etag.js";
@@ -10,28 +11,34 @@ import { parseFormData, parseImageUploads, parseJsonBody, parseQuery, parseValue
 import {
   presentGalleryBatchDelete,
   presentGalleryItem,
+  presentGalleryLike,
   presentGalleryOk,
   presentGalleryPage,
   presentGalleryUpload,
 } from "../../presenters/gallery/gallery-presenter.js";
 
-const daySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(isCalendarDay, "Invalid calendar date");
+const instantSchema = z.string().datetime().transform((value) => new Date(value).toISOString());
 const galleryQuerySchema = z.object({
   cursor: z.string().max(512).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   type: z.enum(["image", "video"]).optional(),
-  date_from: daySchema.optional(),
-  date_to: daySchema.optional(),
+  date_from: instantSchema.optional(),
+  date_to: instantSchema.optional(),
   search: z.string().trim().max(200).optional(),
   order: z.enum(["asc", "desc"]).default("desc"),
+}).strict().superRefine((query, context) => {
+  if (query.date_from && query.date_to && query.date_from > query.date_to) {
+    context.addIssue({ code: "custom", path: ["date_to"], message: "Invalid gallery date range" });
+  }
 });
-const captionsSchema = z.array(z.string().max(200)).max(50);
+const titlesSchema = z.array(z.string().trim().min(1).max(100)).max(50);
+const descriptionsSchema = z.array(z.string().max(200)).max(50);
 const batchDeleteSchema = z.object({
   ids: z.array(z.string().trim().min(1)).min(1).max(50)
     .refine((ids) => new Set(ids).size === ids.length, "Gallery ids must be unique"),
 }).strict();
 
-type GalleryHttpService = Pick<GalleryService, "list" | "uploadImages" | "createVideo" | "delete" | "batchDelete">;
+type GalleryHttpService = Pick<GalleryService, "list" | "uploadImages" | "createVideo" | "update" | "delete" | "batchDelete" | "like" | "unlike">;
 
 export type GalleryImagePolicy = Readonly<{ maxBytes: number; quota: number }>;
 export type GalleryRouteDependencies = Readonly<{
@@ -50,8 +57,8 @@ export function createGalleryRoutes(dependencies: GalleryRouteDependencies): Hon
       order: query.order,
       ...defined("cursor", query.cursor),
       ...defined("type", query.type),
-      ...defined("dateFrom", query.date_from ? `${query.date_from}T00:00:00.000Z` : undefined),
-      ...defined("dateTo", query.date_to ? `${query.date_to}T23:59:59.999Z` : undefined),
+      ...defined("dateFrom", query.date_from),
+      ...defined("dateTo", query.date_to),
       ...defined("search", query.search?.toLowerCase() || undefined),
     });
     return jsonWithEtag(context.req.raw, presentGalleryPage(result));
@@ -59,18 +66,25 @@ export function createGalleryRoutes(dependencies: GalleryRouteDependencies): Hon
 
   routes.post("/images", async (context) => {
     const request = requestContext(context);
+    request.authorization.require(PERMISSION_ID.GALLERY_UPLOAD);
     const form = await parseFormData(context.req.raw);
     const [uploads, policy] = await Promise.all([
       parseImageUploads(form),
       dependencies.getImagePolicy(request),
     ]);
-    const captions = parseValue(form.getAll("captions"), captionsSchema, "Invalid gallery captions");
-    if (captions.length > uploads.length) throw validation("Gallery captions must align with images");
-    const aligned = uploads.map((_, index) => captions[index]?.trim() || null);
+    const titles = parseValue(form.getAll("titles"), titlesSchema, "Invalid gallery titles");
+    const descriptions = parseValue(form.getAll("descriptions"), descriptionsSchema, "Invalid gallery descriptions");
+    if (titles.length !== uploads.length || descriptions.length > uploads.length) {
+      throw validation("Gallery metadata must align with images");
+    }
+    const metadata = uploads.map((_, index) => ({
+      title: titles[index]!,
+      description: descriptions[index]?.trim() || null,
+    }));
     return context.json(presentGalleryUpload(await dependencies.service.uploadImages(
       request,
       uploads,
-      aligned,
+      metadata,
       policy.maxBytes,
       policy.quota,
     )), 201);
@@ -89,18 +103,41 @@ export function createGalleryRoutes(dependencies: GalleryRouteDependencies): Hon
     ));
   });
 
+  routes.patch("/:id", async (context) => {
+    const input = await parseJsonBody(context.req.raw, updateGalleryItemSchema, "Invalid gallery update payload");
+    return context.json(presentGalleryItem(await dependencies.service.update(
+      requestContext(context),
+      context.req.param("id"),
+      input,
+      requiredIfMatch(context.req.header("If-Match")),
+    )));
+  });
+
+  routes.put("/:id/like", async (context) => context.json(presentGalleryLike(
+    await dependencies.service.like(requestContext(context), context.req.param("id")),
+  )));
+
+  routes.delete("/:id/like", async (context) => context.json(presentGalleryLike(
+    await dependencies.service.unlike(requestContext(context), context.req.param("id")),
+  )));
+
   routes.delete("/:id", async (context) => context.json(presentGalleryOk(
-    await dependencies.service.delete(requestContext(context), context.req.param("id")),
+    await dependencies.service.delete(
+      requestContext(context),
+      context.req.param("id"),
+      requiredIfMatch(context.req.header("If-Match")),
+    ),
   )));
 
   return routes;
 }
 
-function isCalendarDay(value: string): boolean {
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
 function defined<K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } {
   return value === undefined ? {} : { [key]: value } as { [P in K]?: V };
+}
+
+function requiredIfMatch(value: string | undefined): string {
+  const normalized = value?.trim();
+  if (!normalized || normalized === "*") throw validation("If-Match header is required");
+  return normalized;
 }

@@ -4,11 +4,17 @@ import type {
   CreateStorageItemPayload,
   CreateStoragePayload,
   CreateStorageTransactionPayload,
+  DeleteStorageCategoryPayload,
+  DeleteStorageItemPayload,
+  DeleteStoragePayload,
   StorageItem,
+  UpdateStorageCategoryPayload,
   UpdateStorageItemPayload,
+  UpdateStoragePayload,
 } from "@guild/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { isApiRequestError } from "../api/client";
 import { queryKeys } from "../api/query-keys";
 import {
   createStorage,
@@ -37,7 +43,12 @@ export function useStorageMutations() {
   const invalidateTransactions = () => queryClient.invalidateQueries({
     queryKey: [...queryKeys.storage.all, "transactions"],
   });
-  const onError = (error: unknown) => presentAppError(error, t("message.operationFailed"));
+  const onError = async (error: unknown) => {
+    if (isApiRequestError(error) && error.status === 409) {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.storage.all });
+    }
+    presentAppError(error, t("message.operationFailed"));
+  };
 
   const createStorageMutation = useMutation({
     mutationFn: (payload: CreateStoragePayload) => createStorage(payload),
@@ -46,13 +57,13 @@ export function useStorageMutations() {
   });
 
   const updateStorageMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Partial<CreateStoragePayload> }) => updateStorage(id, payload),
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateStoragePayload }) => updateStorage(id, payload),
     onSuccess: async () => { notifySuccess(t("message.storageUpdated")); await invalidateTree(); },
     onError,
   });
 
   const deleteStorageMutation = useMutation({
-    mutationFn: deleteStorage,
+    mutationFn: ({ id, payload }: { id: string; payload: DeleteStoragePayload }) => deleteStorage(id, payload),
     onSuccess: async () => {
       notifySuccess(t("message.storageDeleted"));
       await Promise.all([invalidateTree(), invalidateItems(), invalidateTransactions()]);
@@ -67,13 +78,17 @@ export function useStorageMutations() {
   });
 
   const updateCategoryMutation = useMutation({
-    mutationFn: ({ storageId, categoryId, payload }: { storageId: string; categoryId: string; payload: CreateStorageCategoryPayload }) => updateStorageCategory(storageId, categoryId, payload),
+    mutationFn: ({ storageId, categoryId, payload }: { storageId: string; categoryId: string; payload: UpdateStorageCategoryPayload }) => updateStorageCategory(storageId, categoryId, payload),
     onSuccess: async () => { notifySuccess(t("message.categorySaved")); await Promise.all([invalidateTree(), invalidateItems()]); },
     onError,
   });
 
   const deleteCategoryMutation = useMutation({
-    mutationFn: ({ storageId, categoryId }: { storageId: string; categoryId: string }) => deleteStorageCategory(storageId, categoryId),
+    mutationFn: ({ storageId, categoryId, payload }: {
+      storageId: string;
+      categoryId: string;
+      payload: DeleteStorageCategoryPayload;
+    }) => deleteStorageCategory(storageId, categoryId, payload),
     onSuccess: async () => { notifySuccess(t("message.categoryDeleted")); await Promise.all([invalidateTree(), invalidateItems()]); },
     onError,
   });
@@ -99,9 +114,9 @@ export function useStorageMutations() {
   });
 
   const deleteItemMutation = useMutation({
-    mutationFn: deleteStorageItem,
-    onSuccess: async (_response, itemId) => {
-      queryClient.removeQueries({ queryKey: queryKeys.storage.item(itemId), exact: true });
+    mutationFn: ({ id, payload }: { id: string; payload: DeleteStorageItemPayload }) => deleteStorageItem(id, payload),
+    onSuccess: async (_response, { id }) => {
+      queryClient.removeQueries({ queryKey: queryKeys.storage.item(id), exact: true });
       notifySuccess(t("message.itemDeleted"));
       await Promise.all([invalidateTree(), invalidateItems(), invalidateTransactions()]);
     },
@@ -109,8 +124,19 @@ export function useStorageMutations() {
   });
 
   const uploadImagesMutation = useMutation({
-    mutationFn: ({ itemId, files }: { itemId: string; files: File[] }) => uploadStorageItemImages(itemId, files),
-    onSuccess: async (_images, { itemId }) => {
+    mutationFn: ({ itemId, files, expectedUpdatedAt }: {
+      itemId: string;
+      files: File[];
+      expectedUpdatedAt: string;
+    }) => uploadStorageItemImages(itemId, files, expectedUpdatedAt),
+    onSuccess: async (response, { itemId }) => {
+      queryClient.setQueryData<StorageItem>(queryKeys.storage.item(itemId), (current) => current
+        ? {
+          ...current,
+          images: [...current.images, ...response.data],
+          updated_at: response.updated_at,
+        }
+        : current);
       notifySuccess(t("message.imagesUploaded"));
       await Promise.all([invalidateItem(itemId), invalidateItems()]);
     },
@@ -118,8 +144,19 @@ export function useStorageMutations() {
   });
 
   const deleteImageMutation = useMutation({
-    mutationFn: ({ itemId, imageId }: { itemId: string; imageId: string }) => deleteStorageItemImage(itemId, imageId),
-    onSuccess: async (_response, { itemId }) => {
+    mutationFn: ({ itemId, imageId, expectedUpdatedAt }: {
+      itemId: string;
+      imageId: string;
+      expectedUpdatedAt: string;
+    }) => deleteStorageItemImage(itemId, imageId, expectedUpdatedAt),
+    onSuccess: async (response, { itemId, imageId }) => {
+      queryClient.setQueryData<StorageItem>(queryKeys.storage.item(itemId), (current) => current
+        ? {
+          ...current,
+          images: current.images.filter((image) => image.media_id !== imageId),
+          updated_at: response.updated_at,
+        }
+        : current);
       notifySuccess(t("message.imageDeleted"));
       await Promise.all([invalidateItem(itemId), invalidateItems()]);
     },

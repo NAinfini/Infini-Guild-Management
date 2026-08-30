@@ -126,6 +126,13 @@ export function LoginPage() {
       transitionSession(queryClient, response);
       const fallback = "/";
       const target = isSafeReturnTo(search.returnTo) ? search.returnTo : fallback;
+      if (response.session_scope === "password_change") {
+        void navigate({
+          to: "/complete-password-reset",
+          search: target === fallback ? {} : { returnTo: target },
+        });
+        return;
+      }
       void navigate({ to: target });
     },
     onError: (error) => {
@@ -142,6 +149,10 @@ export function LoginPage() {
       }
       if (isApiRequestError(error) && error.status === 401) {
         setSubmitError(t("invalidCredentials"));
+        return;
+      }
+      if (isApiRequestError(error) && error.status === 429) {
+        setSubmitError(t("tooManyAttempts"));
         return;
       }
       setSubmitError(error instanceof Error ? error.message : t("invalidCredentials"));

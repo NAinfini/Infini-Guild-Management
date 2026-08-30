@@ -143,7 +143,7 @@ describe("RecurringTemplatesTab", () => {
     expect(searchInput).toHaveValue("");
     await user.click(screen.getByRole("button", { name: "common:filter.toggle" }));
     const filterDialog = await screen.findByRole("dialog", { name: "common:filter.toggle" });
-    await user.click(within(filterDialog).getByRole("button", { name: "recurring.status.paused" }));
+    await user.click(within(filterDialog).getByRole("radio", { name: "recurring.status.paused" }));
     expect(screen.queryByText("Alpha Run")).not.toBeInTheDocument();
     expect(screen.getByText("Beta Social")).toBeInTheDocument();
 

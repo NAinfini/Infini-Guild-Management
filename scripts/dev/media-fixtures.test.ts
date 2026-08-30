@@ -49,4 +49,18 @@ describe("development media fixtures", () => {
       LIMITS.media.maxFileSize.profileAudio,
     )).not.toThrow();
   });
+
+  it("contains a PDF fixture for announcement attachments", async () => {
+    const attachment = DEVELOPMENT_MEDIA_ASSETS.find(
+      (asset) => asset.purpose === "announcement_attachment",
+    );
+    if (!attachment) throw new Error("Development announcement attachment fixture is missing");
+    const full = attachment.variants.find((variant: { variant: string }) => variant.variant === "full");
+    if (!full) throw new Error("Development announcement attachment full variant is missing");
+
+    expect(attachment.originalName).toMatch(/\.pdf$/i);
+    expect(full.contentType).toBe("application/pdf");
+    expect(Buffer.from(await readDevelopmentMediaObjectBytes(full)).subarray(0, 5).toString("ascii"))
+      .toBe("%PDF-");
+  });
 });

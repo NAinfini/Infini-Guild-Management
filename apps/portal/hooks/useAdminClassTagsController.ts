@@ -1,4 +1,4 @@
-import type { ClassTag } from "@guild/shared";
+import { catalogRevisionToken, type ClassTag, type UpdateClassTagInput } from "@guild/shared";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -11,18 +11,21 @@ import {
 } from "../api/mutations/class-tags";
 import { queryKeys } from "../api/query-keys";
 import { classTagsQueryOptions } from "./data/useClassData";
-import { notifyError, notifySuccess } from "../utils/notifications";
+import { notifySuccess } from "../utils/notifications";
+import { presentAppError } from "./useAppError";
 
 /* sort_order 不在草稿里：顺序由左栏拖拽决定，走的是整表重排接口。保存标签时不再
    捎带一个顺序数字，否则同一份顺序有两个写入口，谁最后写的谁说了算。 */
 export type ClassTagDraft = {
   id: string | null;
+  updatedAt: string | null;
   label: string;
   classIds: string[];
 };
 
 export const EMPTY_CLASS_TAG_DRAFT: ClassTagDraft = {
   id: null,
+  updatedAt: null,
   label: "",
   classIds: [],
 };
@@ -30,13 +33,15 @@ export const EMPTY_CLASS_TAG_DRAFT: ClassTagDraft = {
 function tagToDraft(tag: ClassTag): ClassTagDraft {
   return {
     id: tag.id,
+    updatedAt: tag.updated_at,
     label: tag.label,
     classIds: [...tag.class_ids],
   };
 }
 
 function sameTagDraft(left: ClassTagDraft, right: ClassTagDraft) {
-  if (left.id !== right.id || left.label !== right.label || left.classIds.length !== right.classIds.length) {
+  if (left.id !== right.id || left.updatedAt !== right.updatedAt
+    || left.label !== right.label || left.classIds.length !== right.classIds.length) {
     return false;
   }
 
@@ -68,7 +73,12 @@ export function useAdminClassTagsController() {
         label: next.label.trim(),
         class_ids: next.classIds,
       };
-      return next.id ? updateClassTag(next.id, payload) : createClassTag(payload);
+      if (!next.id) return createClassTag(payload);
+      if (!next.updatedAt) throw new Error("Class tag editor revision is missing");
+      return updateClassTag(next.id, {
+        ...payload,
+        expected_updated_at: next.updatedAt,
+      } satisfies UpdateClassTagInput);
     },
     onSuccess: async (tag) => {
       await refresh();
@@ -79,13 +89,15 @@ export function useAdminClassTagsController() {
       setOpened(true);
       notifySuccess(t("classTags.message.saved"));
     },
-    onError: (error) => notifyError(
-      error instanceof Error ? error.message : t("classTags.message.failed"),
-    ),
+    onError: (error) => presentAppError(error, t("classTags.message.failed")),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteClassTag,
+    mutationFn: ({ id, expectedUpdatedAt, expectedUsageCount }: {
+      id: string;
+      expectedUpdatedAt: string;
+      expectedUsageCount: number;
+    }) => deleteClassTag(id, expectedUpdatedAt, expectedUsageCount),
     onSuccess: async () => {
       await refresh();
       setOpened(false);
@@ -93,9 +105,10 @@ export function useAdminClassTagsController() {
       setBaseline(EMPTY_CLASS_TAG_DRAFT);
       notifySuccess(t("classTags.message.deleted"));
     },
-    onError: (error) => notifyError(
-      error instanceof Error ? error.message : t("classTags.message.failed"),
-    ),
+    onError: (error) => {
+      void refresh();
+      presentAppError(error, t("classTags.message.failed"));
+    },
   });
 
   /*
@@ -103,8 +116,9 @@ export function useAdminClassTagsController() {
    * 失败先回滚再重拉。回滚之后还要重拉的理由写在那边，两处不重复一遍。
    */
   const reorderMutation = useMutation({
-    mutationFn: (order: string[]) => reorderClassTags(order),
-    onMutate: async (order: string[]) => {
+    mutationFn: ({ order, expectedRevisionToken }: { order: string[]; expectedRevisionToken: string }) =>
+      reorderClassTags(order, expectedRevisionToken),
+    onMutate: async ({ order }: { order: string[]; expectedRevisionToken: string }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.classTags.list() });
       const previous = queryClient.getQueryData<ClassTag[]>(queryKeys.classTags.list());
       if (previous) {
@@ -116,11 +130,11 @@ export function useAdminClassTagsController() {
       }
       return { previous };
     },
-    onError: (error, _order, context) => {
+    onError: (error, _variables, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKeys.classTags.list(), context.previous);
       }
-      notifyError(error instanceof Error ? error.message : t("classTags.message.reorderFailed"));
+      presentAppError(error, t("classTags.message.reorderFailed"));
       void refresh();
     },
     onSuccess: (tags) => {
@@ -134,7 +148,10 @@ export function useAdminClassTagsController() {
     const from = current.findIndex((tag) => tag.id === activeId);
     const to = current.findIndex((tag) => tag.id === overId);
     if (from < 0 || to < 0 || from === to) return;
-    reorderMutation.mutate(arrayMove(current, from, to).map((tag) => tag.id));
+    reorderMutation.mutate({
+      order: arrayMove(current, from, to).map((tag) => tag.id),
+      expectedRevisionToken: catalogRevisionToken(current),
+    });
   };
 
   const selectTag = (tag: ClassTag) => {
@@ -165,6 +182,16 @@ export function useAdminClassTagsController() {
     selectTag(first);
   }, [query.data]);
 
+  useEffect(() => {
+    if (!opened || !draft.id || !baseline.id || isDirty || saveMutation.isPending) return;
+    const latest = query.data?.find((tag) => tag.id === draft.id);
+    if (!latest) return;
+    const nextDraft = tagToDraft(latest);
+    if (sameTagDraft(baseline, nextDraft)) return;
+    setDraft(nextDraft);
+    setBaseline(nextDraft);
+  }, [baseline, draft.id, isDirty, opened, query.data, saveMutation.isPending]);
+
   const openCreate = () => {
     /* sort_order 不传：服务端按当前最大值 + 10 排到末尾，正好是拖拽序里「新的在最后」。 */
     setDraft(EMPTY_CLASS_TAG_DRAFT);
@@ -191,7 +218,8 @@ export function useAdminClassTagsController() {
     discardChanges,
     reorder,
     save: () => saveMutation.mutate(draft),
-    remove: (id: string) => deleteMutation.mutateAsync(id),
+    remove: (id: string, expectedUpdatedAt: string, expectedUsageCount: number) =>
+      deleteMutation.mutateAsync({ id, expectedUpdatedAt, expectedUsageCount }),
     savePending: saveMutation.isPending,
     deletePending: deleteMutation.isPending,
     reorderPending: reorderMutation.isPending,

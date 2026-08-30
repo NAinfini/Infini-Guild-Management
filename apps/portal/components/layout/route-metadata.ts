@@ -1,7 +1,6 @@
 import type { FeatureFlags } from "@guild/shared";
 import type { IconProps } from "@tabler/icons-react";
 import type { ComponentType } from "react";
-import type { NotificationFeature } from "../../stores/notifications";
 import type { VisualPageSceneId } from "../../visual/themes";
 import {
   BookOutlined,
@@ -62,7 +61,6 @@ export type PortalRouteMetadata = {
   mobilePrimary?: number;
   requiresSession?: boolean;
   requiresModerator?: boolean;
-  feature?: NotificationFeature;
   featureFlag?: keyof FeatureFlags;
 };
 
@@ -92,7 +90,6 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     icon: NotificationOutlined,
     contentWidth: "wide",
     visualScene: "announcements",
-    feature: "announcements",
     featureFlag: "announcements",
   },
   {
@@ -115,7 +112,6 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     contentWidth: "wide",
     visualScene: "roster",
     mobilePrimary: 4,
-    feature: "members",
   },
   {
     to: "/gallery",

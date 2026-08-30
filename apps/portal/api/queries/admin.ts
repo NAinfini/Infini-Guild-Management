@@ -1,5 +1,4 @@
 import {
-  loginLockStateSchema,
   type AuditEvent,
   type CursorResponse,
   type InviteLink,
@@ -14,12 +13,9 @@ import {
   type BlobReconciliationResponse,
 } from "@guild/shared/schemas/blob-reconciliation";
 import { LIMITS } from "@guild/shared/config/limits";
-import type { z } from "zod";
 import { apiDownload, apiRequest } from "../client";
 
 export type { AdminOperationsResponse };
-
-export type AdminLoginLockState = z.infer<typeof loginLockStateSchema>;
 
 export type InviteLinkStatsSummary = {
   total: number;
@@ -41,18 +37,19 @@ export type AdminStatus = {
   crons: string;
 };
 
-export type AdminAuditArchiveDownloadFile = {
-  key: string;
+export type AdminAuditArchiveFile = {
+  id: string;
+  filename: string;
   row_count: number;
   size_bytes: number;
-  expires_at: string;
-  url: string;
+  starts_at: string;
+  ends_at: string;
+  completed_at: string;
 };
 
-export type AdminAuditArchiveDownloadResponse = {
+export type AdminAuditArchiveFilesResponse = {
   month: string;
-  expires_in_seconds: number;
-  files: AdminAuditArchiveDownloadFile[];
+  files: AdminAuditArchiveFile[];
 };
 
 export type AdminAuditExportParams = {
@@ -79,7 +76,6 @@ export function fetchAdminInviteLinks(params: {
 
   return apiRequest<AdminInviteLinksResponse>(`/api/admin/invite-links?${query.toString()}`);
 }
-
 export function fetchAdminInviteStats(): Promise<InviteLinkStatsSummary> {
   return apiRequest<InviteLinkStatsSummary>("/api/admin/invite-links/stats");
 }
@@ -124,15 +120,15 @@ export function fetchAdminAuditArchiveMonths(): Promise<{ months: string[] }> {
   return apiRequest<{ months: string[] }>("/api/admin/audit-archive/months");
 }
 
-export function requestAdminAuditArchiveDownload(
+export function fetchAdminAuditArchiveFiles(
   month: string,
-): Promise<AdminAuditArchiveDownloadResponse> {
+): Promise<AdminAuditArchiveFilesResponse> {
   const query = new URLSearchParams({ month });
-  return apiRequest<AdminAuditArchiveDownloadResponse>(`/api/admin/audit-archive/download?${query.toString()}`);
+  return apiRequest<AdminAuditArchiveFilesResponse>(`/api/admin/audit-archive/files?${query.toString()}`);
 }
 
-export async function downloadAdminAuditArchiveFile(url: string): Promise<Blob> {
-  const { blob } = await apiDownload(url);
+export async function downloadAdminAuditArchiveFile(archiveId: string): Promise<Blob> {
+  const { blob } = await apiDownload(`/api/admin/audit-archive/files/${encodeURIComponent(archiveId)}`);
   return blob;
 }
 
@@ -155,8 +151,4 @@ export async function fetchBlobReconciliationPage(
   return blobReconciliationResponseSchema.parse(
     await apiRequest<unknown>(`/api/admin/blob-reconciliation?${query.toString()}`),
   );
-}
-
-export function fetchAdminUserLoginLock(userId: string): Promise<AdminLoginLockState> {
-  return apiRequest<AdminLoginLockState>(`/api/admin/users/${userId}/login-lock`);
 }

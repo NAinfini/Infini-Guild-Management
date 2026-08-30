@@ -79,7 +79,19 @@ implements EventGuildWarLifecycleStore, GuildWarEventRosterStore {
 
   async moveMembers(input: Parameters<GuildWarEventRosterStore["moveMembers"]>[0]): Promise<boolean> {
     const nextVersion = input.expectedVersion + 1;
-    const guard = versionGuard(input.warId, nextVersion, "active", input.audit.eventId);
+    const warGuard = versionGuard(input.warId, nextVersion, "active", input.audit.eventId);
+    const expectedEventGuard = {
+      sql: "SELECT 1 FROM events WHERE id = ? AND updated_at = ?",
+      params: [input.eventId, input.expectedEventUpdatedAt] as const,
+    };
+    const updatedEventGuard = {
+      sql: "SELECT 1 FROM events WHERE id = ? AND updated_at = ?",
+      params: [input.eventId, input.updatedEventAt] as const,
+    };
+    const guard = {
+      sql: `SELECT 1 WHERE EXISTS (${warGuard.sql}) AND EXISTS (${updatedEventGuard.sql})`,
+      params: [...warGuard.params, ...updatedEventGuard.params],
+    };
     const moves = JSON.stringify(input.moves);
     const labelRows = returnedRows(await this.sql.execute({
       method: "all",
@@ -108,8 +120,16 @@ implements EventGuildWarLifecycleStore, GuildWarEventRosterStore {
         FROM json_each(?)
         WHERE json_extract(value, '$.participantId') IS NOT NULL
           AND EXISTS (${expectedVersionGuard})
+          AND EXISTS (${expectedEventGuard.sql})
         ON CONFLICT(event_id, user_id) DO NOTHING`,
-      params: [input.eventId, input.now, moves, input.warId, input.expectedVersion],
+      params: [
+        input.eventId,
+        input.now,
+        moves,
+        input.warId,
+        input.expectedVersion,
+        ...expectedEventGuard.params,
+      ],
     }, versionUpdate(
       input.warId,
       input.expectedVersion,
@@ -118,7 +138,21 @@ implements EventGuildWarLifecycleStore, GuildWarEventRosterStore {
       "active",
       input.audit.eventId,
       { eventId: input.eventId, userIds: input.moves.map(({ userId }) => userId) },
+      expectedEventGuard,
     ), {
+      method: "all",
+      columns: ["affected"],
+      sql: `UPDATE events SET updated_by = ?, updated_at = ?
+        WHERE id = ? AND updated_at = ? AND EXISTS (${warGuard.sql})
+        RETURNING 1 AS affected`,
+      params: [
+        input.actorUserId,
+        input.updatedEventAt,
+        input.eventId,
+        input.expectedEventUpdatedAt,
+        ...warGuard.params,
+      ],
+    }, {
       method: "run",
       sql: `DELETE FROM war_members
         WHERE war_id = ?
@@ -177,6 +211,11 @@ implements EventGuildWarLifecycleStore, GuildWarEventRosterStore {
     }];
     statements.push(auditInsertStatement(audit, guard));
     const results = await this.sql.batch(statements);
-    return returnedRowCount(results[1]) === 1;
+    const rosterChanged = returnedRowCount(results[1]) === 1;
+    const eventChanged = returnedRowCount(results[2]) === 1;
+    if (rosterChanged !== eventChanged) {
+      throw new Error("Guild-war roster and Event aggregate revisions diverged");
+    }
+    return rosterChanged;
   }
 }

@@ -11,7 +11,7 @@ vi.mock("./useDebouncedSearch", () => ({
 }));
 
 describe("useAdminInviteController", () => {
-  it("preserves invite-code case while trimming the debounced search", () => {
+  it("preserves invite-search case while trimming the debounced search", () => {
     const { result } = renderHook(() => useAdminInviteController());
 
     expect(result.current.debouncedInviteSearch).toBe("AbCd_Ef-123");

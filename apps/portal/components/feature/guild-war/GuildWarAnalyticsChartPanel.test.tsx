@@ -98,4 +98,33 @@ describe("GuildWarAnalyticsChartPanel", () => {
     // where the new "{v}%" formatter rendered 522000 damage as "522000%".
     expect(Chart.mock.calls[0]?.[0]).toMatchObject({ notMerge: true });
   });
+
+  it("renders the real result sequence beside a war comparison chart", () => {
+    const Chart = vi.fn(() => <div data-testid="analytics-chart" />);
+
+    render(
+      <GuildWarAnalyticsChartPanel
+        ReactEChartsCore={Chart as never}
+        echarts={{}}
+        themeName="guild-light"
+        chartOption={{}}
+        radarOption={null}
+        mode="wars"
+        selectedUsers={[]}
+        selectedMetrics={[]}
+        expanded={false}
+        onToggleExpanded={vi.fn()}
+        heading={{ kicker: "Wars", title: "War comparison · 2 wars" }}
+        warOutcomes={[
+          { id: "war-1", label: "Crimson Tide", result: "win", resultLabel: "Victory" },
+          { id: "war-2", label: "Iron Vanguard", result: "loss", resultLabel: "Defeat" },
+        ]}
+        t={(key) => key}
+      />,
+    );
+
+    const timeline = screen.getByRole("list", { name: "analytics.wars.timeline" });
+    expect(timeline.querySelector('[data-result="win"]')).toHaveTextContent("VictoryCrimson Tide");
+    expect(timeline.querySelector('[data-result="loss"]')).toHaveTextContent("DefeatIron Vanguard");
+  });
 });

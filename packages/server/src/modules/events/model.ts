@@ -36,6 +36,11 @@ export type EventRecord = Readonly<{
   updatedAt: string;
 }>;
 
+export function monotonicTimestamp(now: string, previous: string): string {
+  if (Date.parse(now) > Date.parse(previous)) return now;
+  return new Date(Date.parse(previous) + 1).toISOString();
+}
+
 export type PollOptionRecord = Readonly<{
   id: string;
   label: string;
@@ -186,6 +191,8 @@ export type EventUpdateWrite = Readonly<{
   eventId: string;
   actorUserId: string;
   now: string;
+  expectedUpdatedAt: string;
+  updatedAt: string;
   patch: Readonly<Partial<{
     type: EventType;
     title: string;
@@ -228,6 +235,8 @@ export type TemplateUpdateWrite = Readonly<{
   templateId: string;
   actorUserId: string;
   now: string;
+  expectedUpdatedAt: string;
+  updatedAt: string;
   patch: Readonly<Partial<{
     type: EventType;
     title: string;
@@ -259,11 +268,25 @@ export interface EventsCatalogStore {
   getMany(eventIds: readonly string[], includeParticipants?: boolean): Promise<readonly EventAggregate[]>;
   create(input: EventCreateWrite): Promise<EventAggregate>;
   update(input: EventUpdateWrite): Promise<EventAggregate>;
-  touch(eventId: string, actorUserId: string, now: string, mediaIds: readonly string[], audit: AuditMutation): Promise<void>;
+  touch(input: Readonly<{
+    eventId: string;
+    actorUserId: string;
+    expectedUpdatedAt: string;
+    updatedAt: string;
+    mediaIds: readonly string[];
+    audit: AuditMutation;
+  }>): Promise<void>;
 }
 
 export interface EventsLifecycleStore {
-  setArchived(eventId: string, archivedAt: string, actorUserId: string, audit: AuditMutation): Promise<void>;
+  setArchived(input: Readonly<{
+    eventId: string;
+    archivedAt: string;
+    actorUserId: string;
+    expectedUpdatedAt: string;
+    updatedAt: string;
+    audit: AuditMutation;
+  }>): Promise<void>;
 }
 
 export type EventDestroyOutcome = "deleted" | "not_found" | "active_war_permission_required";
@@ -276,14 +299,61 @@ export interface EventGuildWarLifecycleStore {
   }>): Promise<EventDestroyOutcome>;
 }
 
+export type EventParticipantAddWrite = Readonly<{
+  eventId: string;
+  userIds: readonly string[];
+  participantIds: readonly string[];
+  now: string;
+  mode: "self" | "moderator";
+  actorUserId: string;
+  expectedUpdatedAt: string;
+  updatedAt: string;
+  audit: AuditMutation;
+}>;
+
+export type EventParticipantAddResult = Readonly<{
+  participants: readonly EventParticipant[];
+  changed: boolean;
+}>;
+
+export type EventParticipantRemoveWrite = Readonly<{
+  eventId: string;
+  userIds: readonly string[];
+  actorUserId: string;
+  expectedUpdatedAt: string;
+  updatedAt: string;
+  audit: AuditMutation;
+}>;
+
+export type EventPollVoteWrite = Readonly<{
+  eventId: string;
+  userId: string;
+  optionIds: readonly string[];
+  now: string;
+  expectedUpdatedAt: string;
+  updatedAt: string;
+  audit: AuditMutation;
+}>;
+
+export type EventRaffleDrawWrite = Readonly<{
+  eventId: string;
+  winnerIds: readonly string[];
+  winnerRowIds: readonly string[];
+  now: string;
+  actorUserId: string;
+  expectedUpdatedAt: string;
+  updatedAt: string;
+  audit: AuditMutation;
+}>;
+
 export interface EventsParticipationStore {
-  addParticipants(eventId: string, userIds: readonly string[], participantIds: readonly string[], now: string, mode: "self" | "moderator", audit: AuditMutation): Promise<readonly EventParticipant[]>;
-  removeParticipants(eventId: string, userIds: readonly string[], audit: AuditMutation): Promise<number>;
+  addParticipants(input: EventParticipantAddWrite): Promise<EventParticipantAddResult>;
+  removeParticipants(input: EventParticipantRemoveWrite): Promise<number>;
 }
 
 export interface EventsPollRaffleStore {
-  replacePollVote(eventId: string, userId: string, optionIds: readonly string[], now: string, audit: AuditMutation): Promise<void>;
-  drawRaffle(eventId: string, winnerIds: readonly string[], winnerRowIds: readonly string[], now: string, actorUserId: string, audit: AuditMutation): Promise<readonly EventRaffleWinnerRecord[]>;
+  replacePollVote(input: EventPollVoteWrite): Promise<boolean>;
+  drawRaffle(input: EventRaffleDrawWrite): Promise<readonly EventRaffleWinnerRecord[]>;
 }
 
 export interface EventsRecurrenceStore {
@@ -292,11 +362,14 @@ export interface EventsRecurrenceStore {
   createTemplate(input: TemplateCreateWrite): Promise<RecurringTemplateAggregate>;
   updateTemplate(input: TemplateUpdateWrite): Promise<RecurringTemplateAggregate>;
   setTemplatePaused(
-    templateId: string,
-    paused: boolean,
-    now: string,
-    audit: AuditMutation,
-    resumeCursorDate?: string,
+    input: Readonly<{
+      templateId: string;
+      paused: boolean;
+      expectedUpdatedAt: string;
+      updatedAt: string;
+      audit: AuditMutation;
+      resumeCursorDate?: string;
+    }>,
   ): Promise<void>;
   deleteTemplate(templateId: string, audit: AuditMutation): Promise<void>;
   materializeDue(now: string, templateId: string | undefined, createAudit: MaterializationAuditFactory): Promise<readonly RecurrenceMaterialization[]>;
@@ -341,6 +414,7 @@ export type EventMutationInput = Readonly<{
 }>;
 
 export type EventUpdateInput = Omit<Partial<EventMutationInput>, "description" | "end_at" | "capacity"> & Readonly<{
+  expected_updated_at: string;
   description?: string | null;
   end_at?: string | null;
   capacity?: number | null;
@@ -364,6 +438,7 @@ export type TemplateMutationInput = Readonly<{
 }>;
 
 export type TemplateUpdateInput = Omit<Partial<TemplateMutationInput>, "description" | "duration_minutes" | "capacity"> & Readonly<{
+  expected_updated_at: string;
   description?: string | null;
   duration_minutes?: number | null;
   capacity?: number | null;

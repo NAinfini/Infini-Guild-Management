@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe("VpsScheduledJobScheduler", () => {
-  it("aligns to the next quarter-hour and waits for active work during stop", async () => {
+  it("aligns staggered work to its next boundary and waits for active work during stop", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-09T00:00:01.000Z"));
     let release!: () => void;
@@ -42,8 +42,8 @@ describe("VpsScheduledJobScheduler", () => {
     } satisfies Pick<ScheduledJobCoordinator, "runSchedule">, { onOutcome });
     scheduler.start();
 
-    await vi.advanceTimersByTimeAsync(15 * 60_000 - 1_000);
-    expect(runSchedule).toHaveBeenCalledWith("quarter-hourly");
+    await vi.advanceTimersByTimeAsync(7 * 60_000 - 1_000);
+    expect(runSchedule).toHaveBeenCalledWith("half-hourly");
     let stopped = false;
     const stopping = scheduler.stop().then(() => {
       stopped = true;
@@ -55,7 +55,7 @@ describe("VpsScheduledJobScheduler", () => {
     expect(stopped).toBe(true);
     expect(onOutcome).toHaveBeenCalledWith(
       expect.objectContaining({ name: "session-cleanup", status: "completed" }),
-      "quarter-hourly",
+      "half-hourly",
     );
   });
 });

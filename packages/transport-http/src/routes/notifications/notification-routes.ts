@@ -2,6 +2,8 @@ import {
   inboxNotificationListResponseSchema,
   inboxNotificationMutationResponseSchema,
   markInboxNotificationsReadSchema,
+  notificationPreferencesSchema,
+  updateNotificationPreferencesSchema,
 } from "@guild/shared";
 import {
   decodeNotificationInboxCursor,
@@ -18,7 +20,8 @@ const listQuerySchema = z.object({
   cursor: z.string().min(1).max(512).optional(),
 }).strict();
 
-type NotificationInboxHttpService = Pick<NotificationInboxService, "list" | "markRead">;
+type NotificationInboxHttpService = Pick<NotificationInboxService,
+  "list" | "markRead" | "getPreferences" | "updatePreferences">;
 
 export function createNotificationInboxRoutes(
   dependencies: Readonly<{ service: NotificationInboxHttpService }>,
@@ -31,6 +34,21 @@ export function createNotificationInboxRoutes(
       requestContext(context),
       { limit: query.limit, cursor: decodeNotificationInboxCursor(query.cursor) },
     )));
+  });
+
+  routes.get("/preferences", async (context) => context.json(notificationPreferencesSchema.parse(
+    await dependencies.service.getPreferences(requestContext(context)),
+  )));
+
+  routes.patch("/preferences", async (context) => {
+    const input = await parseJsonBody(
+      context.req.raw,
+      updateNotificationPreferencesSchema,
+      "Invalid notification preferences",
+    );
+    return context.json(notificationPreferencesSchema.parse(
+      await dependencies.service.updatePreferences(requestContext(context), input),
+    ));
   });
 
   routes.patch("/read", async (context) => {

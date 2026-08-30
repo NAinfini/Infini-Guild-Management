@@ -1,3 +1,4 @@
+export * from "./content-read-scope.js";
 export * from "./modules/audit/public.js";
 export * from "./modules/admin-operations/public.js";
 export * from "./modules/blob-reconciliation/public.js";

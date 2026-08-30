@@ -256,13 +256,13 @@
   color: var(--month-event-color);
 }
 
-.month-calendar__event-tooltip > span:last-child {
+.month-calendar__event-tooltip > span:last-of-type {
   display: grid;
   gap: 3px;
 }
 
-.month-calendar__event-tooltip > span:last-child > span {
-  color: color-mix(in srgb, var(--background) 76%, transparent);
+.month-calendar__event-tooltip > span:last-of-type > span {
+  color: var(--text-secondary);
 }
 
 .month-calendar__compact-list {

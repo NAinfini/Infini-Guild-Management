@@ -45,6 +45,7 @@ export type HistoryDetailTeam = {
 
 export type HistoryDetailData = {
   id: string;
+  etag: string;
   war_name: string;
   enemy_name: string | null;
   result: string | null;

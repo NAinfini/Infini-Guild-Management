@@ -24,17 +24,24 @@ import type {
   InviteRecord,
   InviteStats,
   LoginAccountRecord,
-  LoginFailureRecord,
   ManagedUserTarget,
   RoleRecord,
   SessionAuthorizationRecord,
 } from "@guild/server/modules/auth";
 import type { AuditEventWrite } from "@guild/server/modules/audit";
 import type { AppDatabase } from "../database.js";
-import type { SqlBatchStatement, SqlExecutor, SqlValue } from "@guild/kernel";
-import { inviteLinks, loginFailures, rolePermissions, roles, sessions, userCredentials, users } from "../schema/auth.js";
-import { auditInsertSelectStatement, auditInsertStatement } from "./audit-statement.js";
-import { returnedRowCount } from "./sql-result.js";
+import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
+import { inviteLinks, rolePermissions, roles, sessions, userCredentials, users } from "../schema/auth.js";
+import { auditInsertStatement } from "./audit-statement.js";
+import {
+  deleteSessionsAfterMutation,
+  managedTargetSnapshot,
+  permissionSnapshot,
+  ROLE_SNAPSHOT_MATCH,
+  TARGET_SNAPSHOT_MATCH,
+  targetSnapshotCte,
+} from "./managed-user-mutation.js";
+import { returnedRowCount, returnedRows } from "./sql-result.js";
 
 type AuthSchema = {
   roles: typeof roles;
@@ -42,16 +49,37 @@ type AuthSchema = {
   users: typeof users;
   userCredentials: typeof userCredentials;
   inviteLinks: typeof inviteLinks;
-  loginFailures: typeof loginFailures;
   sessions: typeof sessions;
 };
 
 const permissionIds = new Set<string>(PERMISSIONS);
 
+type RoleSnapshotFields = Readonly<{
+  id: string;
+  name: string;
+  level: number;
+  color: string | null;
+  revisionToken: string;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
 function toPermissionSet(rows: readonly Readonly<{ permission: string | null }>[]): ReadonlySet<Permission> {
   return new Set(rows
     .map((row) => row.permission)
     .filter((permission): permission is Permission => permission !== null && permissionIds.has(permission)));
+}
+
+function roleRecordFromSnapshot(
+  role: RoleSnapshotFields,
+  permissions: ReadonlySet<Permission>,
+  assignedUserCount: number,
+): RoleRecord {
+  return {
+    ...role,
+    permissions,
+    assignedUserCount,
+  };
 }
 
 type UserPermissionRow = Readonly<{
@@ -125,6 +153,59 @@ function returning(sql: string, params: readonly SqlValue[] = []): SqlBatchState
   return { method: "all", columns: ["affected"], sql: `${sql} RETURNING 1 AS affected`, params };
 }
 
+function roleSnapshotStatements(roleId: string, revisionToken?: string): SqlBatchStatement[] {
+  const revisionGuard = revisionToken === undefined ? "" : " AND revision_token = ?";
+  return [
+    {
+      method: "get",
+      columns: ["id", "name", "level", "color", "revision_token", "created_at", "updated_at"],
+      sql: `SELECT id, name, level, color, revision_token, created_at, updated_at
+        FROM roles WHERE id = ?${revisionGuard}`,
+      params: [roleId, ...(revisionToken === undefined ? [] : [revisionToken])],
+    },
+    {
+      method: "all",
+      columns: ["permission"],
+      sql: "SELECT permission FROM role_permissions WHERE role_id = ? ORDER BY permission",
+      params: [roleId],
+    },
+    {
+      method: "get",
+      columns: ["assigned_user_count"],
+      sql: "SELECT count(*) AS assigned_user_count FROM users WHERE role_id = ? AND deleted_at IS NULL",
+      params: [roleId],
+    },
+  ];
+}
+
+function roleSnapshotFromResults(results: readonly SqlResult[]): RoleRecord | null {
+  const [roleResult, permissionsResult, countResult] = results;
+  if (!roleResult || !permissionsResult || !countResult) throw new Error("Missing role snapshot query result");
+  const row = returnedRows(roleResult)[0];
+  if (!row) return null;
+  const [id, name, level, color, revisionToken, createdAt, updatedAt] = row;
+  if (
+    typeof id !== "string" || typeof name !== "string" || typeof level !== "number"
+    || (color !== null && typeof color !== "string") || typeof revisionToken !== "string"
+    || typeof createdAt !== "string" || typeof updatedAt !== "string"
+  ) throw new Error("Invalid role snapshot row");
+  const count = returnedRows(countResult)[0]?.[0];
+  if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) {
+    throw new Error("Invalid role snapshot assignment count");
+  }
+  const permissions = new Set<Permission>();
+  for (const permissionRow of returnedRows(permissionsResult)) {
+    const permission = permissionRow[0];
+    if (typeof permission !== "string") throw new Error("Invalid role snapshot permission");
+    if (permissionIds.has(permission)) permissions.add(permission as Permission);
+  }
+  return roleRecordFromSnapshot(
+    { id, name, level, color, revisionToken, createdAt, updatedAt },
+    permissions,
+    count,
+  );
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
 }
@@ -136,135 +217,6 @@ function isForeignKeyViolation(error: unknown): boolean {
 function isLastRoleManagerViolation(error: unknown): boolean {
   return error instanceof Error && /last role manager required/i.test(error.message);
 }
-
-const MAX_MANAGED_USER_BATCH = 50;
-
-function permissionSnapshot(permissions: ReadonlySet<Permission> | readonly Permission[]): string {
-  return [...permissions].sort().join(",");
-}
-
-function managedTargetSnapshot(targets: readonly ManagedUserTarget[]): string {
-  return [...targets]
-    .sort((left, right) => left.id.localeCompare(right.id))
-    .map((target) => [
-      target.id,
-      target.roleId,
-      target.revisionToken,
-      target.roleRevisionToken,
-      target.roleLevel,
-      target.isActive ? 1 : 0,
-      target.deletedAt ?? "",
-      permissionSnapshot(target.rolePermissions),
-    ].join("\u001f"))
-    .join("\u001e");
-}
-
-function assertManagedBatch(targets: readonly ManagedUserTarget[]): void {
-  if (targets.length < 1 || targets.length > MAX_MANAGED_USER_BATCH || new Set(targets.map(({ id }) => id)).size !== targets.length) {
-    throw new RangeError(`Managed user batches must contain 1 to ${MAX_MANAGED_USER_BATCH} unique users`);
-  }
-}
-
-function targetSnapshotCte(targets: readonly ManagedUserTarget[]): Readonly<{ sql: string; params: readonly SqlValue[] }> {
-  assertManagedBatch(targets);
-  return {
-    sql: `WITH target_snapshot AS (
-      SELECT u.id, u.role_id, u.revision_token, role.revision_token AS role_revision_token,
-        role.level AS role_level, u.is_active, u.deleted_at,
-        COALESCE((
-          SELECT group_concat(permission, ',') FROM (
-            SELECT permission FROM role_permissions WHERE role_id = u.role_id ORDER BY permission
-          )
-        ), '') AS permission_snapshot
-      FROM users AS u
-      JOIN roles AS role ON role.id = u.role_id
-      WHERE u.id IN (${placeholders(targets)})
-    )`,
-    params: targets.map(({ id }) => id),
-  };
-}
-
-function deleteSessionsAfterMutation(targets: readonly ManagedUserTarget[], revisionToken: string): SqlBatchStatement {
-  return run(
-    `WITH intended(id) AS (VALUES ${targets.map(() => "(?)").join(", ")})
-     DELETE FROM sessions
-     WHERE user_id IN (SELECT id FROM intended)
-       AND (SELECT count(*) FROM users JOIN intended ON intended.id = users.id WHERE users.revision_token = ?) = ?`,
-    [...targets.map(({ id }) => id), revisionToken, targets.length],
-  );
-}
-
-const TARGET_SNAPSHOT_MATCH = `COALESCE((
-  SELECT group_concat(snapshot, char(30)) FROM (
-    SELECT id || char(31) || role_id || char(31) || revision_token || char(31)
-      || role_revision_token || char(31) || role_level || char(31) || is_active || char(31)
-      || COALESCE(deleted_at, '') || char(31) || permission_snapshot AS snapshot
-    FROM target_snapshot ORDER BY id
-  )
-), '') = ?`;
-
-function loginLockResetAuditStatement(
-  audit: AuditEventWrite,
-  target: ManagedUserTarget,
-  snapshot: Readonly<{ sql: string; params: readonly SqlValue[] }>,
-): SqlBatchStatement {
-  return auditInsertSelectStatement(
-    `${snapshot.sql}, failure_snapshot AS (
-       SELECT fail_count, locked_until FROM login_failures WHERE login_name = ?
-     )
-     SELECT ?, ?, ?, ?,
-       CASE WHEN ? = 'user' THEN (SELECT display_name FROM users WHERE id = ?) ELSE ? END,
-       ?, ?, ?, ?,
-       json_object(
-         'schema_version', 2,
-         'changes', json('[]'),
-         'context', json_array(
-           json_object(
-              'field', 'failed_attempts',
-             'value', json_object(
-               'type', 'number',
-               'value', COALESCE((SELECT fail_count FROM failure_snapshot), 0)
-             )
-           ),
-           json_object(
-              'field', 'locked_until',
-             'value', json_object(
-               'type', CASE WHEN (SELECT locked_until FROM failure_snapshot) IS NULL THEN 'null' ELSE 'datetime' END,
-               'value', (SELECT locked_until FROM failure_snapshot)
-             )
-           )
-         )
-       ), ?
-     WHERE ${TARGET_SNAPSHOT_MATCH}`,
-    [
-      ...snapshot.params,
-      target.loginName.toLowerCase(),
-      audit.eventId,
-      audit.requestId,
-      audit.actorKind,
-      audit.actorId,
-      audit.actorKind,
-      audit.actorId,
-      audit.actorLabel,
-      audit.subjectType,
-      audit.subjectId,
-      audit.subjectLabel,
-      audit.action,
-      audit.occurredAt,
-      managedTargetSnapshot([target]),
-    ],
-  );
-}
-
-const ROLE_SNAPSHOT_MATCH = `EXISTS (
-  SELECT 1 FROM roles AS destination
-  WHERE destination.id = ? AND destination.revision_token = ? AND destination.level = ?
-    AND COALESCE((
-      SELECT group_concat(permission, ',') FROM (
-        SELECT permission FROM role_permissions WHERE role_id = destination.id ORDER BY permission
-      )
-    ), '') = ?
-)`;
 
 export class SqliteAuthStore implements AuthStore {
   constructor(
@@ -344,58 +296,55 @@ export class SqliteAuthStore implements AuthStore {
     } : null;
   }
 
-  async readLoginFailure(normalizedLoginName: string): Promise<LoginFailureRecord | null> {
-    const rows = await this.db.select({ failCount: loginFailures.failCount, lockedUntil: loginFailures.lockedUntil })
-      .from(loginFailures).where(eq(loginFailures.loginName, normalizedLoginName)).limit(1);
-    return rows[0] ?? null;
-  }
-
-  async recordLoginFailure(input: Readonly<{
-    normalizedLoginName: string;
-    now: string;
-    freeAttempts: number;
-    lockSeconds: readonly number[];
-  }>): Promise<LoginFailureRecord> {
-    const deadlines = input.lockSeconds.map((seconds) => new Date(Date.parse(input.now) + seconds * 1_000).toISOString());
-    const nextCount = drizzleSql<number>`${loginFailures.failCount} + 1`;
-    const cases = input.lockSeconds.map((_, index) => drizzleSql`WHEN ${nextCount} = ${input.freeAttempts + index + 1} THEN ${deadlines[index]}`);
-    const candidate = drizzleSql<string | null>`CASE
-      WHEN ${nextCount} <= ${input.freeAttempts} THEN NULL
-      ${drizzleSql.join(cases, drizzleSql.raw(" "))}
-      ELSE ${deadlines.at(-1) ?? input.now}
-    END`;
-    const rows = await this.db.insert(loginFailures)
-      .values({ loginName: input.normalizedLoginName, failCount: 1, lockedUntil: null, lastFailedAt: input.now })
-      .onConflictDoUpdate({
-        target: loginFailures.loginName,
-        set: {
-          failCount: nextCount,
-          lockedUntil: drizzleSql`CASE
-            WHEN ${nextCount} <= ${input.freeAttempts} THEN ${loginFailures.lockedUntil}
-            WHEN ${loginFailures.lockedUntil} IS NULL OR ${loginFailures.lockedUntil} < ${candidate} THEN ${candidate}
-            ELSE ${loginFailures.lockedUntil}
-          END`,
-          lastFailedAt: input.now,
-        },
-      })
-      .returning({ failCount: loginFailures.failCount, lockedUntil: loginFailures.lockedUntil });
-    return rows[0] ?? { failCount: 1, lockedUntil: null };
-  }
-
-  async clearLoginFailures(normalizedLoginName: string): Promise<void> {
-    await this.db.delete(loginFailures).where(eq(loginFailures.loginName, normalizedLoginName));
-  }
-
-  async pruneLoginFailures(before: string, now: string, limit: number): Promise<void> {
-    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) throw new RangeError("Login-failure prune limit must be between 1 and 1000");
-    await this.executor.execute(run(
-      `DELETE FROM login_failures WHERE login_name IN (
-        SELECT login_name FROM login_failures
-        WHERE last_failed_at < ? AND (locked_until IS NULL OR locked_until < ?)
-        ORDER BY last_failed_at, login_name LIMIT ?
-      )`,
-      [before, now, limit],
-    ));
+  async findSessionAuthorizations(
+    tokenDigests: readonly string[],
+  ): Promise<ReadonlyMap<string, SessionAuthorizationRecord>> {
+    const uniqueDigests = [...new Set(tokenDigests)];
+    if (
+      uniqueDigests.length !== tokenDigests.length
+      || uniqueDigests.length > LIMITS.websocket.maxConnections
+      || uniqueDigests.some((digest) => !digest.trim() || digest.length > 256)
+    ) {
+      throw new TypeError("Session authorization digests must be unique and bounded");
+    }
+    if (uniqueDigests.length === 0) return new Map();
+    const rows = await this.db.select({
+      ...userColumns,
+      tokenDigest: sessions.tokenDigest,
+      expiresAt: sessions.expiresAt,
+      sessionCreatedAt: sessions.createdAt,
+      sessionScope: sessions.scope,
+    }).from(sessions)
+      .innerJoin(users, eq(sessions.userId, users.id))
+      .innerJoin(userCredentials, eq(users.id, userCredentials.userId))
+      .innerJoin(roles, eq(users.roleId, roles.id))
+      .leftJoin(rolePermissions, eq(users.roleId, rolePermissions.roleId))
+      .where(and(
+        drizzleSql`${sessions.tokenDigest} IN (
+          SELECT CAST(value AS TEXT) FROM json_each(${JSON.stringify(uniqueDigests)})
+        )`,
+        eq(sessions.authRevision, userCredentials.authRevision),
+      ));
+    const rowsByDigest = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const grouped = rowsByDigest.get(row.tokenDigest) ?? [];
+      grouped.push(row);
+      rowsByDigest.set(row.tokenDigest, grouped);
+    }
+    const records = new Map<string, SessionAuthorizationRecord>();
+    for (const [tokenDigest, grouped] of rowsByDigest) {
+      const user = userFromRows(grouped);
+      const first = grouped[0];
+      if (!user || !first) continue;
+      records.set(tokenDigest, {
+        ...user,
+        tokenDigest,
+        expiresAt: first.expiresAt,
+        sessionCreatedAt: first.sessionCreatedAt,
+        sessionScope: first.sessionScope,
+      });
+    }
+    return records;
   }
 
   async rehashPassword(input: Parameters<AuthStore["rehashPassword"]>[0]): Promise<boolean> {
@@ -474,9 +423,10 @@ export class SqliteAuthStore implements AuthStore {
     if (userIds.length > 0) await this.db.delete(sessions).where(inArray(sessions.userId, [...userIds]));
   }
 
-  async findActiveInvite(tokenDigest: string, now: string): Promise<InviteRecord | null> {
+  async findActiveInvite(code: string, now: string): Promise<InviteRecord | null> {
     const rows = await this.db.select({
       id: inviteLinks.id,
+      code: inviteLinks.code,
       createdBy: inviteLinks.createdBy,
       roleId: inviteLinks.roleId,
       roleName: roles.name,
@@ -488,7 +438,7 @@ export class SqliteAuthStore implements AuthStore {
       createdAt: inviteLinks.createdAt,
       revokedAt: inviteLinks.revokedAt,
     }).from(inviteLinks).innerJoin(roles, eq(inviteLinks.roleId, roles.id)).where(and(
-      eq(inviteLinks.tokenDigest, tokenDigest),
+      eq(inviteLinks.code, code),
       isNull(inviteLinks.revokedAt),
       lt(inviteLinks.usedCount, inviteLinks.maxUses),
       or(isNull(inviteLinks.expiresAt), gt(inviteLinks.expiresAt, now)),
@@ -531,12 +481,6 @@ export class SqliteAuthStore implements AuthStore {
           [input.loginName, input.now, input.userId, input.expectedAuthRevision],
         ),
         auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" }),
-        run(`DELETE FROM login_failures WHERE login_name IN (lower(?), lower(?))
-          AND EXISTS (${completedAudit.sql})`, [
-          input.previousLoginName,
-          input.loginName,
-          ...completedAudit.params,
-        ]),
         run(`DELETE FROM sessions WHERE user_id = ? AND EXISTS (${completedAudit.sql})`, [
           input.userId,
           ...completedAudit.params,
@@ -588,11 +532,6 @@ export class SqliteAuthStore implements AuthStore {
           input.target.id,
           ...completedAudit.params,
         ]),
-        run(
-          `DELETE FROM login_failures WHERE login_name IN (lower(?), lower(?))
-           AND EXISTS (${completedAudit.sql})`,
-          [input.target.loginName, input.temporaryLoginName, ...completedAudit.params],
-        ),
       ]);
       return returnedRowCount(results[0]) === 1 ? "updated" : "conflict";
     } catch (error) {
@@ -695,11 +634,6 @@ export class SqliteAuthStore implements AuthStore {
           ...openedSession.params,
         ]),
         auditInsertStatement(input.audit, openedSession),
-        run(
-          `DELETE FROM login_failures WHERE login_name IN (lower(?), lower(?))
-           AND EXISTS (${openedSession.sql})`,
-          [input.previousLoginName, input.loginName, ...openedSession.params],
-        ),
       ]);
       return returnedRowCount(results[0]) === 1 ? "completed" : "invalid";
     } catch (error) {
@@ -717,12 +651,11 @@ export class SqliteAuthStore implements AuthStore {
             gte(inviteLinks.usedCount, inviteLinks.maxUses),
           )!]
         : [isNull(inviteLinks.revokedAt), or(isNull(inviteLinks.expiresAt), gt(inviteLinks.expiresAt, input.now))!, lt(inviteLinks.usedCount, inviteLinks.maxUses)];
-    if (input.exactTokenDigest) {
-      filters.push(eq(inviteLinks.tokenDigest, input.exactTokenDigest));
-    } else if (input.search) {
+    if (input.search) {
       const escaped = input.search.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
       const pattern = `%${escaped}%`;
       filters.push(or(
+        drizzleSql`lower(${inviteLinks.code}) LIKE ${pattern} ESCAPE '\\'`,
         drizzleSql`lower(${inviteLinks.id}) LIKE ${pattern} ESCAPE '\\'`,
         drizzleSql`lower(${inviteLinks.createdAt}) LIKE ${pattern} ESCAPE '\\'`,
         drizzleSql`lower(${inviteLinks.expiresAt}) LIKE ${pattern} ESCAPE '\\'`,
@@ -735,6 +668,7 @@ export class SqliteAuthStore implements AuthStore {
     )) : base;
     const rows = await this.db.select({
       id: inviteLinks.id,
+      code: inviteLinks.code,
       createdBy: inviteLinks.createdBy,
       roleId: inviteLinks.roleId,
       roleName: roles.name,
@@ -776,9 +710,9 @@ export class SqliteAuthStore implements AuthStore {
   async createInvite(input: Parameters<AuthStore["createInvite"]>[0], audit: AuditEventWrite): Promise<InviteRecord> {
     await this.executor.batch([
       run(
-        `INSERT INTO invite_links (id, token_digest, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at)
+        `INSERT INTO invite_links (id, code, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at)
          VALUES (?, ?, ?, ?, ?, 0, ?, ?, NULL)`,
-        [input.id, input.tokenDigest, input.createdBy, input.roleId, input.maxUses, input.expiresAt, input.now],
+        [input.id, input.code, input.createdBy, input.roleId, input.maxUses, input.expiresAt, input.now],
       ),
       auditInsertStatement(audit),
     ]);
@@ -917,39 +851,6 @@ export class SqliteAuthStore implements AuthStore {
     }
   }
 
-  async resetUserLoginLock(target: ManagedUserTarget, audit: AuditEventWrite) {
-    const snapshot = targetSnapshotCte([target]);
-    const results = await this.executor.batch([
-      {
-        method: "get",
-        columns: ["fail_count", "locked_until"],
-        sql: `${snapshot.sql}
-          SELECT failure.fail_count, failure.locked_until
-          FROM target_snapshot AS target
-          LEFT JOIN login_failures AS failure ON failure.login_name = ?
-          WHERE ${TARGET_SNAPSHOT_MATCH}
-          LIMIT 1`,
-        params: [...snapshot.params, target.loginName.toLowerCase(), managedTargetSnapshot([target])],
-      },
-      loginLockResetAuditStatement(audit, target, snapshot),
-      run(
-        `${snapshot.sql}
-         DELETE FROM login_failures WHERE login_name = ? AND ${TARGET_SNAPSHOT_MATCH}`,
-        [...snapshot.params, target.loginName.toLowerCase(), managedTargetSnapshot([target])],
-      ),
-    ]);
-    if (results[0]?.rows === undefined) return { outcome: "conflict" as const };
-    const row = results[0].rows;
-    if (!Array.isArray(row) || row.some(Array.isArray) || row.length !== 2) throw new Error("Invalid login-lock reset row");
-    const [failCount, lockedUntil] = row;
-    if (failCount === null) return { outcome: "updated" as const, previous: null };
-    if (typeof failCount !== "number" || !Number.isSafeInteger(failCount) || failCount < 0
-      || (lockedUntil !== null && typeof lockedUntil !== "string")) {
-      throw new Error("Invalid login-lock reset values");
-    }
-    return { outcome: "updated" as const, previous: { failCount, lockedUntil } };
-  }
-
   async listRoles(): Promise<readonly RoleRecord[]> {
     const roleRows = await this.db.select().from(roles)
       .orderBy(desc(roles.level), asc(roles.name))
@@ -990,32 +891,14 @@ export class SqliteAuthStore implements AuthStore {
   }
 
   async findRole(roleId: string): Promise<RoleRecord | null> {
-    const role = (await this.db.select().from(roles).where(eq(roles.id, roleId)).limit(1))[0];
-    if (!role) return null;
-    const [permissionRows, assignedRows] = await Promise.all([
-      this.db.select({ permission: rolePermissions.permission })
-        .from(rolePermissions)
-        .where(eq(rolePermissions.roleId, roleId)),
-      this.db.select({ value: count() })
-        .from(users)
-        .where(and(eq(users.roleId, roleId), isNull(users.deletedAt))),
-    ]);
-    return {
-      id: role.id,
-      name: role.name,
-      level: role.level,
-      color: role.color,
-      permissions: toPermissionSet(permissionRows),
-      assignedUserCount: Number(assignedRows[0]?.value ?? 0),
-      revisionToken: role.revisionToken,
-      createdAt: role.createdAt,
-      updatedAt: role.updatedAt,
-    };
+    return roleSnapshotFromResults(await Promise.all(
+      roleSnapshotStatements(roleId).map((statement) => this.executor.execute(statement)),
+    ));
   }
 
-  async createRole(input: Parameters<AuthStore["createRole"]>[0], audit: AuditEventWrite): Promise<"created" | "conflict"> {
+  async createRole(input: Parameters<AuthStore["createRole"]>[0], audit: AuditEventWrite): ReturnType<AuthStore["createRole"]> {
     try {
-      const results = await this.executor.batch([
+      const statements: SqlBatchStatement[] = [
         {
           method: "all",
           columns: ["affected"],
@@ -1037,10 +920,16 @@ export class SqliteAuthStore implements AuthStore {
           sql: "SELECT 1 FROM roles WHERE id = ? AND revision_token = ?",
           params: [input.id, audit.eventId],
         }),
-      ]);
-      return returnedRowCount(results[0]) === 1 ? "created" : "conflict";
+      ];
+      const snapshotOffset = statements.length;
+      statements.push(...roleSnapshotStatements(input.id, audit.eventId));
+      const results = await this.executor.batch(statements);
+      if (returnedRowCount(results[0]) !== 1) return { status: "conflict" };
+      const role = roleSnapshotFromResults(results.slice(snapshotOffset));
+      if (!role) throw new Error("Created role snapshot is missing");
+      return { status: "created", role };
     } catch (error) {
-      if (isUniqueViolation(error)) return "conflict";
+      if (isUniqueViolation(error)) return { status: "conflict" };
       throw error;
     }
   }
@@ -1077,10 +966,15 @@ export class SqliteAuthStore implements AuthStore {
       ));
     }
     try {
+      const snapshotOffset = statements.length;
+      statements.push(...roleSnapshotStatements(input.id, audit.eventId));
       const results = await this.executor.batch(statements);
-      return returnedRowCount(results[0]) === 1 ? "updated" as const : "conflict" as const;
+      if (returnedRowCount(results[0]) !== 1) return { status: "conflict" } as const;
+      const role = roleSnapshotFromResults(results.slice(snapshotOffset));
+      if (!role) throw new Error("Updated role snapshot is missing");
+      return { status: "updated", role } as const;
     } catch (error) {
-      if (isLastRoleManagerViolation(error)) return "last_role_manager" as const;
+      if (isLastRoleManagerViolation(error)) return { status: "last_role_manager" } as const;
       throw error;
     }
   }
@@ -1114,6 +1008,7 @@ export class SqliteAuthStore implements AuthStore {
   async findInvite(id: string): Promise<InviteRecord | null> {
     const rows = await this.db.select({
       id: inviteLinks.id,
+      code: inviteLinks.code,
       createdBy: inviteLinks.createdBy,
       roleId: inviteLinks.roleId,
       roleName: roles.name,

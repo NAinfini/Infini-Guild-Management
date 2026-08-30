@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { catalogRevisionToken } from "@guild/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiRequestError } from "../api/client";
 import { queryKeys } from "../api/query-keys";
 import { useAdminBadgesController } from "./useAdminBadgesController";
 
@@ -15,6 +17,7 @@ const serviceMocks = vi.hoisted(() => ({
   unassignBadge: vi.fn(),
   updateBadge: vi.fn(),
 }));
+const showError = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/AdminService", () => serviceMocks);
 
@@ -24,7 +27,7 @@ vi.mock("../utils/notifications", () => ({
 }));
 
 vi.mock("./useAppError", () => ({
-  useAppError: () => ({ showError: vi.fn() }),
+  useAppError: () => ({ showError }),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -53,6 +56,7 @@ function createWrapper(queryClient: QueryClient) {
 describe("useAdminBadgesController", () => {
   beforeEach(() => {
     for (const mock of Object.values(serviceMocks)) mock.mockReset();
+    showError.mockReset();
     serviceMocks.fetchBadges.mockResolvedValue([]);
     serviceMocks.fetchBadgeAssignments.mockResolvedValue([]);
     serviceMocks.createBadge.mockResolvedValue(badge);
@@ -75,16 +79,21 @@ describe("useAdminBadgesController", () => {
     act(() => result.current.reorderBadges(badge.id, secondBadge.id));
 
     await waitFor(() => expect(serviceMocks.reorderBadges, "带上去的是完整顺序，不是被拖的那一个")
-      .toHaveBeenCalledWith([secondBadge.id, badge.id]));
+      .toHaveBeenCalledWith(
+        [secondBadge.id, badge.id],
+        catalogRevisionToken([badge, secondBadge]),
+      ));
     await waitFor(() => expect(result.current.badges.map((row) => row.id))
       .toEqual([secondBadge.id, badge.id]));
 
-    serviceMocks.reorderBadges.mockRejectedValue(new Error("nope"));
+    const networkFailure = new ApiRequestError("Network unavailable", { status: 0 });
+    serviceMocks.reorderBadges.mockRejectedValue(networkFailure);
     act(() => result.current.reorderBadges(secondBadge.id, badge.id));
     await waitFor(() => expect(
       queryClient.getQueryData(queryKeys.badges.list()),
       "请求被拒之后要回到松手前那份顺序",
     ).toEqual(reordered));
+    expect(showError).toHaveBeenCalledWith(networkFailure, "badges.message.reorderFailed");
   });
 
   /* 进页面就落在第一枚上，右栏不该先摆一屏「选择一个徽章」。 */
@@ -203,5 +212,29 @@ describe("useAdminBadgesController", () => {
     act(() => result.current.toggleDraftMember("user-2"));
     expect(result.current.membershipDirty).toBe(false);
     expect(result.current.isDirty).toBe(false);
+  });
+
+  it("keeps a dirty badge form and its original revision through a background catalog refresh", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    serviceMocks.fetchBadges.mockResolvedValue([badge]);
+    serviceMocks.fetchBadgeAssignments.mockResolvedValue([]);
+    serviceMocks.updateBadge.mockResolvedValue({ ...badge, name: "Unsaved Veteran" });
+    const { result } = renderHook(() => useAdminBadgesController(true), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.selectedBadgeId).toBe(badge.id));
+    act(() => result.current.setForm((current) => ({ ...current, name: "Unsaved Veteran" })));
+    act(() => queryClient.setQueryData(queryKeys.badges.list(), [{
+      ...badge, name: "Remote Veteran", updated_at: "2026-08-03T00:00:01.000Z",
+    }]));
+
+    await waitFor(() => expect(result.current.badges[0]?.name).toBe("Remote Veteran"));
+    expect(result.current.form.name).toBe("Unsaved Veteran");
+    act(() => result.current.updateBadge(badge.id));
+    await waitFor(() => expect(serviceMocks.updateBadge).toHaveBeenCalledWith(
+      badge.id,
+      expect.objectContaining({ expected_updated_at: badge.updated_at }),
+    ));
   });
 });

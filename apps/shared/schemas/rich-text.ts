@@ -29,6 +29,7 @@ export function isSafeCssValue(value: string): boolean {
 const MAX_DEPTH = 64;
 const MAX_TEXT_LENGTH = 100_000;
 const MAX_URL_LENGTH = 2048;
+const SECURE_NEW_WINDOW_REL = "noopener noreferrer";
 
 type Check = (value: unknown) => boolean;
 
@@ -41,6 +42,17 @@ const stringMatching = (pattern: RegExp, max: number): Check => (value) =>
 const intBetween = (min: number, max: number): Check => (value) =>
   typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
 const cssValue: Check = (value) => typeof value === "string" && isSafeCssValue(value);
+
+function safeLinkRel(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value !== "string" || value.length > 64) return false;
+
+  const tokens = value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return tokens.length === 0 || (
+    new Set(tokens).size === tokens.length
+    && tokens.every((token) => token === "noopener" || token === "noreferrer")
+  );
+}
 
 /*
  * Browsers strip ASCII control characters and spaces when parsing URLs, so
@@ -63,7 +75,13 @@ function hasExplicitScheme(value: string): boolean {
 const safeHrefOrPath: Check = (value) => {
   if (typeof value !== "string" || value.length === 0 || value.length > MAX_URL_LENGTH) return false;
   const stripped = stripUrlControlCharacters(value);
-  return hasExplicitScheme(stripped) ? /^https?:/i.test(stripped) : true;
+  if (hasExplicitScheme(stripped) && !/^https?:/i.test(stripped)) return false;
+  try {
+    new URL(stripped, "https://portal.invalid");
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 function httpsUrlOnHosts(hosts: readonly string[]): Check {
@@ -91,6 +109,16 @@ const BILIBILI_EMBED_HOSTS = ["player.bilibili.com"] as const;
 
 const textAlign = anyOf(isNull, (value) =>
   value === "left" || value === "center" || value === "right" || value === "justify");
+const tableAlign = anyOf(isNull, (value) =>
+  value === "left" || value === "center" || value === "right");
+const tableCellAttrs: Record<string, Check> = {
+  align: tableAlign,
+  colspan: intBetween(1, 64),
+  rowspan: intBetween(1, 64),
+  // ProseMirror uses zero for an unmeasured column in a merged cell.
+  colwidth: anyOf(isNull, (value) =>
+    Array.isArray(value) && value.length <= 64 && value.every((item) => intBetween(0, 100_000)(item))),
+};
 
 type NodeSpec = {
   attrs?: Record<string, Check>;
@@ -126,22 +154,8 @@ const NODE_SPECS: Record<string, NodeSpec> = {
   },
   table: {},
   tableRow: {},
-  tableHeader: {
-    attrs: {
-      colspan: intBetween(1, 64),
-      rowspan: intBetween(1, 64),
-      colwidth: anyOf(isNull, (value) =>
-        Array.isArray(value) && value.length <= 64 && value.every((item) => intBetween(1, 100_000)(item))),
-    },
-  },
-  tableCell: {
-    attrs: {
-      colspan: intBetween(1, 64),
-      rowspan: intBetween(1, 64),
-      colwidth: anyOf(isNull, (value) =>
-        Array.isArray(value) && value.length <= 64 && value.every((item) => intBetween(1, 100_000)(item))),
-    },
-  },
+  tableHeader: { attrs: tableCellAttrs },
+  tableCell: { attrs: tableCellAttrs },
   youtube: {
     leaf: true,
     attrs: {
@@ -180,8 +194,9 @@ const MARK_SPECS: Record<string, MarkSpec> = {
   link: {
     attrs: {
       href: safeHrefOrPath,
+      title: anyOf(isNull, boundedString(500)),
       target: anyOf(isNull, (value) => value === "_blank" || value === "_self"),
-      rel: anyOf(isNull, stringMatching(/^[\w\s-]{0,64}$/, 64)),
+      rel: safeLinkRel,
       class: isNull,
     },
     requiredAttrs: ["href"],
@@ -189,6 +204,38 @@ const MARK_SPECS: Record<string, MarkSpec> = {
   highlight: { attrs: { color: anyOf(isNull, cssValue) } },
   textStyle: { attrs: { color: anyOf(isNull, cssValue) } },
 };
+
+/**
+ * The server owns navigation attributes rather than trusting serialized editor
+ * JSON. External links always open in a separate tab with reverse-tabnabbing
+ * protection; internal links keep their explicit target when safe, otherwise
+ * use the current tab. User supplied `rel` and `class` never reach a reader.
+ * Invalid links return null so a defensive reader can omit only that mark.
+ */
+export function canonicalizeRichTextLinkAttributes(
+  attrs: Readonly<Record<string, unknown>>,
+  requestOrigin: string,
+): Record<string, unknown> | null {
+  const href = typeof attrs.href === "string" ? attrs.href : "";
+  if (!safeHrefOrPath(href)) return null;
+
+  let origin: string;
+  let destination: URL;
+  try {
+    origin = new URL(requestOrigin).origin;
+    destination = new URL(stripUrlControlCharacters(href), origin);
+  } catch {
+    return null;
+  }
+  const target = destination.origin !== origin || attrs.target === "_blank" ? "_blank" : "_self";
+
+  return {
+    ...attrs,
+    target,
+    rel: target === "_blank" ? SECURE_NEW_WINDOW_REL : null,
+    class: null,
+  };
+}
 
 /** Marks only appear on inline content in editor output. */
 const MARK_CARRIERS = new Set(["text", "hardBreak"]);

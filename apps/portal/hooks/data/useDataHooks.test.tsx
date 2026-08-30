@@ -3,10 +3,11 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAdminData } from "./useAdminData";
-import { useEventsData } from "./useEventsData";
+import { useEventMemberDirectory, useEventsData } from "./useEventsData";
 import { useGuildWarData } from "./useGuildWarData";
 import { useProfileData } from "./useProfileData";
 import { queryKeys } from "../../api/query-keys";
+import { localDayEndIso, localDayStartIso } from "../../utils/datetime";
 
 const serviceMocks = vi.hoisted(() => ({
   fetchAdminAuditArchiveMonths: vi.fn(),
@@ -16,7 +17,6 @@ const serviceMocks = vi.hoisted(() => ({
   fetchAdminOperations: vi.fn(),
   fetchAdminStatus: vi.fn(),
   fetchAdminSiteConfig: vi.fn(),
-  fetchEventDetail: vi.fn(),
   fetchEventsList: vi.fn(),
   fetchGuildWarActive: vi.fn(),
   fetchGuildWarConcludedEventIds: vi.fn(),
@@ -29,7 +29,6 @@ const serviceMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../services/EventService", () => ({
-  fetchEventDetail: serviceMocks.fetchEventDetail,
   fetchEventsList: serviceMocks.fetchEventsList,
   fetchTemplatesList: serviceMocks.fetchTemplatesList,
 }));
@@ -98,6 +97,7 @@ describe("portal data hooks", () => {
           searchQuery: "guild raid",
           pinnedOnly: true,
           lockedOnly: true,
+          publicMemberProjection: false,
         }),
       { wrapper: createWrapper(queryClient) },
     );
@@ -116,26 +116,64 @@ describe("portal data hooks", () => {
       pinned: true,
       locked: true,
     });
-    expect(serviceMocks.fetchAllUsersListWithOptions).toHaveBeenCalled();
+    expect(serviceMocks.fetchAllUsersListWithOptions).toHaveBeenCalledWith({ externalView: false });
     expect(queryClient.getQueryCache().findAll({ queryKey: queryKeys.events.all })[0]?.queryKey).toContain("user:user-1");
-    expect(queryClient.getQueryCache().findAll({ queryKey: queryKeys.users.all })[0]?.queryKey).toContain("user:user-1");
+    expect(queryClient.getQueryCache().findAll({ queryKey: queryKeys.users.all })[0]?.queryKey).toEqual(
+      queryKeys.users.directory("user:user-1", "internal"),
+    );
   });
 
-  it("loads guild war queries through the service layer", async () => {
+  it("uses the capped public member projection when requested", async () => {
+    serviceMocks.fetchEventsList.mockResolvedValueOnce({ data: [] });
+    serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const { result } = renderHook(
+      () => useEventsData({
+        status: "active",
+        searchQuery: "",
+        pinnedOnly: false,
+        lockedOnly: false,
+        publicMemberProjection: true,
+      }),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.usersQuery.isSuccess).toBe(true));
+
+    expect(serviceMocks.fetchAllUsersListWithOptions).toHaveBeenCalledWith({ externalView: true });
+    expect(queryClient.getQueryCache().findAll({ queryKey: queryKeys.users.all })[0]?.queryKey).toEqual(
+      queryKeys.users.directory("user:user-1", "public"),
+    );
+  });
+
+  it("does not fetch the event member directory until a route needs it", () => {
+    const { result } = renderHook(
+      () => useEventMemberDirectory({
+        currentUserId: "user-1",
+        publicMemberProjection: false,
+        enabled: false,
+      }),
+      { wrapper: createWrapper() },
+    );
+
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
+  });
+
+  it("loads only active guild war queries through the service layer", async () => {
     serviceMocks.fetchEventsList.mockResolvedValueOnce({
       data: [{ id: "event-1", archived_at: null }],
     });
     serviceMocks.fetchGuildWarConcludedEventIds.mockResolvedValueOnce({ data: [] });
-    serviceMocks.fetchEventDetail.mockResolvedValueOnce({ id: "event-1", title: "Guild War", participants: [], attachments: [] });
     serviceMocks.fetchGuildWarActive.mockResolvedValueOnce({ teams: [], pool: [], etag: "etag-1" });
-    serviceMocks.fetchGuildWarHistory.mockResolvedValueOnce({ data: [] });
-    serviceMocks.fetchGuildWarHistoryDetail.mockResolvedValueOnce({ id: "history-1", teams: [], pool: [], member_stats: [] });
 
     const { result } = renderHook(
       () =>
         useGuildWarData({
+          tab: "active",
           selectedEventId: "event-1",
-          selectedHistoryId: "history-1",
+          selectedHistoryId: null,
           historyDateFrom: "2026-03-01",
           historyDateTo: "2026-03-08",
           historySearch: "Dragon",
@@ -147,10 +185,7 @@ describe("portal data hooks", () => {
 
     await waitFor(() => {
       expect(result.current.warEventsQuery.isSuccess).toBe(true);
-      expect(result.current.selectedEventDetailQuery.isSuccess).toBe(true);
       expect(result.current.activeQuery.isSuccess).toBe(true);
-      expect(result.current.historyQuery.isSuccess).toBe(true);
-      expect(result.current.historyDetailQuery.isSuccess).toBe(true);
     });
 
     expect(serviceMocks.fetchEventsList).toHaveBeenCalledWith({
@@ -160,16 +195,9 @@ describe("portal data hooks", () => {
       archived: false,
     });
     expect(serviceMocks.fetchGuildWarConcludedEventIds).toHaveBeenCalled();
-    expect(serviceMocks.fetchEventDetail).toHaveBeenCalledWith("event-1");
     expect(serviceMocks.fetchGuildWarActive).toHaveBeenCalledWith("event-1");
-    expect(serviceMocks.fetchGuildWarHistory).toHaveBeenCalledWith({
-      page: 1,
-      limit: 20,
-      date_from: "2026-03-01T00:00:00.000Z",
-      date_to: "2026-03-08T23:59:59.999Z",
-      search: "Dragon",
-    });
-    expect(serviceMocks.fetchGuildWarHistoryDetail).toHaveBeenCalledWith("history-1");
+    expect(serviceMocks.fetchGuildWarHistory).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchGuildWarHistoryDetail).not.toHaveBeenCalled();
   });
 
   it("loads profile detail through the user service", async () => {
@@ -310,8 +338,8 @@ describe("portal data hooks", () => {
       cursor: undefined,
       limit: 50,
       search: "raid",
-      start_at: "2026-03-01T00:00:00.000Z",
-      end_at: "2026-03-08T23:59:59.999Z",
+      start_at: localDayStartIso("2026-03-01"),
+      end_at: localDayEndIso("2026-03-08"),
       entity_type: undefined,
       entity_id: undefined,
       actor_id: undefined,
@@ -377,6 +405,37 @@ describe("portal data hooks", () => {
     expect(queryClient.getQueryState(queryKeys.admin.auditLog("raid", "", "", "event", "event-1"))).toBeDefined();
     expect(queryClient.getQueryState(queryKeys.admin.auditLog("  raid  ", "", "", "event", "event-1"))).toBeUndefined();
     expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
+  });
+
+  it("forwards a one-sided audit date so the HTTP contract can reject it", async () => {
+    serviceMocks.fetchRoles.mockResolvedValueOnce([{
+      id: "auditor",
+      permissions: { "admin.audit.view": true },
+    }]);
+    serviceMocks.fetchAdminAuditLog.mockResolvedValueOnce({ data: [], next_cursor: null });
+
+    const { result } = renderHook(
+      () => useAdminData({
+        isModerator: true,
+        userRole: "auditor",
+        activeTab: "audit",
+        auditSearch: "",
+        auditDateFrom: "2026-03-08",
+        auditDateTo: "",
+        auditEntityType: "",
+        auditEntityId: "",
+        auditActorId: "",
+        inviteVisibility: "active",
+        inviteSearch: "",
+      }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.auditLogQuery.isSuccess).toBe(true));
+    expect(serviceMocks.fetchAdminAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      start_at: localDayStartIso("2026-03-08"),
+      end_at: undefined,
+    }));
   });
 
   it("does not fetch unrelated admin sections without exact permissions", async () => {

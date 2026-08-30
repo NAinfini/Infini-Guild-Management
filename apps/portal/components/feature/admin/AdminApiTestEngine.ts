@@ -37,6 +37,8 @@ export {
   methodColor,
   nextLogId,
   readRetryAfterSeconds,
+  redactInviteCredentialPath,
+  redactInviteCreationResult,
   requestSystemTestCleanup,
   runEndpointTest,
   statusColor,

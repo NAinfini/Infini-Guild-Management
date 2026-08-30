@@ -1,10 +1,16 @@
 import { DEFAULT_GAME_RULES } from "@guild/shared";
-import { CalendarOffIcon } from "@portal/components/icons";
+import { SearchIcon, XIcon } from "@portal/components/icons";
 import { Alert } from "@portal/components/ui/alert";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
 import { Input } from "@portal/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@portal/components/ui/input-group";
 import {
   Select,
   SelectContent,
@@ -78,16 +84,26 @@ export function WarHistoryTable({
       <ContentFilterToolbar
         className="war-history-toolbar"
         search={(
-          <Input
-            value={historySearch}
-            onChange={(event) => onHistorySearchChange(String(event.currentTarget.value ?? ""))}
-            placeholder={t("history.search.placeholder")}
-            aria-label={t("history.aria.search")}
-          />
+          <InputGroup>
+            <InputGroupAddon><SearchIcon size={16} aria-hidden="true" /></InputGroupAddon>
+            <InputGroupInput
+              value={historySearch}
+              onChange={(event) => onHistorySearchChange(String(event.currentTarget.value ?? ""))}
+              placeholder={t("history.search.placeholder")}
+              aria-label={t("history.aria.search")}
+            />
+            {historySearch ? (
+              <InputGroupAddon align="inline-end">
+                <InputGroupButton aria-label={t("common:action.clear")} onClick={() => onHistorySearchChange("")} size="icon-xs">
+                  <XIcon size={14} aria-hidden="true" />
+                </InputGroupButton>
+              </InputGroupAddon>
+            ) : null}
+          </InputGroup>
         )}
         filterControls={(
-          <ContentFilterGroup label={t("history.clearDates")}>
-            <div className="grid gap-2">
+          <ContentFilterGroup label={t("history.dateRange")}>
+            <div className="content-filter-toolbar__date-fields">
               <NativeDateTimeInput
                 value={historyDateFrom}
                 onChange={(event) => onHistoryDateFromChange(event.currentTarget.value)}
@@ -102,17 +118,6 @@ export function WarHistoryTable({
               />
             </div>
           </ContentFilterGroup>
-        )}
-        filterActions={(
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onClearDates}
-            disabled={!historyDateFrom && !historyDateTo}
-          >
-            <CalendarOffIcon size={15} data-icon="inline-start" />
-            {t("history.clearDates")}
-          </Button>
         )}
         filterLabel={t("common:filter.toggle")}
         activeFilterCount={historyDateFrom || historyDateTo ? 1 : 0}

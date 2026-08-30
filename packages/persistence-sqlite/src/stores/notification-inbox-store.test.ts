@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { inboxNotificationSchema } from "@guild/shared";
+import { inboxNotificationSchema, type UpdateNotificationPreferences } from "@guild/shared";
 import { applyAppMigrations } from "../testing/app-migrations.js";
 import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteNotificationInboxStore } from "./notification-inbox-store.js";
@@ -24,6 +24,40 @@ type InboxRow = Readonly<{
   occurred_at: string;
   read_at: string | null;
 }>;
+
+type NotificationPreferenceCase = Readonly<{
+  label: string;
+  patch: UpdateNotificationPreferences;
+  sourceKey: string;
+  trigger: (database: DatabaseSync) => void;
+}>;
+
+const notificationPreferenceCases: readonly NotificationPreferenceCase[] = [
+  {
+    label: "member_joined",
+    patch: { member_joined: false },
+    sourceKey: `member_joined:${JOINED}`,
+    trigger: (database) => insertUser(database, JOINED, "Joined Member", "member"),
+  },
+  {
+    label: "announcement_published",
+    patch: { announcement_published: false },
+    sourceKey: "announcement_published:announcement-preference",
+    trigger: (database) => insertAnnouncement(database, "announcement-preference", "Preference announcement", "published", PAST),
+  },
+  {
+    label: "event_created",
+    patch: { event_created: false },
+    sourceKey: "event_created:event-1",
+    trigger: insertEvent,
+  },
+  {
+    label: "wiki_article_created",
+    patch: { wiki_article_created: false },
+    sourceKey: "wiki_article_created:article-1",
+    trigger: insertWikiArticle,
+  },
+];
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
@@ -172,6 +206,60 @@ describe("SqliteNotificationInboxStore", () => {
     expect(page.data.map(({ id }) => id)).toEqual(["notification-at-cutoff"]);
     expect(page.unreadCount).toBe(1);
   });
+
+  it("upserts notification preferences and returns the updated row", async () => {
+    const { database, store } = fixture();
+
+    await expect(store.updatePreferences({
+      userId: ADMIN,
+      patch: { announcement_published: false },
+      now: NOW,
+      audit: audit("notification-preferences-audit"),
+    })).resolves.toEqual({
+      member_joined: true,
+      announcement_published: false,
+      event_created: true,
+      wiki_article_created: true,
+      updated_at: NOW,
+    });
+    await expect(store.updatePreferences({
+      userId: ADMIN,
+      patch: { event_created: false },
+      now: NOW,
+      audit: audit("notification-preferences-update-audit"),
+    })).resolves.toEqual({
+      member_joined: true,
+      announcement_published: false,
+      event_created: false,
+      wiki_article_created: true,
+      updated_at: NOW,
+    });
+    await expect(store.getPreferences(ADMIN)).resolves.toEqual({
+      member_joined: true,
+      announcement_published: false,
+      event_created: false,
+      wiki_article_created: true,
+      updated_at: NOW,
+    });
+    expect(database.prepare("SELECT action FROM audit_log WHERE id = ?")
+      .get("notification-preferences-audit"))
+      .toEqual({ action: "update" });
+  });
+
+  it.each(notificationPreferenceCases)("excludes recipients whose $label preference is disabled while enabled recipients still receive it", async ({ label, patch, sourceKey, trigger }) => {
+    const { database, store } = fixture();
+    await store.updatePreferences({
+      userId: MEMBER,
+      patch,
+      now: NOW,
+      audit: audit(`notification-preferences-${label}-disabled`),
+    });
+
+    trigger(database);
+
+    expect(sourceRows(database, sourceKey).map(({ user_id }) => user_id).sort())
+      .toEqual([ADMIN]);
+  });
 });
 
 function fixture(): { database: DatabaseSync; store: SqliteNotificationInboxStore } {
@@ -245,4 +333,20 @@ function readAt(database: DatabaseSync, id: string): string | null {
   const row = database.prepare("SELECT read_at FROM notification_inbox WHERE id = ?").get(id) as { read_at: string | null } | undefined;
   if (!row) throw new Error(`Notification ${id} was not found`);
   return row.read_at;
+}
+
+function audit(eventId: string) {
+  return {
+    eventId,
+    requestId: `${eventId}-request`,
+    actorKind: "user" as const,
+    actorId: ADMIN,
+    actorLabel: "Admin User",
+    subjectType: "user" as const,
+    subjectId: ADMIN,
+    subjectLabel: "Notification preferences",
+    action: "update" as const,
+    payload: { schema_version: 2 as const, changes: [], context: [] },
+    occurredAt: NOW,
+  };
 }

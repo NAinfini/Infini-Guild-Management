@@ -28,7 +28,7 @@ const AUDIT_ENTITY_TYPE_SET = new Set<string>(AUDIT_ENTITY_TYPES);
 const AUDIT_FIELD_SET = new Set<string>(AUDIT_FIELDS);
 const AUDIT_SECTION_SET = new Set<string>(AUDIT_SECTION_KEYS);
 const PERMISSION_SET = new Set<string>(PERMISSIONS);
-const FREEFORM_CODE_FIELDS = new Set<AuditField>(["color", "icon", "role_tags", "slug"]);
+const FREEFORM_CODE_FIELDS = new Set<AuditField>(["audience_role_ids", "color", "icon", "role_tags", "slug"]);
 const PERMISSION_FIELDS = new Set<AuditField>(["permissions", "permissions_added", "permissions_removed"]);
 const RUNTIME_RESTRICTED_FIELDS = new Set<AuditField>([
   "body",

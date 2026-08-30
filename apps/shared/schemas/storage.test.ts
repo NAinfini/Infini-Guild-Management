@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   createStorageBatchTransactionSchema,
   createStorageTransactionSchema,
+  deleteStorageCategorySchema,
+  deleteStorageItemSchema,
+  deleteStorageSchema,
   STORAGE_STOCK_FILTERS,
+  storageItemImageMutationSchema,
   storageBatchTransactionResultSchema,
   storageItemSchema,
   storageItemsCursorResponseSchema,
@@ -11,7 +15,54 @@ import {
   storageTransactionsListQuerySchema,
   storageTransactionsPageResponseSchema,
   storageTreeResponseSchema,
+  updateStorageCategorySchema,
+  updateStorageItemSchema,
+  updateStorageSchema,
 } from "./storage";
+
+describe("storage editor revision contracts", () => {
+  it("requires the original structure values for storage and category compare-and-swap", () => {
+    expect(updateStorageSchema.safeParse({
+      name: "Updated",
+      expected_name: "Original",
+      expected_description: null,
+      expected_structure_revision: 3,
+    }).success).toBe(true);
+    expect(updateStorageSchema.safeParse({ name: "Updated" }).success).toBe(false);
+    expect(updateStorageCategorySchema.safeParse({
+      name: "Updated",
+      expected_name: "Original",
+      expected_structure_revision: 3,
+    }).success).toBe(true);
+    expect(updateStorageCategorySchema.safeParse({ name: "Updated" }).success).toBe(false);
+  });
+
+  it("requires the structural revision captured when a destructive confirmation opens", () => {
+    expect(deleteStorageSchema.safeParse({ expected_structure_revision: 3 }).success).toBe(true);
+    expect(deleteStorageCategorySchema.safeParse({ expected_structure_revision: 3 }).success).toBe(true);
+    expect(deleteStorageSchema.safeParse({}).success).toBe(false);
+    expect(deleteStorageCategorySchema.safeParse({ expected_structure_revision: -1 }).success).toBe(false);
+  });
+
+  it("requires an item revision and at least one actual field change", () => {
+    expect(updateStorageItemSchema.safeParse({
+      rarity: "rare",
+      expected_updated_at: "2026-08-09T00:00:00.000Z",
+    }).success).toBe(true);
+    expect(updateStorageItemSchema.safeParse({ rarity: "rare" }).success).toBe(false);
+    expect(updateStorageItemSchema.safeParse({
+      expected_updated_at: "2026-08-09T00:00:00.000Z",
+    }).success).toBe(false);
+  });
+
+  it("requires the item aggregate revision for image and item deletion", () => {
+    const expected_updated_at = "2026-08-09T00:00:00.000Z";
+    expect(deleteStorageItemSchema.safeParse({ expected_updated_at }).success).toBe(true);
+    expect(storageItemImageMutationSchema.safeParse({ expected_updated_at }).success).toBe(true);
+    expect(deleteStorageItemSchema.safeParse({}).success).toBe(false);
+    expect(storageItemImageMutationSchema.safeParse({ expected_updated_at: "" }).success).toBe(false);
+  });
+});
 
 describe("createStorageBatchTransactionSchema", () => {
   const valid = {
@@ -92,16 +143,24 @@ describe("storageItemsListQuerySchema", () => {
 describe("storage transaction contracts", () => {
   it("keeps the Portal single-transaction wire while allowing finite decimal stock", () => {
     expect(createStorageTransactionSchema.parse({
+      idempotency_key: "single-key-123456",
       type: "intake",
       quantity: 1.5,
       recipient_user_id: "user-1",
       note: null,
     })).toEqual({
+      idempotency_key: "single-key-123456",
       type: "intake",
       quantity: 1.5,
       recipient_user_id: "user-1",
       note: null,
     });
+    expect(createStorageTransactionSchema.safeParse({ type: "intake", quantity: 1 }).success).toBe(false);
+    expect(createStorageTransactionSchema.safeParse({
+      idempotency_key: "too short",
+      type: "intake",
+      quantity: 1,
+    }).success).toBe(false);
     expect(createStorageTransactionSchema.safeParse({ type: "intake", quantity: Number.NaN }).success).toBe(false);
     expect(createStorageTransactionSchema.safeParse({ type: "adjust", target_quantity: Number.POSITIVE_INFINITY }).success).toBe(false);
   });
@@ -143,6 +202,8 @@ describe("storage Portal response wire", () => {
     category_id: null,
     name: "Potion",
     description: null,
+    rarity: "common",
+    unit: null,
     quantity: 1.5,
     allow_member_deposit: true,
     allow_member_withdraw: false,
@@ -157,6 +218,7 @@ describe("storage Portal response wire", () => {
       name: "Guild Vault",
       description: null,
       created_at: "2026-08-09T00:00:00.000Z",
+      structure_revision: 0,
       categories: [],
     }] }).success).toBe(true);
     expect(storageItemsCursorResponseSchema.safeParse({ data: [item], next_cursor: null }).success).toBe(true);

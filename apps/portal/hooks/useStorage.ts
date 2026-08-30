@@ -1,5 +1,5 @@
 import { LIMITS, type StorageStockFilter } from "@guild/shared";
-import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { queryKeys } from "../api/query-keys";
 import {
@@ -71,18 +71,22 @@ export function useStorageItem(id: string | null) {
 }
 
 export function useStorageTransactions(params: {
+  storageId?: string;
   itemId?: string;
   recipientUserId?: string;
   page: number;
   limit?: number;
   enabled?: boolean;
 }) {
-  const filter = params.itemId ? `item:${params.itemId}` : params.recipientUserId ? `recipient:${params.recipientUserId}` : "all";
+  const filter = [
+    params.storageId ? `storage:${params.storageId}` : null,
+    params.itemId ? `item:${params.itemId}` : null,
+    params.recipientUserId ? `recipient:${params.recipientUserId}` : null,
+  ].filter((value): value is string => value !== null).join("|") || "all";
   const limit = params.limit ?? 50;
   return useQuery({
     queryKey: queryKeys.storage.transactions(filter, params.page, limit),
     queryFn: () => fetchStorageTransactions(params),
-    placeholderData: keepPreviousData,
     enabled: params.enabled ?? true,
   });
 }

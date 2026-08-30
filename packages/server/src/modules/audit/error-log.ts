@@ -39,15 +39,16 @@ export class ErrorLogService {
     requestMethod: string;
     createdAt: string;
   }>): Promise<void> {
+    const sensitiveValues = sensitivePathValues(input.requestPath);
     await this.store.insert({
       id: crypto.randomUUID(),
       source: "request",
       level: "error",
-      message: bounded(input.error.message || input.error.name || "Unexpected error", 2_000),
-      requestPath: nullableBounded(input.requestPath, 2_048),
+      message: bounded(redactValues(input.error.message || input.error.name || "Unexpected error", sensitiveValues), 2_000),
+      requestPath: nullableBounded(redactSensitivePath(input.requestPath), 2_048),
       requestMethod: nullableBounded(input.requestMethod.toUpperCase(), 16),
       requestId: nullableBounded(input.requestId, 200),
-      stack: nullableBounded(input.error.stack ?? null, 4_000),
+      stack: nullableBounded(redactValues(input.error.stack ?? null, sensitiveValues), 4_000),
       createdAt: input.createdAt,
     });
   }
@@ -62,6 +63,43 @@ export class ErrorLogService {
     if (query.source !== null && !ERROR_LOG_SOURCES.includes(query.source)) throw invalid("Invalid error log source");
     return this.store.list(query);
   }
+}
+
+const SENSITIVE_PATH_PATTERNS = [
+  /^(\/api\/auth\/verify-invite\/)([^/?#]+)(.*)$/,
+  /^(\/api\/auth\/register\/)([^/?#]+)(.*)$/,
+] as const;
+
+function sensitivePathValues(path: string): readonly string[] {
+  for (const pattern of SENSITIVE_PATH_PATTERNS) {
+    const match = path.match(pattern);
+    if (!match?.[2]) continue;
+    const values = new Set([match[2]]);
+    try {
+      values.add(decodeURIComponent(match[2]));
+    } catch {
+      // The raw path segment is still redacted when it is not valid percent-encoding.
+    }
+    return [...values].filter(Boolean);
+  }
+  return [];
+}
+
+function redactSensitivePath(path: string): string {
+  for (const pattern of SENSITIVE_PATH_PATTERNS) {
+    if (pattern.test(path)) return path.replace(pattern, "$1:redacted$3");
+  }
+  return path;
+}
+
+function redactValues(value: string, sensitiveValues: readonly string[]): string;
+function redactValues(value: string | null, sensitiveValues: readonly string[]): string | null;
+function redactValues(value: string | null, sensitiveValues: readonly string[]): string | null {
+  if (value === null) return null;
+  return sensitiveValues.reduce(
+    (current, sensitive) => current.split(sensitive).join("[REDACTED]"),
+    value,
+  );
 }
 
 function bounded(value: string, length: number): string {

@@ -1,11 +1,12 @@
 import {
-  acknowledgeImportantNoticeSchema,
   createImportantNoticeSchema,
   importantNoticeAcknowledgementResponseSchema,
-  importantNoticeAcknowledgementsResponseSchema,
   importantNoticeActiveResponseSchema,
+  importantNoticeAudienceRolesResponseSchema,
   importantNoticeOkResponseSchema,
+  importantNoticeReadResponseSchema,
   importantNoticeSchema,
+  markImportantNoticesReadSchema,
   updateImportantNoticeSchema,
 } from "@guild/shared";
 import type { ImportantNoticeService } from "@guild/server/modules/important-notices";
@@ -20,7 +21,7 @@ const noticeIdSchema = z.string().min(1).max(200);
 type ImportantNoticeHttpService = Pick<
   ImportantNoticeService,
   "listAdmin" | "getAdmin" | "create" | "update" | "publish" | "withdraw" | "delete"
-  | "listActive" | "listAcknowledgements" | "acknowledge"
+  | "listAudienceRoles" | "listActive" | "markRead" | "acknowledge"
 >;
 
 export function createImportantNoticeRoutes(
@@ -32,19 +33,17 @@ export function createImportantNoticeRoutes(
     data: await dependencies.service.listActive(requestContext(context)),
   })));
 
-  routes.get("/acknowledgements", async (context) => context.json(importantNoticeAcknowledgementsResponseSchema.parse({
-    data: await dependencies.service.listAcknowledgements(requestContext(context)),
-  })));
+  routes.patch("/read", async (context) => context.json(importantNoticeReadResponseSchema.parse(
+    await dependencies.service.markRead(
+      requestContext(context),
+      await parseJsonBody(context.req.raw, markImportantNoticesReadSchema, "Invalid important notice read payload"),
+    ),
+  )));
 
   routes.put("/:id/acknowledgement", async (context) => {
     const id = noticeIdSchema.parse(context.req.param("id"));
-    const input = await parseJsonBody(
-      context.req.raw,
-      acknowledgeImportantNoticeSchema,
-      "Invalid important notice acknowledgement payload",
-    );
     return context.json(importantNoticeAcknowledgementResponseSchema.parse(
-      await dependencies.service.acknowledge(requestContext(context), id, input.publication_revision),
+      await dependencies.service.acknowledge(requestContext(context), id),
     ));
   });
 
@@ -59,6 +58,10 @@ export function createAdminImportantNoticeRoutes(
   routes.get("/", async (context) => context.json(z.array(importantNoticeSchema).parse(
     await dependencies.service.listAdmin(requestContext(context)),
   )));
+
+  routes.get("/audience-roles", async (context) => context.json(importantNoticeAudienceRolesResponseSchema.parse({
+    data: await dependencies.service.listAudienceRoles(requestContext(context)),
+  })));
 
   routes.post("/", async (context) => context.json(importantNoticeSchema.parse(await dependencies.service.create(
     requestContext(context),

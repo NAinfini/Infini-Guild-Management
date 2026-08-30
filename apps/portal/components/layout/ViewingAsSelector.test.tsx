@@ -26,6 +26,7 @@ const roles: AdminRole[] = [
     color: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
+    revision_token: "admin-v1",
     permissions: {} as AdminRole["permissions"],
     assigned_user_count: 1,
   },
@@ -36,6 +37,7 @@ const roles: AdminRole[] = [
     color: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
+    revision_token: "member-v1",
     permissions: {} as AdminRole["permissions"],
     assigned_user_count: 9,
   },
@@ -52,7 +54,7 @@ describe("ViewingAsSelector", () => {
     expect(trigger).toHaveTextContent("Administrator");
 
     await user.click(trigger);
-    await user.click(screen.getByRole("option", { name: "Member" }));
+    await user.click(await screen.findByRole("option", { name: "Member" }));
 
     expect(onChange).toHaveBeenCalledWith("member");
   });

@@ -45,6 +45,10 @@
       {
         "name": "NOTIFICATIONS",
         "class_name": "CloudflareNotificationDurableObject"
+      },
+      {
+        "name": "AUTH_LOGIN_RATE_LIMITER",
+        "class_name": "AuthRateLimitDO"
       }
     ]
   },
@@ -52,6 +56,10 @@
     {
       "tag": "notifications-v1",
       "new_sqlite_classes": ["CloudflareNotificationDurableObject"]
+    },
+    {
+      "tag": "auth-login-rate-limit-v1",
+      "new_sqlite_classes": ["AuthRateLimitDO"]
     }
   ],
 
@@ -72,6 +80,11 @@
       "name": "READ_RATE_LIMITER",
       "namespace_id": "1002",
       "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "CONTENT_VIEW_RATE_LIMITER",
+      "namespace_id": "1008",
+      "simple": { "limit": 20, "period": 60 }
     },
     {
       "name": "MUTATION_RATE_LIMITER",
@@ -96,7 +109,7 @@
   ],
 
   "triggers": {
-    "crons": ["*/15 * * * *", "0 0 * * *"]
+    "crons": ["*/15 * * * *", "7,37 * * * *", "12 * * * *", "42 * * * *", "27 0 * * *"]
   },
 
   // Optional Email Sending binding. Uncomment only after onboarding the sender
@@ -107,7 +120,10 @@
     "IG_PUBLIC_URL": "https://replace-with-public-origin.example",
     "IG_ALLOWED_ORIGINS": "https://replace-with-allowed-origin.example",
     "IG_SESSION_COOKIE_NAME": "ig_session",
-    "IG_PBKDF2_ITERATIONS": "10000"
+    "IG_PBKDF2_ITERATIONS": "10000",
+    // Optional public maintenance metadata. Keep the deadline in UTC canonical ISO format.
+    // "IG_MAINTENANCE_REASON": "Database maintenance",
+    // "IG_MAINTENANCE_UNTIL": "2026-08-30T12:00:00.000Z"
     // Optional OAuth client IDs and secrets both use Wrangler secret storage.
     // Set IG_EMAIL_FROM here only when the EMAIL binding above is enabled.
   }

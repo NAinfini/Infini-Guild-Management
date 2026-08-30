@@ -21,15 +21,101 @@ const migrations = manifest.map((entry) => ({
   sql: readFileSync(fileURLToPath(new URL(`./generated/${entry.file}`, import.meta.url)), "utf8"),
 }));
 
+function createD1Miniflare(databaseId: string): Miniflare {
+  return new Miniflare({
+    port: 0,
+    workers: [{
+      config: {
+        name: "core-migration-test",
+        type: "worker",
+        compatibilityDate: "2026-07-28",
+        manifest: {
+          mainModule: "script-0.mjs",
+          modules: {
+            "script-0.mjs": { type: "esm", contents: "export default {}" },
+          },
+        },
+        env: { DB: { type: "d1", id: databaseId } },
+      },
+    }],
+  });
+}
+
 describe("core migration on Miniflare workerd D1", () => {
+  it("normalizes legacy notice offsets and preserves the latest read revision", async () => {
+    const miniflare = createD1Miniflare("notice-delivery-upgrade");
+    try {
+      const database = await miniflare.getD1Database("DB");
+      for (const { sql } of migrations.slice(0, 17)) await applyD1Migration(database, sql);
+      await database.prepare(`INSERT INTO users (id, display_name, role_id, revision_token)
+        VALUES ('notice-upgrade-user', 'Notice Upgrade User', 'member', 'notice-upgrade-user-revision')`).run();
+      await database.prepare(`INSERT INTO important_notices (
+        id, title, body_json, status, publish_at, expires_at, publication_revision, revision_token,
+        created_by, created_at, updated_at
+      ) VALUES ('notice-upgrade', 'Upgrade', '{"type":"doc","content":[]}', 'published',
+        '2026-08-01T14:00:00+14:00', '2026-08-03T00:00:00-12:00', 2,
+        'notice-upgrade-revision-0002', 'notice-upgrade-user',
+        '2026-08-01T00:00:00.000Z', '2026-08-02T00:00:00.000Z')`).run();
+      await database.prepare(`INSERT INTO important_notice_acknowledgements
+        (notice_id, user_id, publication_revision, acknowledged_at) VALUES
+        ('notice-upgrade', 'notice-upgrade-user', 1, '2026-08-03T01:00:00.000Z'),
+        ('notice-upgrade', 'notice-upgrade-user', 2, '2026-08-02T01:00:00.000Z')`).run();
+
+      await applyD1Migration(database, migrations[17]!.sql);
+
+      expect(await database.prepare(`SELECT publish_at, expires_at FROM important_notices
+        WHERE id = 'notice-upgrade'`).first()).toEqual({
+        publish_at: "2026-08-01T00:00:00.000Z",
+        expires_at: "2026-08-03T12:00:00.000Z",
+      });
+      expect(await database.prepare(`SELECT read_at, read_publication_revision, acknowledged_at
+        FROM important_notice_receipts`).first()).toEqual({
+        read_at: "2026-08-02T01:00:00.000Z",
+        read_publication_revision: 2,
+        acknowledged_at: "2026-08-02T01:00:00.000Z",
+      });
+    } finally {
+      await miniflare.dispose();
+    }
+  }, 45_000);
+
+  it("revokes active legacy invites and replaces token digests with stored codes", async () => {
+    const miniflare = createD1Miniflare("legacy-invite-revocation");
+    try {
+      const database = await miniflare.getD1Database("DB");
+      for (const { sql } of migrations.slice(0, 15)) await applyD1Migration(database, sql);
+      await database.prepare(`INSERT INTO users (id, display_name, role_id, revision_token)
+        VALUES ('legacy-invite-creator', 'Legacy Invite Creator', 'member', 'legacy-invite-creator-revision')`).run();
+      await database.prepare(`INSERT INTO invite_links (
+        id, token_digest, created_by, role_id, max_uses, used_count, expires_at, revoked_at
+      ) VALUES
+        ('legacy-active', ?, 'legacy-invite-creator', 'member', 2, 0, NULL, NULL),
+        ('legacy-expired', ?, 'legacy-invite-creator', 'member', 2, 0, '2020-01-01T00:00:00.000Z', NULL),
+        ('legacy-exhausted', ?, 'legacy-invite-creator', 'member', 1, 1, NULL, NULL),
+        ('legacy-revoked', ?, 'legacy-invite-creator', 'member', 2, 0, NULL, '2026-08-01T00:00:00.000Z')`)
+        .bind("a".repeat(64), "b".repeat(64), "c".repeat(64), "d".repeat(64)).run();
+
+      await applyD1Migration(database, migrations[15]!.sql);
+
+      const columns = (await database.prepare("PRAGMA table_info(invite_links)").all()).results
+        .map((row) => String(row.name));
+      expect(columns).toContain("code");
+      expect(columns).not.toContain("token_digest");
+      expect(await database.prepare("SELECT code, revoked_at FROM invite_links WHERE id = 'legacy-active'").first())
+        .toEqual({ code: expect.stringMatching(/^[A-Z0-9]{10}$/), revoked_at: expect.any(String) });
+      expect(await database.prepare("SELECT revoked_at FROM invite_links WHERE id = 'legacy-expired'").first())
+        .toEqual({ revoked_at: null });
+      expect(await database.prepare("SELECT revoked_at FROM invite_links WHERE id = 'legacy-exhausted'").first())
+        .toEqual({ revoked_at: null });
+      expect(await database.prepare("SELECT revoked_at FROM invite_links WHERE id = 'legacy-revoked'").first())
+        .toEqual({ revoked_at: "2026-08-01T00:00:00.000Z" });
+    } finally {
+      await miniflare.dispose();
+    }
+  }, 45_000);
+
   it("preserves an existing account exactly across the identity split", async () => {
-    const miniflare = new Miniflare({
-      compatibilityDate: "2026-07-28",
-      d1Databases: { DB: "identity-upgrade-smoke" },
-      modules: true,
-      port: 0,
-      script: "export default {}",
-    });
+    const miniflare = createD1Miniflare("identity-upgrade-smoke");
     try {
       const database = await miniflare.getD1Database("DB");
       for (const { sql } of migrations.slice(0, 3)) await applyD1Migration(database, sql);
@@ -42,6 +128,28 @@ describe("core migration on Miniflare workerd D1", () => {
         .bind("legacy-password-hash", "2026-08-22T12:15:00.000Z", null, "2026-08-01T00:00:00.000Z").run();
       await database.prepare(`INSERT INTO login_failures (username, fail_count, locked_until, last_failed_at)
         VALUES ('legacy.user', 4, '2026-08-22T12:05:00.000Z', '2026-08-22T12:00:00.000Z')`).run();
+      const obsoleteAuditPayload = JSON.stringify({
+        schema_version: 2,
+        changes: [{
+          field: "failed_attempts",
+          before: { type: "number", value: 4 },
+          after: { type: "number", value: 0 },
+        }],
+        context: [{
+          field: "locked_until",
+          value: { type: "datetime", value: "2026-08-22T12:05:00.000Z" },
+        }],
+      });
+      await database.prepare(`INSERT INTO audit_log (
+        id, request_id, actor_kind, actor_id, subject_type, subject_id, action, payload_json, occurred_at
+      ) VALUES ('obsolete-lock-audit', 'obsolete-lock-request', 'system', 'system', 'user_auth',
+        'legacy-user', 'reset_login_lock', ?, '2026-08-22T12:00:00.000Z')`).bind(obsoleteAuditPayload).run();
+      await database.prepare(`INSERT INTO audit_archives (
+        id, month, status, object_key, lease_token, lease_expires_at, created_at
+      ) VALUES ('obsolete-lock-archive', '2026-08', 'pending', 'audit/2026/08/obsolete.ndjson',
+        'obsolete-lock-lease', '2026-08-22T13:00:00.000Z', '2026-08-22T12:00:00.000Z')`).run();
+      await database.prepare(`INSERT INTO audit_archive_items (archive_id, audit_id, position)
+        VALUES ('obsolete-lock-archive', 'obsolete-lock-audit', 0)`).run();
 
       for (const { sql } of migrations.slice(3)) await applyD1Migration(database, sql);
 
@@ -55,8 +163,27 @@ describe("core migration on Miniflare workerd D1", () => {
         temporary_password_used_at: null,
       });
       expect(await database.prepare(
-        "SELECT fail_count, locked_until FROM login_failures WHERE login_name = 'legacy.user'",
-      ).first()).toEqual({ fail_count: 4, locked_until: "2026-08-22T12:05:00.000Z" });
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'login_failures'",
+      ).first()).toBeNull();
+      const migratedAudit = await database.prepare(
+        "SELECT action, payload_json FROM audit_log WHERE id = 'obsolete-lock-audit'",
+      ).first<{ action: string; payload_json: string }>();
+      expect(migratedAudit?.action).toBe("update");
+      expect(JSON.parse(migratedAudit!.payload_json)).toEqual({
+        schema_version: 2,
+        changes: [{
+          field: "count",
+          before: { type: "number", value: 4 },
+          after: { type: "number", value: 0 },
+        }],
+        context: [{
+          field: "expires_at",
+          value: { type: "datetime", value: "2026-08-22T12:05:00.000Z" },
+        }],
+      });
+      expect(await database.prepare(
+        "SELECT position FROM audit_archive_items WHERE audit_id = 'obsolete-lock-audit'",
+      ).first()).toEqual({ position: 0 });
       expect((await database.prepare("PRAGMA table_info(users)").all()).results.map((row) => row.name))
         .not.toContain("username");
       expect(await database.prepare("SELECT count(*) AS count FROM external_identities").first<number>("count")).toBe(0);
@@ -66,14 +193,35 @@ describe("core migration on Miniflare workerd D1", () => {
     }
   }, 45_000);
 
+  it("drops the obsolete login-failure table without scanning its rows", async () => {
+    const miniflare = createD1Miniflare("login-failure-removal-capacity");
+    try {
+      const database = await miniflare.getD1Database("DB");
+      for (const { sql } of migrations.slice(0, 11)) await applyD1Migration(database, sql);
+      await database.prepare(`WITH digits(value) AS (
+          VALUES (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)
+        )
+        INSERT INTO login_failures (login_name, source_digest, fail_count, locked_until, last_failed_at)
+        SELECT printf('legacy-%05d', (((a.value * 10 + b.value) * 10 + c.value) * 10 + d.value)),
+          'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 1, NULL, '2026-08-09T12:00:00.000Z'
+        FROM digits AS a, digits AS b, digits AS c, digits AS d`).run();
+      expect(await database.prepare("SELECT COUNT(*) AS count FROM login_failures").first())
+        .toEqual({ count: 10_000 });
+      expect(migrations[13]!.sql).toMatch(/DROP TABLE login_failures/i);
+      expect(migrations[13]!.sql).not.toMatch(/DELETE\s+FROM\s+`?login_failures`?/i);
+
+      for (const { sql } of migrations.slice(11)) await applyD1Migration(database, sql);
+
+      expect(await database.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'login_failures'",
+      ).first()).toBeNull();
+    } finally {
+      await miniflare.dispose();
+    }
+  }, 45_000);
+
   it("upgrades an attached media graph through the real D1 binding", async () => {
-    const miniflare = new Miniflare({
-      compatibilityDate: "2026-07-28",
-      d1Databases: { DB: "media-upgrade-smoke" },
-      modules: true,
-      port: 0,
-      script: "export default {}",
-    });
+    const miniflare = createD1Miniflare("media-upgrade-smoke");
     try {
       const database = await miniflare.getD1Database("DB");
       for (const { sql } of migrations.slice(0, 7)) await applyD1Migration(database, sql);
@@ -116,13 +264,7 @@ describe("core migration on Miniflare workerd D1", () => {
   }, 45_000);
 
   it("applies the complete migration through the real D1 binding", async () => {
-    const miniflare = new Miniflare({
-      compatibilityDate: "2026-07-28",
-      d1Databases: { DB: "core-migration-smoke" },
-      modules: true,
-      port: 0,
-      script: "export default {}",
-    });
+    const miniflare = createD1Miniflare("core-migration-smoke");
     try {
       const database = await miniflare.getD1Database("DB");
       for (const { entry, sql } of migrations) {
@@ -133,7 +275,7 @@ describe("core migration on Miniflare workerd D1", () => {
 
       expect(await database.prepare(
         "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND substr(name, 1, 4) <> '_cf_'",
-      ).first<number>("count")).toBe(66);
+      ).first<number>("count")).toBe(68);
       expect(await database.prepare(
         "SELECT count(*) AS count FROM sqlite_master WHERE type = 'trigger'",
       ).first<number>("count")).toBeGreaterThan(51);
@@ -214,14 +356,14 @@ async function expectHotPathPlans(
   expect(rosterPlan).not.toContain("USE TEMP B-TREE");
 
   const gallerySql = new StatementCaptureExecutor();
-  await new SqliteGalleryStore(gallerySql).list({ cursor: null, limit: 24, order: "desc" });
+  await new SqliteGalleryStore(gallerySql).list({ cursor: null, limit: 24, order: "desc", viewerUserId: null });
   const galleryStatement = gallerySql.executed[0];
   if (!galleryStatement) throw new Error("Gallery list did not execute SQL");
   const galleryPlan = await explainD1(database, galleryStatement);
   expect(galleryPlan).toContain("idx_gallery_items_created");
   expect(galleryPlan).not.toContain("USE TEMP B-TREE");
 
-  await new SqliteGalleryStore(gallerySql).list({ cursor: null, limit: 24, order: "desc", type: "image" });
+  await new SqliteGalleryStore(gallerySql).list({ cursor: null, limit: 24, order: "desc", type: "image", viewerUserId: null });
   const galleryTypeStatement = gallerySql.executed.at(-1);
   if (!galleryTypeStatement) throw new Error("Filtered gallery list did not execute SQL");
   const galleryTypePlan = await explainD1(database, galleryTypeStatement);
@@ -234,7 +376,7 @@ async function expectHotPathPlans(
     limit: 50,
     categoryIds: [],
     sort: "curated",
-    canReadArchived: false,
+    readScope: { kind: "public" },
   });
   const wikiStatement = wikiSql.batches[0]?.[1];
   if (!wikiStatement) throw new Error("Wiki article list did not execute SQL");
@@ -253,7 +395,7 @@ async function expectHotPathPlans(
       limit: 50,
       categoryIds: [],
       sort,
-      canReadArchived: true,
+      readScope: { kind: "all" },
     });
     const statement = wikiSql.batches.at(-1)?.[1];
     if (!statement) throw new Error(`Wiki ${sort} list did not execute SQL`);

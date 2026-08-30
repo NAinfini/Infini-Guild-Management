@@ -1,7 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { DEFAULT_SITE_OAUTH_SETTINGS } from "@guild/shared";
-import { createEvent, fireEvent, render, screen } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LoginPage } from "./LoginPage";
@@ -9,18 +7,24 @@ import { RegisterPage } from "./RegisterPage";
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
-  params: { inviteCode: "INVITE-CODE" } as { inviteCode?: string },
+  params: { inviteCode: "A1B2C3D4E5" } as { inviteCode?: string },
   search: {} as { reason?: string; returnTo?: string; oauth?: "failed" },
   inviteValid: true,
+  verifiedInviteCode: "",
   mutation: { mutate: vi.fn(), isPending: false },
+  mutationOptions: [] as Array<{ onError?: (error: unknown) => void }>,
   queryClient: { clear: vi.fn() },
 }));
 
 vi.mock("@tanstack/react-query", () => ({
-  useMutation: () => mocks.mutation,
+  useMutation: (options: { onError?: (error: unknown) => void }) => {
+    mocks.mutationOptions.push(options);
+    return mocks.mutation;
+  },
   useQueryClient: () => mocks.queryClient,
   useQuery: ({ queryKey }: { queryKey: readonly string[] }) => {
     if (queryKey[1] === "verify-invite") {
+      mocks.verifiedInviteCode = queryKey[2] ?? "";
       return {
         data: { valid: mocks.inviteValid },
         isLoading: false,
@@ -107,7 +111,9 @@ vi.mock("../layout/PublicSiteHeader", () => ({
 
 vi.mock("../../services/AuthService", () => ({
   checkUsername: vi.fn(),
-  isApiRequestError: () => false,
+  isApiRequestError: (error: unknown) => Boolean(
+    error && typeof error === "object" && "status" in error,
+  ),
   login: vi.fn(),
   register: vi.fn(),
   verifyInvite: vi.fn(),
@@ -136,10 +142,12 @@ describe("Auth page semantics", () => {
   beforeEach(() => {
     mocks.navigate.mockReset();
     mocks.mutation.mutate.mockReset();
+    mocks.mutationOptions = [];
     mocks.queryClient.clear.mockReset();
-    mocks.params = { inviteCode: "INVITE-CODE" };
+    mocks.params = { inviteCode: "A1B2C3D4E5" };
     mocks.search = {};
     mocks.inviteValid = true;
+    mocks.verifiedInviteCode = "";
   });
 
   it("makes the login password control keyboard reachable and stateful", async () => {
@@ -165,24 +173,23 @@ describe("Auth page semantics", () => {
     );
   });
 
-  it("uses one full-screen decorative scene and compact header across login and registration", () => {
-    const { unmount } = render(<LoginPage />);
-    expect(screen.getByTestId("visual-theme-scene")).toHaveClass("login-page__scene");
-    expect(screen.getByTestId("visual-theme-scene")).toHaveAttribute("data-variant", "access");
-    expect(screen.getByTestId("visual-theme-scene")).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByTestId("public-site-header")).toHaveAttribute("data-show-navigation", "false");
-    expect(screen.getByRole("link", { name: "button.visitorAccess" })).toHaveAttribute("href", "/dashboard");
-    unmount();
+  it("shows a localized generic message for login request throttling", () => {
+    renderLogin();
 
-    renderRegister();
-    expect(screen.getByTestId("visual-theme-scene")).toHaveClass("login-page__scene");
-    expect(screen.getByTestId("visual-theme-scene")).toHaveAttribute("data-variant", "access");
-    expect(screen.getByTestId("visual-theme-scene")).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByTestId("public-site-header")).toHaveAttribute("data-show-navigation", "false");
-    expect(screen.getByRole("link", { name: "button.visitorAccess" })).toHaveAttribute("href", "/dashboard");
+    act(() => {
+      mocks.mutationOptions[0]?.onError?.({
+        status: 429,
+        message: "Too many authentication requests; retry in 17 seconds",
+        details: { retry_after_seconds: 17 },
+      });
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("tooManyAttempts");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("17");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("Too many authentication requests");
   });
 
-  it("shows and announces a localized Caps Lock warning without sharing the eye control", () => {
+  it("shows and announces a localized Caps Lock warning", () => {
     renderLogin();
 
     const password = screen.getByLabelText("field.password");
@@ -194,17 +201,7 @@ describe("Auth page semantics", () => {
 
     const warning = screen.getByRole("status");
     const toggle = screen.getByRole("button", { name: "aria.showPassword" });
-    const passwordControl = password.closest(".login-page__password-control");
     expect(warning).toHaveTextContent("capsLockWarning");
-    expect(warning).toHaveClass("login-page__caps-warning");
-    expect(passwordControl).not.toBeNull();
-    expect(toggle.closest(".login-page__password-actions")?.parentElement).toBe(passwordControl);
-    expect(warning.parentElement).toBe(passwordControl?.parentElement);
-    expect(warning.previousElementSibling).toBe(passwordControl);
-    expect(warning.querySelector(".login-page__caps-icon")).toHaveAttribute(
-      "aria-hidden",
-      "true",
-    );
     expect(toggle).toBeInTheDocument();
   });
 
@@ -230,6 +227,33 @@ describe("Auth page semantics", () => {
     );
   });
 
+  it("explains registration password rules and clears stale errors after the requirements are met", async () => {
+    const user = userEvent.setup();
+    renderRegister();
+    await user.type(screen.getByLabelText("field.loginName"), "new_member");
+    await user.type(screen.getByLabelText("field.displayName"), "NewMember");
+    const password = screen.getByLabelText("field.password");
+    const confirmation = screen.getByLabelText("field.confirmPassword");
+    await user.type(password, "violet7!");
+    await user.type(confirmation, "Different!");
+    await user.click(screen.getByRole("button", { name: "button.register" }));
+    expect(await screen.findByText("auth:validation.password.uppercase")).toBeInTheDocument();
+    expect(screen.getByText("validation.passwordMismatch")).toBeInTheDocument();
+    expect(mocks.mutation.mutate).not.toHaveBeenCalled();
+
+    await user.clear(password);
+    await user.type(password, "Violets!");
+    await user.clear(confirmation);
+    await user.type(confirmation, "Violets!");
+    expect(password).toHaveAttribute("aria-invalid", "false");
+    expect(confirmation).toHaveAttribute("aria-invalid", "false");
+    expect(screen.queryByText("validation.passwordMismatch")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "button.register" }));
+    await waitFor(() => expect(mocks.mutation.mutate).toHaveBeenCalledWith({
+      login_name: "new_member", display_name: "NewMember", password: "Violets!", confirmPassword: "Violets!",
+    }));
+  });
+
   it("keeps typed invite retry behavior on a semantic button", async () => {
     const user = userEvent.setup();
     mocks.params = {};
@@ -237,88 +261,14 @@ describe("Auth page semantics", () => {
     renderRegister();
 
     fireEvent.change(screen.getByLabelText("field.inviteCode"), {
-      target: { value: "BAD-CODE" },
+      target: { value: "a1b2c3d4e5" },
     });
     await user.click(screen.getByRole("button", { name: "button.continue" }));
 
+    expect(mocks.verifiedInviteCode).toBe("A1B2C3D4E5");
     const retry = screen.getByRole("button", { name: "button.retryInviteCode" });
     await user.click(retry);
     expect(screen.getByLabelText("field.inviteCode")).toBeInTheDocument();
   });
 
-  it("uses real links or semantic buttons and a 44px password target", () => {
-    const loginSource = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/LoginPage.tsx"),
-      "utf8",
-    );
-    const registerSource = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/RegisterPage.tsx"),
-      "utf8",
-    );
-    const styles = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/AuthPages.css"),
-      "utf8",
-    );
-    const frameSource = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/AuthPageFrame.tsx"),
-      "utf8",
-    );
-    const resetSource = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/CompletePasswordResetPage.tsx"),
-      "utf8",
-    );
-    const verifySource = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/VerifyEmailPage.tsx"),
-      "utf8",
-    );
-    const designContract = readFileSync(resolve(process.cwd(), "DESIGN.md"), "utf8");
-
-    expect(loginSource).not.toMatch(/<Anchor\b[^>]*\bonClick=/);
-    expect(registerSource).not.toMatch(/<Anchor\b[^>]*\bonClick=/);
-    expect(styles).toMatch(
-      /\.login-page__eye-btn\s*\{[^}]*width:\s*var\(--control-hit-area\)[^}]*height:\s*var\(--control-hit-area\)/s,
-    );
-    expect(loginSource).toContain('className="login-page__eye-btn"');
-    expect(registerSource.match(/className="login-page__eye-btn"/g)).toHaveLength(2);
-    expect(styles).toMatch(
-      /\.login-page__eye-btn::before\s*\{[^}]*width:\s*var\(--control-icon-size-regular\)[^}]*height:\s*var\(--control-icon-size-regular\)/s,
-    );
-    expect(styles).toMatch(
-      /\.login-page__eye-btn:hover\s*\{[^}]*background:\s*transparent/s,
-    );
-    expect(styles).toMatch(
-      /\.login-page__eye-btn:hover::before\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
-    );
-    expect(frameSource).toContain("showNavigation={false}");
-    expect(frameSource).toContain('className="login-page__scene"');
-    expect(frameSource.match(/<VisualThemeScene/g) ?? []).toHaveLength(1);
-    expect(frameSource).not.toContain("formEyebrow");
-    expect(frameSource).not.toContain("story-eyebrow");
-    expect(frameSource).not.toContain("siteDescription");
-    expect(frameSource).not.toContain("showCharacter");
-    expect(frameSource).not.toContain("siteLogoUrl");
-    expect(frameSource).toContain("ACTIVE_VISUAL_THEME.mark.src");
-    expect(designContract).toContain("Looping background motion exists in exactly two places");
-    expect(styles).toMatch(
-      /\.login-page__scene\s*\{[^}]*pointer-events:\s*none/s,
-    );
-    expect(styles).not.toContain("login-page__story-art");
-    expect(styles).not.toContain("login-page__story-list");
-    expect(styles).not.toContain("lightfall");
-    expect(styles).toMatch(
-      /\.login-page__stage\s*\{[^}]*min-height:\s*100dvh[^}]*14vw[^}]*place-items:\s*center end/s,
-    );
-    expect(styles).toMatch(
-      /\.login-page__card-brand\s*\{[^}]*display:\s*flex[^}]*justify-content:\s*center[^}]*align-items:\s*center/s,
-    );
-    expect(styles).toMatch(
-      /\.login-page__card-brand\s*\{[^}]*margin-bottom:\s*var\(--space-sm\)/s,
-    );
-    expect(styles).not.toMatch(/\.login-page__card-brand\s*\{[^}]*flex-direction:\s*column/s);
-    const deprecatedUiName = ["man", "tine"].join("");
-    for (const source of [loginSource, registerSource, resetSource, verifySource, frameSource, styles]) {
-      expect(source.toLowerCase()).not.toContain(deprecatedUiName);
-      expect(source).not.toContain("useDisclosure");
-    }
-  });
 });

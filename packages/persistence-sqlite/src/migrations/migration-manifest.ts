@@ -8,5 +8,5 @@ export function canonicalMigrationPayload(sql: string): string {
   if (markerIndex < 0 || sql.indexOf(APP_MIGRATION_LEDGER_MARKER, markerIndex + 1) >= 0) {
     throw new TypeError("Application migration must contain exactly one ledger marker");
   }
-  return sql.slice(0, markerIndex);
+  return sql.slice(0, markerIndex).replaceAll("\r\n", "\n").replaceAll("\r", "\n");
 }

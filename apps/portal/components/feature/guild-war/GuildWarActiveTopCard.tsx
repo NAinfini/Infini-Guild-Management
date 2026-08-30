@@ -87,13 +87,13 @@ export function GuildWarActiveTopCard({
             placeholder={searchPlaceholder}
             aria-label={t("active.aria.searchMembers")}
           />
-          {activeSearch && hasMatches ? (
-            <div className="guild-war-active-top-card__matches">
-              <Button type="button" variant="ghost" size="icon-sm" onClick={onPrevMatch} disabled={!onPrevMatch} aria-label={t("active.aria.prevMatch")}>
+          {activeSearch ? (
+            <div className="guild-war-active-top-card__matches" aria-live="polite">
+              <Button type="button" variant="ghost" size="icon-sm" onClick={onPrevMatch} disabled={!hasMatches || !onPrevMatch} aria-label={t("active.aria.prevMatch")}>
                 <ChevronLeftIcon size={14} />
               </Button>
               <span className="guild-war-active-top-card__match-label">{matchLabel}</span>
-              <Button type="button" variant="ghost" size="icon-sm" onClick={onNextMatch} disabled={!onNextMatch} aria-label={t("active.aria.nextMatch")}>
+              <Button type="button" variant="ghost" size="icon-sm" onClick={onNextMatch} disabled={!hasMatches || !onNextMatch} aria-label={t("active.aria.nextMatch")}>
                 <ChevronRightIcon size={14} />
               </Button>
             </div>

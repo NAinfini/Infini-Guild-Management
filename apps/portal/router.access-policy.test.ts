@@ -89,14 +89,53 @@ describe("portal route access policy", () => {
     expect(source.match(/requireEventMutationPermission\("events\.(?:create|edit|templates)", location\)/g)).toHaveLength(5);
   });
 
-  it("guards storage structure management with the structure permission", () => {
+  it("guards the announcement create route by session, external mode, and create permission", () => {
     const source = routerSource();
+    const createRoute = source.slice(
+      source.indexOf("const announcementCreateRoute"),
+      source.indexOf("const announcementDetailRoute"),
+    );
+    const mutationGuard = source.slice(
+      source.indexOf("async function requireFeatureMutationPermission"),
+      source.indexOf("const LazyAdminPage"),
+    );
+
+    expect(createRoute).toContain('path: "/announcements/new"');
+    expect(createRoute).toContain('"announcements.create"');
+    expect(createRoute).toContain("requireFeatureMutationPermission");
+    expect(mutationGuard).toContain("requireAuthenticatedSession(location)");
+    expect(mutationGuard).toContain("isExternalViewSearch(location.searchStr)");
+    expect(mutationGuard).toContain('throw redirect({ to: "/403" })');
+  });
+
+  it("guards the wiki create route by session, external mode, and create permission", () => {
+    const source = routerSource();
+    const createRoute = source.slice(
+      source.indexOf("const wikiCreateRoute"),
+      source.indexOf("const wikiSlugRoute"),
+    );
+
+    expect(createRoute).toContain('path: "/wiki/new"');
+    expect(createRoute).toContain('"wiki.articles.create"');
+    expect(createRoute).toContain("requireFeatureMutationPermission");
+  });
+
+  it("guards storage structure management from external preview and by structure permission", () => {
+    const source = routerSource();
+    const storageRoute = source.slice(
+      source.indexOf("const storageRoute"),
+      source.indexOf("const storageManageRoute"),
+    );
     const manageRoute = source.slice(
       source.indexOf("const storageManageRoute"),
       source.indexOf("const wikiRoute"),
     );
 
+    expect(storageRoute).toContain("isExternalViewSearch");
+    expect(storageRoute).toContain('throw redirect({ to: "/403" })');
     expect(manageRoute).toContain('path: "/storage/manage"');
+    expect(manageRoute).toContain("isExternalViewSearch");
+    expect(manageRoute).toContain('throw redirect({ to: "/403" })');
     expect(manageRoute).toContain('"admin.storage.structure"');
     expect(manageRoute).toContain('throw redirect({ to: "/storage" })');
   });
@@ -111,5 +150,30 @@ describe("portal route access policy", () => {
     expect(profileSearchSchema).toContain(
       'z.enum(["availability", "account"])',
     );
+  });
+
+  it("retries route errors without reloading the document", () => {
+    const source = routerSource();
+    const errorFallback = source.slice(
+      source.indexOf("function RouteErrorFallback"),
+      source.indexOf("function ForbiddenPage"),
+    );
+
+    expect(errorFallback).toContain("useRouter()");
+    expect(errorFallback).toContain("router.invalidate()");
+    expect(errorFallback).not.toContain("window.location.reload");
+  });
+
+  it("announces lazy route loading while the global route progress supplies visual feedback", () => {
+    const source = routerSource();
+    const loadingFallback = source.slice(
+      source.indexOf("function RouteLoadingFallback"),
+      source.indexOf("function LandingRoutePage"),
+    );
+
+    expect(loadingFallback).not.toContain("<Skeleton");
+    expect(source).toContain("<RouteProgress />");
+    expect(loadingFallback).toContain('role="status"');
+    expect(loadingFallback).toContain('aria-live="polite"');
   });
 });

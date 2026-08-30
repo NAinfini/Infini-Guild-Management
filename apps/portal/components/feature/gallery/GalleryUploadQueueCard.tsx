@@ -1,17 +1,12 @@
-import { RefreshCwIcon, XIcon } from "@portal/components/icons";
+import { PhotoIcon, RefreshCwIcon, XIcon } from "@portal/components/icons";
 import { Button } from "@portal/components/ui/button";
-import { Card } from "@portal/components/ui/card";
 import { Input } from "@portal/components/ui/input";
-import { Progress } from "@portal/components/ui/progress";
+import { Textarea } from "@portal/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
+import { LIMITS } from "@guild/shared/config/limits";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { UploadStatus, UploadTask } from "@portal/types/media";
-
-const PROGRESS_BY_STATUS = {
-  queued: 0,
-  uploading: 55,
-  done: 100,
-  error: 100,
-} satisfies Record<UploadStatus, number>;
+import type { UploadTask } from "@portal/types/media";
 
 function fileSizeText(size: number): string {
   if (size < 1024) return `${size} B`;
@@ -19,15 +14,36 @@ function fileSizeText(size: number): string {
   return `${(size / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function GalleryUploadPreview({ task }: { task: UploadTask }) {
+  const [source, setSource] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof URL.createObjectURL !== "function") return;
+    const nextSource = URL.createObjectURL(task.file);
+    setSource(nextSource);
+    return () => URL.revokeObjectURL(nextSource);
+  }, [task.file]);
+
+  return source ? (
+    <img className="gallery-upload-task__preview" src={source} alt="" />
+  ) : (
+    <span className="gallery-upload-task__preview-fallback" aria-hidden="true">
+      <PhotoIcon size={22} />
+    </span>
+  );
+}
+
 type GalleryUploadQueueCardProps = {
   uploadQueue: UploadTask[];
   uploadingCount: number;
   uploadQueueTitle: string;
-  captionPlaceholder: string;
+  titlePlaceholder: string;
+  descriptionPlaceholder: string;
   retryLabel: string;
   removeLabel: string;
   canRetryUpload: (task: UploadTask) => boolean;
-  onCaptionChange: (taskId: string, caption: string) => void;
+  onTitleChange: (taskId: string, title: string) => void;
+  onDescriptionChange: (taskId: string, description: string) => void;
   onRetry: (taskId: string) => void;
   onRemove: (taskId: string) => void;
 };
@@ -36,11 +52,13 @@ export function GalleryUploadQueueCard({
   uploadQueue,
   uploadingCount,
   uploadQueueTitle,
-  captionPlaceholder,
+  titlePlaceholder,
+  descriptionPlaceholder,
   retryLabel,
   removeLabel,
   canRetryUpload,
-  onCaptionChange,
+  onTitleChange,
+  onDescriptionChange,
   onRetry,
   onRemove,
 }: GalleryUploadQueueCardProps) {
@@ -51,32 +69,70 @@ export function GalleryUploadQueueCard({
   }
 
   return (
-    <Card className="gallery-upload-queue">
+    <section className="gallery-upload-queue" aria-labelledby="gallery-upload-queue-title">
       <div className="gallery-upload-queue__header">
-        <h3>{uploadQueueTitle}</h3>
+        <div>
+          <h3 id="gallery-upload-queue-title">{uploadQueueTitle}</h3>
+          <span className="gallery-upload-queue__count">{uploadQueue.length}</span>
+        </div>
         <p>{t("upload.webpHint")}</p>
       </div>
-      <div className="gallery-upload-queue__items">
+      <ol className="gallery-upload-queue__items">
         {uploadQueue.map((task) => (
-          <article key={task.id} className="gallery-upload-task" aria-live="polite">
-            <div className="gallery-upload-task__heading">
-              <span className="gallery-upload-task__name" title={task.file.name}>{task.file.name}</span>
-              <span className="gallery-upload-task__size">{fileSizeText(task.file.size)}</span>
+          <li key={task.id} className="gallery-upload-task">
+            <div className="gallery-upload-task__identity">
+              <GalleryUploadPreview task={task} />
+              <div className="gallery-upload-task__heading">
+                <Tooltip>
+                  <TooltipTrigger render={<span className="gallery-upload-task__name" tabIndex={0} />}>
+                    {task.file.name}
+                  </TooltipTrigger>
+                  <TooltipContent>{task.file.name}</TooltipContent>
+                </Tooltip>
+                <span className="gallery-upload-task__meta">
+                  <span className={`gallery-upload-task__status gallery-upload-task__status--${task.status}`}>
+                    {t(`upload.status.${task.status}`)}
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span className="gallery-upload-task__size">{fileSizeText(task.file.size)}</span>
+                </span>
+              </div>
             </div>
-            <Progress
-              value={PROGRESS_BY_STATUS[task.status]}
-              aria-label={task.file.name}
-              className={`gallery-upload-task__progress gallery-upload-task__progress--${task.status}`}
-            />
-            <Input
-              value={task.caption}
-              maxLength={200}
-              placeholder={captionPlaceholder}
-              aria-label={t("upload.captionAria", { fileName: task.file.name })}
-              disabled={uploadingCount > 0 || task.status === "uploading" || task.status === "done"}
-              onChange={(event) => onCaptionChange(task.id, event.currentTarget.value)}
-              className="gallery-upload-task__caption"
-            />
+            <label className="gallery-upload-task__field">
+              <span className="gallery-upload-task__label">
+                <span>{t("field.title")}</span>
+                <span>{t("field.required")}</span>
+              </span>
+              <Input
+                value={task.title}
+                maxLength={LIMITS.content.galleryTitle.max}
+                placeholder={titlePlaceholder}
+                aria-label={t("upload.titleAria", { fileName: task.file.name })}
+                required
+                aria-invalid={!task.title.trim()}
+                disabled={uploadingCount > 0 || task.status === "uploading" || task.status === "done"}
+                onChange={(event) => onTitleChange(task.id, event.currentTarget.value)}
+                className="gallery-upload-task__title"
+              />
+              <small>{task.title.length} / {LIMITS.content.galleryTitle.max}</small>
+            </label>
+            <label className="gallery-upload-task__field">
+              <span className="gallery-upload-task__label">
+                <span>{t("field.description")}</span>
+                <span>{t("field.optional")}</span>
+              </span>
+              <Textarea
+                value={task.description}
+                maxLength={LIMITS.content.galleryDescription.max}
+                placeholder={descriptionPlaceholder}
+                aria-label={t("upload.descriptionAria", { fileName: task.file.name })}
+                disabled={uploadingCount > 0 || task.status === "uploading" || task.status === "done"}
+                onChange={(event) => onDescriptionChange(task.id, event.currentTarget.value)}
+                className="gallery-upload-task__description"
+                rows={2}
+              />
+              <small>{task.description.length} / {LIMITS.content.galleryDescription.max}</small>
+            </label>
             {task.error ? <p className="gallery-upload-task__error" role="alert">{task.error}</p> : null}
             {task.status === "queued" || task.status === "error" ? (
               <div className="gallery-upload-task__actions">
@@ -102,9 +158,9 @@ export function GalleryUploadQueueCard({
                 </Button>
               </div>
             ) : null}
-          </article>
+          </li>
         ))}
-      </div>
-    </Card>
+      </ol>
+    </section>
   );
 }

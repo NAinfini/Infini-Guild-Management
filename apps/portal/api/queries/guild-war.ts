@@ -108,6 +108,7 @@ function parseFilenameFromContentDisposition(headerValue: string | null, fallbac
 
 export async function downloadGuildWarExport(params: {
   format: "csv" | "json";
+  history_id?: string;
   event_id?: string;
   date_from?: string;
   date_to?: string;
@@ -115,6 +116,9 @@ export async function downloadGuildWarExport(params: {
   const query = new URLSearchParams({
     format: params.format,
   });
+  if (params.history_id) {
+    query.set("history_id", params.history_id);
+  }
   if (params.event_id) {
     query.set("event_id", params.event_id);
   }

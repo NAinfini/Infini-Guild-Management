@@ -1,8 +1,7 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { DEFAULT_GAME_RULES } from "@guild/shared";
 import { useMemo } from "react";
 import {
-  fetchEventDetail,
   fetchEventsList,
 } from "../../services/EventService";
 import {
@@ -12,8 +11,10 @@ import {
   fetchGuildWarHistoryDetail,
 } from "../../services/GuildWarService";
 import { queryKeys } from "../../api/query-keys";
+import { localDayEndIso, localDayStartIso } from "../../utils/datetime";
 
 type UseGuildWarDataOptions = {
+  tab: "active" | "history" | "analytics";
   selectedEventId?: string;
   selectedHistoryId: string | null;
   historyDateFrom: string;
@@ -24,7 +25,18 @@ type UseGuildWarDataOptions = {
 };
 
 export function useGuildWarData(options: UseGuildWarDataOptions) {
-  const { selectedEventId, selectedHistoryId, historyDateFrom, historyDateTo, historySearch, historyPage, historyPerPage } = options;
+  const {
+    tab,
+    selectedEventId,
+    selectedHistoryId,
+    historyDateFrom,
+    historyDateTo,
+    historySearch,
+    historyPage,
+    historyPerPage,
+  } = options;
+  const activeEnabled = tab === "active";
+  const historyEnabled = tab !== "active";
   const guildWarEventTypeId = DEFAULT_GAME_RULES.events.types
     .find((definition) => definition.behavior === "guild_war")?.id;
 
@@ -37,17 +49,18 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
         type: guildWarEventTypeId,
         archived: false,
       }),
-    enabled: Boolean(guildWarEventTypeId),
+    enabled: activeEnabled && Boolean(guildWarEventTypeId),
     staleTime: 10 * 60_000,
   });
 
   const concludedEventIdsQuery = useQuery({
     queryKey: queryKeys.guildWar.concludedEventIds(),
     queryFn: () => fetchGuildWarConcludedEventIds(),
+    enabled: activeEnabled,
     staleTime: 10 * 60_000,
   });
 
-  const activeEligibilityReady = warEventsQuery.isSuccess && concludedEventIdsQuery.isSuccess;
+  const activeEligibilityReady = activeEnabled && warEventsQuery.isSuccess && concludedEventIdsQuery.isSuccess;
   const eligibleWarEvents = useMemo(() => {
     if (!activeEligibilityReady) return [];
     const concludedIds = new Set(concludedEventIdsQuery.data?.data ?? []);
@@ -64,17 +77,10 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
     ? selectedEventId
     : undefined;
 
-  const selectedEventDetailQuery = useQuery({
-    queryKey: queryKeys.guildWar.eventDetail(activeSelectedEventId ?? null),
-    enabled: Boolean(activeSelectedEventId),
-    queryFn: () => fetchEventDetail(activeSelectedEventId as string),
-    staleTime: 10 * 60_000,
-  });
-
   const activeQuery = useQuery({
     queryKey: queryKeys.guildWar.active(activeSelectedEventId ?? null),
     queryFn: () => fetchGuildWarActive(activeSelectedEventId),
-    enabled: Boolean(activeSelectedEventId),
+    enabled: activeEnabled && Boolean(activeSelectedEventId),
     staleTime: 10 * 60_000,
   });
 
@@ -90,17 +96,17 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
       fetchGuildWarHistory({
         page: historyPage,
         limit: historyPerPage,
-        date_from: historyDateFrom ? `${historyDateFrom}T00:00:00.000Z` : undefined,
-        date_to: historyDateTo ? `${historyDateTo}T23:59:59.999Z` : undefined,
+        date_from: localDayStartIso(historyDateFrom),
+        date_to: localDayEndIso(historyDateTo),
         search: historySearch || undefined,
       }),
+    enabled: historyEnabled,
     staleTime: 10 * 60_000,
-    placeholderData: keepPreviousData,
   });
 
   const historyDetailQuery = useQuery({
     queryKey: queryKeys.guildWar.historyDetail(selectedHistoryId),
-    enabled: Boolean(selectedHistoryId),
+    enabled: tab === "history" && Boolean(selectedHistoryId),
     queryFn: () => fetchGuildWarHistoryDetail(selectedHistoryId as string),
     staleTime: 10 * 60_000,
   });
@@ -111,7 +117,6 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
     activeEligibilityReady,
     eligibleWarEvents,
     activeSelectedEventId,
-    selectedEventDetailQuery,
     activeQuery,
     historyQuery,
     historyDetailQuery,

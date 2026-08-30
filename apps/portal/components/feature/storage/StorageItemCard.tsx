@@ -2,6 +2,7 @@ import type { StorageCategory, StorageItem } from "@guild/shared";
 import { PencilIcon, PhotoOffIcon } from "@portal/components/icons";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -54,54 +55,71 @@ export function StorageItemCard({
 
   return (
     <article className="storage-item-card">
-      <button
-        type="button"
-        className="storage-item-card__main"
-        aria-label={item.name}
-        onClick={() => onOpen(item)}
-      >
-        <span className="storage-item-card__preview" aria-hidden="true">
-          {imageUrl && !imageFailed ? (
-            <img
-              src={imageUrl}
-              alt=""
-              className="storage-item-card__image"
-              onError={() => setImageFailed(true)}
-            />
-          ) : (
-            <span
-              className={`storage-item-card__placeholder ${imageFailed ? "storage-item-card__placeholder--broken" : ""}`}
-            >
-              <PhotoOffIcon size={18} />
-            </span>
-          )}
-        </span>
-
-        <span className="storage-item-card__identity">
-          <span className="storage-item-card__name" title={item.name}>{item.name}</span>
-          <span className="storage-item-card__badges">
-            <span className="storage-item-card__category">
-              {category?.name ?? t("category.uncategorized")}
-            </span>
-            {item.allow_member_deposit ? (
-              <Badge variant="secondary">{t("badge.depositEnabled")}</Badge>
-            ) : null}
-            {item.allow_member_withdraw ? (
-              <Badge variant="secondary">{t("badge.withdrawEnabled")}</Badge>
-            ) : null}
-            {!item.allow_member_deposit && !item.allow_member_withdraw ? (
-              <Badge variant="outline">{t("badge.closed")}</Badge>
-            ) : null}
+      <Tooltip>
+        <TooltipTrigger render={<button
+          type="button"
+          className="storage-item-card__main"
+          aria-label={item.name}
+          onClick={() => onOpen(item)}
+        />}>
+          <span className="storage-item-card__preview" aria-hidden="true">
+            {imageUrl && !imageFailed ? (
+              <img
+                src={imageUrl}
+                alt=""
+                className="storage-item-card__image"
+                loading="lazy"
+                decoding="async"
+                onError={() => setImageFailed(true)}
+              />
+            ) : (
+              <span
+                className={`storage-item-card__placeholder ${imageFailed ? "storage-item-card__placeholder--broken" : ""}`}
+              >
+                <PhotoOffIcon size={18} />
+              </span>
+            )}
           </span>
-        </span>
 
-        <span
-          className={`storage-item-card__stock ${item.quantity > 0 ? "storage-item-card__stock--available" : ""}`}
-        >
-          <span className="storage-item-card__stock-label">{t("field.stock")}</span>
-          <span className="storage-item-card__stock-value">{item.quantity}</span>
-        </span>
-      </button>
+          <span className="storage-item-card__identity">
+            <span className="storage-item-card__name">{item.name}</span>
+            <span className="storage-item-card__badges">
+              <span className="storage-item-card__category">
+                {category?.name ?? t("category.uncategorized")}
+              </span>
+              <Badge variant="outline" className="storage-item-card__rarity">
+                {t(`rarity.${item.rarity}`)}
+              </Badge>
+              {item.allow_member_deposit ? (
+                <Badge variant="secondary" className="storage-item-card__access-badge">
+                  {t("badge.depositEnabled")}
+                </Badge>
+              ) : null}
+              {item.allow_member_withdraw ? (
+                <Badge variant="secondary" className="storage-item-card__access-badge">
+                  {t("badge.withdrawEnabled")}
+                </Badge>
+              ) : null}
+              {!item.allow_member_deposit && !item.allow_member_withdraw ? (
+                <Badge variant="outline" className="storage-item-card__access-badge">
+                  {t("badge.closed")}
+                </Badge>
+              ) : null}
+            </span>
+          </span>
+
+          <span
+            className={`storage-item-card__stock ${item.quantity > 0 ? "storage-item-card__stock--available" : ""}`}
+          >
+            <span className="storage-item-card__stock-label">{t("field.stock")}</span>
+            <span className="storage-item-card__stock-value">
+              {item.quantity}
+              <span className="storage-item-card__stock-unit">{item.unit ?? t("field.unitUnset")}</span>
+            </span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{item.name}</TooltipContent>
+      </Tooltip>
 
       <div className="storage-item-card__actions">
         {batch ? (

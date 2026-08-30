@@ -41,6 +41,9 @@ describe("shared local development seed", () => {
 
     const repair = new DatabaseSync(target);
     try {
+      repair.prepare(`UPDATE user_credentials
+        SET password_hash = 'pbkdf2-sha256$600000$aW5maW5pLWUyZS1vd25lcg$sZCPwQuC_-JxiVos8xhqUWE8XDoYzIfiG1krPbfO31I'
+        WHERE user_id IN ('dev-owner', 'dev-member-01')`).run();
       repair.prepare("DELETE FROM media_links WHERE media_id = 'dev-media-00000000021'").run();
       expect(repair.prepare(
         "SELECT state FROM media_assets WHERE id = 'dev-media-00000000021'",
@@ -64,6 +67,19 @@ describe("shared local development seed", () => {
       expect(count(database, "events")).toBe(18);
       expect(count(database, "wiki_articles")).toBe(4);
       expect(count(database, "wiki_revisions")).toBe(6);
+      expect(database.prepare(
+        "SELECT count(DISTINCT category) AS count FROM announcements WHERE id LIKE 'dev-announcement-%'",
+      ).get()).toEqual({ count: 4 });
+      expect(database.prepare(
+        "SELECT count(DISTINCT view_count) AS count FROM announcements WHERE id LIKE 'dev-announcement-%'",
+      ).get()).toEqual({ count: 4 });
+      expect(database.prepare(
+        "SELECT count(*) AS count FROM wiki_articles WHERE id LIKE 'dev-wiki-article-%' AND view_count > 0",
+      ).get()).toEqual({ count: 4 });
+      expect(database.prepare(
+        "SELECT count(DISTINCT view_count) AS count FROM wiki_articles WHERE id LIKE 'dev-wiki-article-%'",
+      ).get()).toEqual({ count: 4 });
+      expect(count(database, "gallery_likes")).toBe(7);
       expect(count(database, "storage_items")).toBe(4);
       expect(count(database, "guild_wars")).toBe(12);
       expect(database.prepare(
@@ -77,6 +93,9 @@ describe("shared local development seed", () => {
       ).get()).toEqual({
         password_hash: "pbkdf2-sha256$10000$aW5maW5pLWUyZS1vd25lcg$-VYi6RNWPNIdHw3hXNV9jsMaTTUvgCy-AqKVhQy7kVw",
       });
+      expect(database.prepare(
+        "SELECT count(*) AS count FROM user_credentials WHERE user_id LIKE 'dev-%' AND password_hash NOT LIKE 'pbkdf2-sha256$10000$%'",
+      ).get()).toEqual({ count: 0 });
       expect(database.prepare(`
         SELECT state, (SELECT count(*) FROM media_links WHERE media_id = media_assets.id) AS links
         FROM media_assets

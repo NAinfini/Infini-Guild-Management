@@ -22,6 +22,34 @@
   gap: var(--space-md);
 }
 
+/* Badge metadata stays fixed while the high-volume member rows own scrolling. */
+.admin-badges__detail-body {
+  display: flex;
+  overflow: hidden;
+}
+
+.admin-badges__detail-layout {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.admin-badges__membership {
+  min-block-size: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.admin-badges__member-picker {
+  min-block-size: 0;
+}
+
+.admin-badges__member-picker .pick-list__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-width: thin;
+}
+
 .admin-badge-label__controls,
 .admin-badges__membership-head {
   display: flex;
@@ -47,4 +75,23 @@
 .admin-badge-label__preview .member-card__badge {
   --badge-font-size: var(--text-body);
   --badge-padding: 4px 12px;
+}
+
+@media (max-width: 47.99em) {
+  .admin-page__panel--badges {
+    block-size: 100%;
+  }
+
+  .admin-badges__workbench {
+    flex: 1 1 0;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .admin-badges__workbench .admin-md__detail {
+    overflow: hidden;
+  }
+
+  .admin-badges__detail-body {
+    flex: 1 1 0;
+  }
 }

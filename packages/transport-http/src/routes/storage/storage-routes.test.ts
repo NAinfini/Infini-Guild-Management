@@ -1,5 +1,6 @@
 import { createAuthorizationContext, createRequestContext, type RequestContext } from "@guild/kernel";
 import type { StorageService } from "@guild/server/modules/storage";
+import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { createStorageRoutes } from "./storage-routes.js";
@@ -12,6 +13,8 @@ const item = {
   category_id: "category-1",
   name: "Potion",
   description: null,
+  rarity: "common" as const,
+  unit: null,
   quantity: 1.5,
   allow_member_deposit: true,
   allow_member_withdraw: true,
@@ -37,6 +40,7 @@ const storage = {
   name: "Guild Vault",
   description: null,
   created_at: NOW,
+  structure_revision: 0,
   categories: [{ id: "category-1", name: "Supplies" }],
 };
 function buildApp() {
@@ -45,9 +49,9 @@ function buildApp() {
     createStorage: vi.fn().mockResolvedValue(storage),
     updateStorage: vi.fn().mockResolvedValue(storage),
     deleteStorage: vi.fn().mockResolvedValue({ ok: true as const }),
-    createCategory: vi.fn().mockResolvedValue(storage.categories[0]!),
-    updateCategory: vi.fn().mockResolvedValue(storage.categories[0]!),
-    deleteCategory: vi.fn().mockResolvedValue({ ok: true as const }),
+    createCategory: vi.fn().mockResolvedValue({ category: storage.categories[0]!, structure_revision: 1 }),
+    updateCategory: vi.fn().mockResolvedValue({ category: storage.categories[0]!, structure_revision: 1 }),
+    deleteCategory: vi.fn().mockResolvedValue({ ok: true as const, structure_revision: 1 }),
     listTransactions: vi.fn().mockResolvedValue({ data: [transaction], total: 1, page: 2, limit: 25, total_pages: 1 }),
     createBatchTransaction: vi.fn().mockResolvedValue({ data: [transaction], replayed: false }),
     listItems: vi.fn().mockResolvedValue({ data: [item], next_cursor: "next" }),
@@ -55,8 +59,8 @@ function buildApp() {
     getItem: vi.fn().mockResolvedValue(item),
     updateItem: vi.fn().mockResolvedValue(item),
     deleteItem: vi.fn().mockResolvedValue({ ok: true as const }),
-    uploadImages: vi.fn().mockResolvedValue([{ media_id: MEDIA_ID }]),
-    deleteImage: vi.fn().mockResolvedValue({ ok: true as const }),
+    uploadImages: vi.fn().mockResolvedValue({ data: [{ media_id: MEDIA_ID }], updated_at: NOW }),
+    deleteImage: vi.fn().mockResolvedValue({ ok: true as const, updated_at: NOW }),
     createTransaction: vi.fn().mockResolvedValue(transaction),
   } as unknown as StorageService;
   const parseImageFormData = vi.fn().mockResolvedValue([{ full: new Uint8Array(), view: new Uint8Array() }]);
@@ -69,7 +73,7 @@ function buildApp() {
         sessionId: "session-1",
         roleId: "member",
         roleLevel: 100,
-        permissions: [],
+        permissions: [PERMISSION_ID.ADMIN_STORAGE_ITEMS],
       }),
       now: NOW,
     }));
@@ -88,23 +92,24 @@ describe("storage Portal HTTP contract", () => {
     const form = new FormData();
     form.append("full", new File(["full"], "full.webp", { type: "image/webp" }));
     form.append("view", new File(["view"], "view.webp", { type: "image/webp" }));
+    form.append("expected_updated_at", NOW);
     const requests: Array<[string, string, BodyInit | undefined, number]> = [
       ["GET", "/api/storage", undefined, 200],
       ["POST", "/api/storage/storages", json({ name: "Guild Vault" }), 201],
-      ["PATCH", "/api/storage/storages/storage-1", json({ name: "Guild Vault" }), 200],
-      ["DELETE", "/api/storage/storages/storage-1", undefined, 200],
-      ["POST", "/api/storage/storages/storage-1/categories", json({ name: "Supplies" }), 201],
-      ["PATCH", "/api/storage/storages/storage-1/categories/category-1", json({ name: "Supplies" }), 200],
-      ["DELETE", "/api/storage/storages/storage-1/categories/category-1", undefined, 200],
+      ["PATCH", "/api/storage/storages/storage-1", json({ name: "Guild Vault", expected_name: "Guild Vault", expected_description: null, expected_structure_revision: 0 }), 200],
+      ["DELETE", "/api/storage/storages/storage-1", json({ expected_structure_revision: 0 }), 200],
+      ["POST", "/api/storage/storages/storage-1/categories", json({ name: "Supplies", expected_structure_revision: 0 }), 201],
+      ["PATCH", "/api/storage/storages/storage-1/categories/category-1", json({ name: "Supplies", expected_name: "Supplies", expected_structure_revision: 0 }), 200],
+      ["DELETE", "/api/storage/storages/storage-1/categories/category-1", json({ expected_structure_revision: 0 }), 200],
       ["GET", "/api/storage/transactions?page=2&limit=25&recipient_user_id=me", undefined, 200],
       ["POST", "/api/storage/transactions/batch", json({}), 201],
       ["GET", "/api/storage/items?storage_id=storage-1&stock=all&limit=24&cursor=current", undefined, 200],
       ["POST", "/api/storage/items", json({}), 201],
       ["GET", "/api/storage/items/item-1", undefined, 200],
       ["PATCH", "/api/storage/items/item-1", json({}), 200],
-      ["DELETE", "/api/storage/items/item-1", undefined, 200],
+      ["DELETE", "/api/storage/items/item-1", json({ expected_updated_at: NOW }), 200],
       ["POST", "/api/storage/items/item-1/images", form, 201],
-      ["DELETE", `/api/storage/items/item-1/images/${MEDIA_ID}`, undefined, 200],
+      ["DELETE", `/api/storage/items/item-1/images/${MEDIA_ID}`, json({ expected_updated_at: NOW }), 200],
       ["POST", "/api/storage/items/item-1/transactions", json({}), 201],
     ];
 
@@ -118,8 +123,9 @@ describe("storage Portal HTTP contract", () => {
 
   it("preserves page/cursor query names, multipart media IDs, and public invalidation hints", async () => {
     const { app, service, parseImageFormData } = buildApp();
-    await app.request("/api/storage/transactions?item_id=item-1&recipient_user_id=me&page=2&limit=25");
+    await app.request("/api/storage/transactions?storage_id=storage-1&item_id=item-1&recipient_user_id=me&page=2&limit=25");
     expect(service.listTransactions).toHaveBeenCalledWith(expect.anything(), {
+      storage_id: "storage-1",
       item_id: "item-1",
       recipient_user_id: "me",
       page: "2",
@@ -138,9 +144,13 @@ describe("storage Portal HTTP contract", () => {
     const form = new FormData();
     form.append("full", new File(["full"], "full.webp", { type: "image/webp" }));
     form.append("view", new File(["view"], "view.webp", { type: "image/webp" }));
+    form.append("expected_updated_at", NOW);
     const response = await app.request("/api/storage/items/item-1/images", { method: "POST", body: form });
-    expect(await response.json()).toEqual([{ media_id: MEDIA_ID }]);
+    expect(await response.json()).toEqual({ data: [{ media_id: MEDIA_ID }], updated_at: NOW });
     expect(parseImageFormData).toHaveBeenCalledOnce();
+    expect(service.uploadImages).toHaveBeenCalledWith(expect.anything(), item.id, expect.anything(), {
+      expected_updated_at: NOW,
+    });
   });
 });
 

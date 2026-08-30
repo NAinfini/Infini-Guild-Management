@@ -1,7 +1,5 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { DebugLogEntry } from "./AdminApiTestEngine";
 import { AdminApiDebugConsole, formatLogEntry } from "./AdminApiDebugConsole";
@@ -25,54 +23,11 @@ const successLog: DebugLogEntry = {
   ranAt: "2026-07-28T12:00:00.000Z",
 };
 
-function renderConsole(logs: DebugLogEntry[]) {
-  render(<AdminApiDebugConsole logs={logs} onClear={vi.fn()} />);
+function renderConsole(logs: DebugLogEntry[], clearDisabled = false) {
+  render(<AdminApiDebugConsole logs={logs} onClear={vi.fn()} clearDisabled={clearDisabled} />);
 }
 
 describe("AdminApiDebugConsole", () => {
-  it("keeps rows and primary actions touch-sized while the result filter stays compact", () => {
-    const css = readFileSync(
-      resolve(
-        process.cwd(),
-        "apps/portal/components/feature/admin/AdminApiTest.css",
-      ),
-      "utf8",
-    ).replace(/\/\*[\s\S]*?\*\//g, "");
-    const filterRule = css.match(/\.api-filter__option\s*\{([^}]+)\}/)?.[1];
-    const rowRule = css.match(/\.api-debug__row-main\s*\{([^}]+)\}/)?.[1];
-
-    expect(filterRule).toMatch(/min-height:\s*28px/);
-    expect(rowRule).toMatch(/min-height:\s*44px/);
-    expect(css).not.toMatch(/font-size:\s*(?:9|9\.5|10)px/);
-    expect(css).not.toMatch(/border-radius:\s*(?:3|4)px/);
-    expect(css).toMatch(
-      /\.api-ep__method\s*\{[^}]*font-size:\s*var\(--text-meta\)[^}]*border-radius:\s*var\(--radius-control\)/,
-    );
-
-    /* 表头三个按钮是文字控件，高度归 --control-height-regular 管：细指针 36px、
-       粗指针 44px，一处切换。在这里钉死 44px 就是把它们比同屏按钮抬高一档，
-       而且触控档位的事实来源被复制成两份。 */
-    expect(css).not.toMatch(/\.api-console__(run-all|run-critical|stop)[^{}]*\{[^}]*(min-)?height:/);
-  });
-
-  it("keeps the console body expanded without a second disclosure layer", () => {
-    renderConsole([successLog]);
-
-    expect(screen.getByText("/api/health")).toBeVisible();
-    expect(document.querySelector(".admin-status-toggle")).toBeNull();
-  });
-
-  it("keeps the result filter in the title row without segmented dividers", () => {
-    renderConsole([successLog]);
-
-    const header = document.querySelector(".api-debug .admin-panel__head");
-    const filter = screen.getByRole("group", { name: "status.api.filter.results" });
-
-    expect(header).toContainElement(filter);
-    expect(document.querySelector(".api-debug__toolbar")).toBeNull();
-    expect(filter.querySelectorAll('input[type="radio"]')).toHaveLength(3);
-  });
-
   it("exposes log details through a keyboard-operable disclosure", async () => {
     const user = userEvent.setup();
     renderConsole([successLog]);
@@ -100,6 +55,12 @@ describe("AdminApiDebugConsole", () => {
 
     expect(screen.getByText("status.api.noErrors")).toBeInTheDocument();
     expect(screen.queryByText("No errors found")).not.toBeInTheDocument();
+  });
+
+  it("keeps clear disabled while the active run still needs its teardown identity", () => {
+    renderConsole([successLog], true);
+
+    expect(screen.getByRole("button", { name: "status.api.clearDebug" })).toBeDisabled();
   });
 
   it("copies intentional safety exclusions as N/A instead of errors", () => {

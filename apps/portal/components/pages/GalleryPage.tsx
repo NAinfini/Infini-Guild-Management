@@ -1,16 +1,20 @@
-import { IMAGE_FILE_ACCEPT } from "@guild/shared";
-import { PhotoIcon, XIcon } from "@portal/components/icons";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@portal/components/ui/alert-dialog";
 import { Button } from "@portal/components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@portal/components/ui/dialog";
-import { Input } from "@portal/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@portal/components/ui/tabs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useGalleryPageController } from "../../hooks/useGalleryPageController";
 import { GalleryFiltersCard } from "../feature/gallery/GalleryFiltersCard";
+import { GalleryAddMediaDialog } from "../feature/gallery/GalleryAddMediaDialog";
 import { GalleryGrid } from "../feature/gallery/GalleryGrid";
 import { GalleryLightboxModal } from "../feature/gallery/GalleryLightboxModal";
-import { GalleryUploadQueueCard } from "../feature/gallery/GalleryUploadQueueCard";
 import { PageLayout } from "../layout/PageLayout";
 import "./GalleryPage.css";
 
@@ -18,8 +22,8 @@ export function GalleryPage() {
   const { t } = useTranslation("gallery");
   const c = useGalleryPageController();
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
+  const lightboxTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const target = loadMoreRef.current;
@@ -42,11 +46,6 @@ export function GalleryPage() {
     return () => observer.disconnect();
   }, [c.galleryQuery.fetchNextPage, c.galleryQuery.hasNextPage, c.galleryQuery.isFetchingNextPage]);
 
-  const uploadImagesLabel = t("action.uploadImages");
-  const clearDoneLabel = t("clearDone");
-  const videoUrlPlaceholder = t("field.videoUrl");
-  const captionPlaceholder = t("field.caption");
-  const addVideoLabel = t("action.addVideo");
   const filters = (
     <GalleryFiltersCard
       typeFilter={c.typeFilter}
@@ -77,138 +76,38 @@ export function GalleryPage() {
 
   return (
     <PageLayout className="gallery-page" toolbar={filters}>
-      <Dialog
-        open={c.addMediaModalOpen}
-        onOpenChange={(nextOpen) => { if (!nextOpen) c.closeAddMediaModal(); }}
+      <GalleryAddMediaDialog controller={c} />
+
+      <AlertDialog
+        open={c.deleteTargetId !== null}
+        onOpenChange={(open) => { if (!open) c.cancelDeleteItem(); }}
       >
-        <DialogContent className="gallery-add-media-dialog" showCloseButton={false}>
-          <DialogHeader className="gallery-add-media-dialog__header">
-            <DialogTitle>{t("modal.addMedia.title")}</DialogTitle>
-            <DialogClose
-              render={<Button type="button" variant="ghost" size="icon-sm" aria-label={t("common:action.close")} />}
+        <AlertDialogContent initialFocus={deleteCancelRef} data-intent="danger">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("confirm.delete.title")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("confirm.delete.description")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              ref={deleteCancelRef}
+              type="button"
+              variant="outline"
+              disabled={c.deleteMutation.isPending}
+              onClick={c.cancelDeleteItem}
             >
-              <XIcon size={16} aria-hidden="true" />
-            </DialogClose>
-          </DialogHeader>
-          <Tabs value={c.addMediaTab} onValueChange={(value) => c.setAddMediaTab(value as "image" | "video")}>
-            <TabsList>
-              <TabsTrigger value="image">{t("modal.addMedia.tabImage")}</TabsTrigger>
-              <TabsTrigger value="video">{t("modal.addMedia.tabVideo")}</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="image" className="gallery-add-media-tab">
-              <div className="gallery-add-media-stack">
-                <div
-                  className={`gallery-dropzone gallery-dropzone--modal${isDraggingFiles ? " gallery-dropzone--dragging" : ""}`}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setIsDraggingFiles(true);
-                  }}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDragLeave={(event) => {
-                    if (event.currentTarget === event.target) setIsDraggingFiles(false);
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    setIsDraggingFiles(false);
-                    c.selectFiles(event.dataTransfer.files);
-                  }}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept={IMAGE_FILE_ACCEPT}
-                    multiple
-                    className="gallery-dropzone__input"
-                    onChange={(event) => {
-                      c.selectFiles(event.currentTarget.files);
-                      event.currentTarget.value = "";
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="gallery-dropzone__select"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <PhotoIcon size={40} aria-hidden="true" />
-                    <span>{t("dropzone")}</span>
-                  </button>
-                </div>
-                <div className="gallery-upload-controls">
-                  <div className="gallery-upload-controls__actions">
-                    <Button
-                      onClick={() => { void c.runUploadQueue(); }}
-                      loading={c.uploadingCount > 0}
-                      disabled={c.queuedCount === 0}
-                    >
-                      {uploadImagesLabel}
-                    </Button>
-                    {c.uploadingCount > 0 ? (
-                      <Button variant="outline" onClick={c.cancelUploadQueue}>
-                        {t("action.cancelUpload")}
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant="outline"
-                      onClick={c.clearFinishedUploads}
-                      disabled={c.uploadQueue.every((item) => item.status !== "done")}
-                    >
-                      {clearDoneLabel}
-                    </Button>
-                  </div>
-                  <p className="gallery-upload-controls__summary">
-                    {t("upload.summary", {
-                      queued: c.queuedCount,
-                      uploading: c.uploadingCount,
-                      total: c.uploadQueue.length,
-                    })}
-                  </p>
-                </div>
-                <GalleryUploadQueueCard
-                  uploadQueue={c.uploadQueue}
-                  uploadingCount={c.uploadingCount}
-                  uploadQueueTitle={t("uploadQueue")}
-                  captionPlaceholder={t("field.caption")}
-                  retryLabel={t("common:action.retry")}
-                  removeLabel={t("action.removeUpload")}
-                  canRetryUpload={c.canRetryUpload}
-                  onCaptionChange={c.handleCaptionChange}
-                  onRetry={c.retryUpload}
-                  onRemove={c.removeUpload}
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="video" className="gallery-add-media-tab">
-              <div className="gallery-add-media-stack">
-                <Input
-                  className="gallery-video-url-input"
-                  placeholder={videoUrlPlaceholder}
-                  value={c.videoUrl}
-                  aria-label={t("field.videoUrlAria")}
-                  onChange={(event) => c.setVideoUrl(event.currentTarget.value)}
-                />
-                <Input
-                  className="gallery-video-caption-input"
-                  placeholder={captionPlaceholder}
-                  value={c.videoCaption}
-                  aria-label={t("field.captionAria")}
-                  onChange={(event) => c.setVideoCaption(event.currentTarget.value)}
-                />
-                <div className="gallery-video-actions">
-                  <Button
-                    onClick={c.handleAddVideo}
-                    loading={c.createVideoMutation.isPending}
-                    disabled={!c.videoUrl.trim()}
-                  >
-                    {addVideoLabel}
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
+              {t("common:action.cancel")}
+            </Button>
+            <AlertDialogAction
+              type="button"
+              className="bg-[var(--status-danger)] text-[var(--status-on-fill)] hover:bg-[var(--status-danger)] hover:opacity-90"
+              loading={c.deleteMutation.isPending}
+              onClick={() => { void c.confirmDeleteItem(); }}
+            >
+              {t("action.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="gallery-page__workspace">
         <GalleryGrid
@@ -217,6 +116,7 @@ export function GalleryPage() {
           isError={c.galleryQuery.isError}
           isExternalView={c.isExternalView}
           canModerate={c.canModerate}
+          canLike={c.canLike}
           selectedIds={c.selectedIds}
           emptyTitle={c.emptyTitle}
           emptyDescription={c.emptyDescription}
@@ -238,7 +138,11 @@ export function GalleryPage() {
           onAddMedia={() => c.openAddMediaModal("image")}
           onToggleSelect={c.toggleSelect}
           onDelete={c.handleDeleteItem}
-          onOpenLightbox={c.setLightboxId}
+          onToggleLike={c.toggleLike}
+          onOpenLightbox={(id, trigger) => {
+            lightboxTriggerRef.current = trigger;
+            c.setLightboxId(id);
+          }}
           resolveImageUrl={c.resolveImageUrl}
           formatDateTime={c.formatDateTime}
           actionDeleteLabel={t("action.delete")}
@@ -271,7 +175,13 @@ export function GalleryPage() {
         resolveImageUrl={c.resolveImageUrl}
         toEmbedVideoUrl={c.toEmbedVideoUrl}
         formatDateTime={c.formatDateTime}
-        isExternalView={c.isExternalView}
+        canLike={c.canLike}
+        likePending={c.likePending}
+        onToggleLike={c.toggleLike}
+        canEdit={Boolean(c.lightboxItem && c.canEditGalleryItem(c.lightboxItem))}
+        updatePending={c.updatePending}
+        onUpdate={c.updateGalleryMetadata}
+        returnFocusRef={lightboxTriggerRef}
       />
     </PageLayout>
   );

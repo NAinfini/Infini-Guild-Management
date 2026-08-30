@@ -1,7 +1,7 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
-import { expectNoDialog, field, selectOption } from "../../support/ui";
+import { expectNoDialog, field, pageSubnavItem, selectOption } from "../../support/ui";
 
 /*
  * 「结束战争」弹窗：把一场进行中的公会战封档成战史。
@@ -14,8 +14,8 @@ import { expectNoDialog, field, selectOption } from "../../support/ui";
  *
  * 清理要特别注意：删活动并不会删战史。EventCrudService.destroyEvent 对 war_history
  * 只做 `SET event_id = NULL`，行本身连同挂上去的队伍都会留下来。因此 afterEach
- * 必须先按 stamp 找出战史逐条 DELETE /api/guild-war/history/:id（它会连带删掉
- * war_teams / war_team_members / war_pool_members），再去销毁活动。顺序反了就会
+ * 必须先按本用例登记的 id 删除战史（它会连带删掉 war_teams / war_team_members /
+ * war_pool_members），再去销毁活动。顺序反了就会
  * 在库里留下一堆无主战史。
  */
 
@@ -41,10 +41,14 @@ type HistoryDetail = HistoryRow & {
 let stamp: number;
 let title: string;
 let eventId: string;
+let ownedEventIds = new Set<string>();
+let ownedHistoryIds = new Set<string>();
 let viewer: { id: string; display_name: string };
 let member: { id: string; display_name: string };
 
 test.beforeEach(async ({ api }) => {
+  ownedEventIds = new Set();
+  ownedHistoryIds = new Set();
   stamp = Date.now();
   title = `${SYSTEM_TEST_CONTENT_MARKER} War ${stamp}`;
 
@@ -73,6 +77,7 @@ test.beforeEach(async ({ api }) => {
     "创建公会战活动",
   ) as { id: string };
   eventId = created.id;
+  ownedEventIds.add(eventId);
 
   /*
    * 再造一场谁也不会去结束的公会战。
@@ -80,7 +85,7 @@ test.beforeEach(async ({ api }) => {
    * 那样「结束后这场战从下拉里消失了」就分不清是被过滤掉了，还是整块没了。
    * 留一场垫底的，下拉就一定还在，断言才落在「过滤」这件事上。
    */
-  await readJson(
+  const decoy = await readJson(
     await api.post("/api/events", {
       data: {
         type: "guild_war",
@@ -90,25 +95,20 @@ test.beforeEach(async ({ api }) => {
       },
     }),
     "创建垫底的公会战活动",
-  );
+  ) as { id: string };
+  ownedEventIds.add(decoy.id);
 });
 
 test.afterEach(async ({ api }) => {
-  const histories = await readJson(
-    await api.get(`/api/guild-war/history?search=${stamp}&limit=20`),
-    "回读待清理的战史",
-  ) as { data: HistoryRow[] };
-  for (const entry of histories.data) {
-    const response = await api.delete(`/api/guild-war/history/${entry.id}`);
-    expect([200, 204, 404], `清理战史返回 ${response.status()}`).toContain(response.status());
+  if (ownedHistoryIds.size > 0) {
+    const response = await api.post("/api/guild-war/history/batch-delete", {
+      data: { ids: [...ownedHistoryIds] },
+    });
+    expect(response.ok(), `清理战史返回 ${response.status()}: ${await response.text()}`).toBe(true);
   }
 
-  const events = await readJson(
-    await api.get(`/api/events?search=${stamp}&limit=50`),
-    "回读待清理的活动",
-  ) as { data: { id: string }[] };
-  for (const entry of events.data) {
-    const response = await api.delete(`/api/events/${entry.id}/destroy`);
+  for (const id of ownedEventIds) {
+    const response = await api.delete(`/api/events/${id}/destroy`);
     expect([200, 204, 404], `清理活动返回 ${response.status()}`).toContain(response.status());
   }
 });
@@ -151,7 +151,7 @@ async function openBoard(page: Page): Promise<void> {
   await expect(select).toBeVisible();
   await select.click();
   await page.getByRole("option", { name: new RegExp(escapeForRegExp(title)) }).click();
-  await expect(select).toHaveValue(new RegExp(escapeForRegExp(title)));
+  await expect(select).toContainText(title);
   await expect(page.locator(".guild-war-dnd-pool .guild-war-column-card")).toBeVisible();
 }
 
@@ -215,12 +215,14 @@ test("结束战争：填完的每一项都落进战史，活动同时退出可�
   await field(modal, `${member.display_name} — Kills`).fill("5");
   await field(modal, `${member.display_name} — Deaths`).fill("1");
 
-  await flow.click(submit, CONCLUDE);
+  const concludedResult = await flow.click(submit, CONCLUDE) as { war_history_id: string };
+  ownedHistoryIds.add(concludedResult.war_history_id);
   await expectNoDialog(page);
 
   const histories = await readHistories(api);
   expect(histories, "结束之后必须正好落一条战史").toHaveLength(1);
   const history = histories[0]!;
+  expect(history.id, "结束接口返回的战史 id 必须可用于精确清理").toBe(concludedResult.war_history_id);
   expect(history.war_name, "战名取自活动标题").toBe(title);
   expect(history.enemy_name).toBe(`Crimson ${stamp}`);
   expect(history.result).toBe("win");
@@ -249,9 +251,7 @@ test("结束战争：填完的每一项都落进战史，活动同时退出可�
   /* 结束成功会把选中项清空，随后 GuildWarPage 的兜底 effect 会自动选上第一场还能打的战
      （见 GuildWarPage.tsx 的 activeSelectedEventId effect）。所以这里不是「变空」，
      而是「不再停在这场已经封档的战上」。 */
-  await expect(eventSelect(page), "结束之后不该还停在这场战上").not.toHaveValue(
-    new RegExp(escapeForRegExp(title)),
-  );
+  await expect(eventSelect(page), "结束之后不该还停在这场战上").not.toContainText(title);
   await eventSelect(page).click();
   await expect(
     page.getByRole("option", { name: new RegExp(escapeForRegExp(title)) }),
@@ -263,7 +263,7 @@ test("结束战争：填完的每一项都落进战史，活动同时退出可�
   ).toHaveCount(1);
   await page.keyboard.press("Escape");
 
-  await page.getByRole("tab", { name: "History", exact: true }).click();
+  await pageSubnavItem(page, "Guild war workspace", "History").click();
   await expect(
     page.getByRole("button", { name: `Open war record ${title}`, exact: true }),
     "刚封档的战必须立刻出现在战史列表里",

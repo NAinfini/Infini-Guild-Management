@@ -54,6 +54,13 @@ export function buildJsonRequest(path: string, body: unknown): PreparedEndpointR
   };
 }
 
+function withIfMatch(request: PreparedEndpointRequest, etag: string): PreparedEndpointRequest {
+  return {
+    ...request,
+    headers: { ...request.headers, "If-Match": etag },
+  };
+}
+
 export function buildFormRequest(path: string, fields: Array<[string, string | File]>): PreparedEndpointRequest {
   const form = new FormData();
   for (const [key, value] of fields) {
@@ -82,7 +89,7 @@ function fixtureName(prefix: string, id: string, maxLength: number): string {
 }
 
 function isMutableMethod(method: EndpointDef["method"]): boolean {
-  return method === "POST" || method === "PATCH" || method === "DELETE";
+  return method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE";
 }
 
 export function skipEndpoint(path: string, reason: string, optionalSkip = false): PreparedEndpointRequest {
@@ -113,23 +120,23 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
     };
   }
 
-  if (endpoint.path === "/api/admin/audit-archive/download") {
+  if (endpoint.path === "/api/admin/audit-archive/files") {
     const month = context.auditArchiveMonth;
     if (!month) {
       return { path, missing: "archive month (run archive months first)" };
     }
     return {
-      path: `/api/admin/audit-archive/download?month=${encodeURIComponent(month)}&format=raw_ndjson_gz`,
+      path: `/api/admin/audit-archive/files?month=${encodeURIComponent(month)}`,
       missing: null,
     };
   }
 
-  if (endpoint.path === "/api/admin/audit-archive/download/file") {
-    if (!context.auditArchiveDownloadToken) {
-      return { path, missing: "download token (run archive download first)" };
+  if (endpoint.path === "/api/admin/audit-archive/files/:archiveId") {
+    if (!context.auditArchiveId) {
+      return { path, missing: "archive id (run archive files first)" };
     }
     return {
-      path: `/api/admin/audit-archive/download/file?token=${encodeURIComponent(context.auditArchiveDownloadToken)}`,
+      path: `/api/admin/audit-archive/files/${encodeURIComponent(context.auditArchiveId)}`,
       missing: null,
     };
   }
@@ -239,7 +246,10 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   }
 
   if (path.includes("/api/guild-war/history/:id")) {
-    const historyId = endpoint.path.includes("/member-stats")
+    const historyId = endpoint.path.includes("fixture=concluded")
+      || endpoint.path.includes("fixture=after-member-stats")
+      ? context.createdConcludedWarHistoryId
+      : endpoint.path.includes("/member-stats")
       ? context.createdConcludedWarHistoryId ?? context.createdWarHistoryId ?? context.warHistoryId
       : isMutableMethod(endpoint.method)
         ? context.createdWarHistoryId ?? context.createdConcludedWarHistoryId
@@ -415,11 +425,11 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
   ]));
   const resolved = resolveEndpointPath(endpoint, context);
   if (resolved.missing) {
-    if (endpoint.path === "/api/admin/audit-archive/download") {
+    if (endpoint.path === "/api/admin/audit-archive/files") {
       return skipEndpoint(endpoint.path, "No archived audit month is available in this environment", true);
     }
-    if (endpoint.path === "/api/admin/audit-archive/download/file") {
-      return skipEndpoint(endpoint.path, "No audit archive download token is available in this environment", true);
+    if (endpoint.path === "/api/admin/audit-archive/files/:archiveId") {
+      return skipEndpoint(endpoint.path, "No audit archive file is available in this environment", true);
     }
     if (endpoint.path === "/api/media/:mediaId/:variant" && endpoint.mediaIdContext === "siteLogoMediaId") {
       return skipEndpoint(endpoint.path, "No site logo is configured; the test intentionally does not replace the live logo", true);
@@ -431,6 +441,71 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
 
   if (endpoint.method === "DELETE") {
     switch (endpoint.path) {
+      case "/api/classes/:id":
+        if (!context.createdClassUpdatedAt) {
+          return skipEndpoint(path, "Missing created class revision");
+        }
+        return buildJsonRequest(path, { expected_updated_at: context.createdClassUpdatedAt });
+      case "/api/classes/:id/icon":
+        if (!context.createdClassUpdatedAt) {
+          return skipEndpoint(path, "Missing created class revision");
+        }
+        return buildJsonRequest(path, { expected_updated_at: context.createdClassUpdatedAt });
+      case "/api/class-tags/:id":
+        if (!context.createdClassTagUpdatedAt || context.createdClassTagUsageCount === null) {
+          return skipEndpoint(path, "Missing created class tag delete baseline");
+        }
+        return buildJsonRequest(path, {
+          expected_updated_at: context.createdClassTagUpdatedAt,
+          expected_usage_count: context.createdClassTagUsageCount,
+        });
+      case "/api/badges/:id":
+        if (!context.createdBadgeUpdatedAt) {
+          return skipEndpoint(path, "Missing created badge revision");
+        }
+        return buildJsonRequest(path, { expected_updated_at: context.createdBadgeUpdatedAt });
+      case "/api/storage/storages/:id":
+        if (context.storageStructureRevision === null) {
+          return skipEndpoint(path, "Missing storage structure revision for deletion");
+        }
+        return buildJsonRequest(path, { expected_structure_revision: context.storageStructureRevision });
+      case "/api/storage/storages/:storageId/categories/:id":
+        if (context.storageStructureRevision === null) {
+          return skipEndpoint(path, "Missing storage structure revision for category deletion");
+        }
+        return buildJsonRequest(path, { expected_structure_revision: context.storageStructureRevision });
+      case "/api/storage/items/:id":
+        if (!context.storageItemUpdatedAt) {
+          return skipEndpoint(path, "Missing storage item revision for deletion");
+        }
+        return buildJsonRequest(path, { expected_updated_at: context.storageItemUpdatedAt });
+      case "/api/storage/items/:id/images/:imageId":
+        if (!context.storageItemUpdatedAt) {
+          return skipEndpoint(path, "Missing storage item revision for image deletion");
+        }
+        return buildJsonRequest(path, { expected_updated_at: context.storageItemUpdatedAt });
+      case "/api/announcements/:id":
+      case "/api/announcements/:id/permanent":
+        if (!context.announcementEtag) {
+          return skipEndpoint(path, "Missing announcement revision ETag");
+        }
+        return withIfMatch({ path }, context.announcementEtag);
+      case "/api/wiki/articles/:id":
+      case "/api/wiki/articles/:id/permanent":
+        if (!context.wikiArticleEtag) {
+          return skipEndpoint(path, "Missing wiki article revision ETag");
+        }
+        return withIfMatch({ path }, context.wikiArticleEtag);
+      case "/api/wiki/categories/:id":
+        if (!context.wikiCategoryRevisionToken) {
+          return skipEndpoint(path, "Missing wiki category catalog revision");
+        }
+        return buildJsonRequest(path, { expected_revision_token: context.wikiCategoryRevisionToken });
+      case "/api/gallery/:id":
+        if (!context.galleryItemEtag) {
+          return skipEndpoint(path, "Missing gallery item revision ETag");
+        }
+        return withIfMatch({ path }, context.galleryItemEtag);
       case "/api/events/:id/leave":
         return { path };
       case "/api/users/:id/media/avatar":
@@ -492,9 +567,13 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/classes/:id":
+      if (!context.createdClassUpdatedAt) {
+        return skipEndpoint(path, "Missing created class revision");
+      }
       return buildJsonRequest(path, {
         label: `[systemtest] API Class Updated ${nowId.slice(0, 16)}`,
         vector_icon: "shield",
+        expected_updated_at: context.createdClassUpdatedAt,
       });
 
     case "PATCH /api/classes/reorder":
@@ -505,7 +584,10 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       );
 
     case "POST /api/classes/:id/icon":
-      return buildImageUploadRequest(path);
+      if (!context.createdClassUpdatedAt) {
+        return skipEndpoint(path, "Missing created class revision");
+      }
+      return buildImageUploadRequest(path, [["expected_updated_at", context.createdClassUpdatedAt]]);
 
     case "POST /api/class-tags":
       /* class_ids 留空：职业目录里那枚测试职业在自己那一类收尾时就删掉了，
@@ -516,8 +598,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/class-tags/:id":
+      if (!context.createdClassTagUpdatedAt) {
+        return skipEndpoint(path, "Missing created class tag revision");
+      }
       return buildJsonRequest(path, {
         label: `[systemtest] API Tag Updated ${nowId.slice(0, 16)}`,
+        expected_updated_at: context.createdClassTagUpdatedAt,
       });
 
     case "PATCH /api/class-tags/reorder":
@@ -535,7 +621,10 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/wiki/articles/:id/revisions/1/restore":
-      return buildJsonRequest(path, {});
+      if (!context.wikiArticleEtag) {
+        return skipEndpoint(path, "Missing wiki article revision ETag");
+      }
+      return withIfMatch(buildJsonRequest(path, {}), context.wikiArticleEtag);
 
     case "POST /api/auth/register/:inviteCode":
       {
@@ -597,12 +686,19 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/events/:id":
+      if (!context.eventUpdatedAt) {
+        return skipEndpoint(path, "Missing event revision (run event detail first)");
+      }
       return buildJsonRequest(path, {
         title: `[systemtest] API Updated Event ${nowId}`,
+        expected_updated_at: context.eventUpdatedAt,
       });
 
     case "POST /api/events/:id/images":
-      return buildImageUploadRequest(path);
+      if (!context.eventUpdatedAt) {
+        return skipEndpoint(path, "Missing event revision (run event update first)");
+      }
+      return buildImageUploadRequest(path, [["expected_updated_at", context.eventUpdatedAt]]);
 
     case "POST /api/events/:id/join":
       return { path };
@@ -633,8 +729,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     }
 
     case "PATCH /api/events/templates/:id":
+      if (!context.eventTemplateUpdatedAt) {
+        return skipEndpoint(path, "Missing recurring-template revision (run template create first)");
+      }
       return buildJsonRequest(path, {
         title: `[systemtest] API Template Updated ${nowId}`,
+        expected_updated_at: context.eventTemplateUpdatedAt,
       });
 
     case "POST /api/announcements": {
@@ -656,7 +756,10 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     }
 
     case "PATCH /api/announcements/:id":
-      return buildJsonRequest(path, {
+      if (!context.announcementEtag) {
+        return skipEndpoint(path, "Missing announcement revision ETag");
+      }
+      return withIfMatch(buildJsonRequest(path, {
         title: `[systemtest] API Announcement Updated ${nowId}`,
         body_json: JSON.stringify({
           type: "doc",
@@ -665,21 +768,23 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
             content: [{ type: "text", text: "[systemtest] Updated by API tester" }],
           }],
         }),
-      });
+      }), context.announcementEtag);
 
-    case "POST /api/announcements/:id/images":
+    case "POST /api/announcements/images":
       return buildImageUploadRequest(path);
 
     case "POST /api/gallery/images":
       return buildImageUploadRequest(path, [
-        ["captions", "[systemtest] API test image"],
+        ["titles", "[systemtest] API test image"],
+        ["descriptions", "Created by the API tester"],
       ]);
 
     case "POST /api/gallery/videos":
       return buildJsonRequest(path, {
         type: "video",
         url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-        caption: "[systemtest] API test video",
+        title: "[systemtest] API test video",
+        description: "Created by the API tester",
       });
 
     case "POST /api/guild-war/save-teams":
@@ -773,9 +878,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       if (!context.warMemberUserId && !testMemberId) {
         return skipEndpoint(path, "Missing test member id for member stats update");
       }
-      return buildJsonRequest(path, {
+      if (!context.warHistoryEtag) {
+        return skipEndpoint(path, "Missing guild war history revision ETag");
+      }
+      return withIfMatch(buildJsonRequest(path, {
         stats: { kills: 1 },
-      });
+      }), context.warHistoryEtag);
 
     case "POST /api/wiki/categories":
       return buildJsonRequest(path, {
@@ -784,8 +892,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/wiki/categories/:id":
+      if (!context.wikiCategoryRevisionToken) {
+        return skipEndpoint(path, "Missing wiki category catalog revision");
+      }
       return buildJsonRequest(path, {
         name: `[systemtest] API Category Updated ${nowId}`,
+        expected_revision_token: context.wikiCategoryRevisionToken,
       });
 
     case "PATCH /api/wiki/categories/batch":
@@ -794,17 +906,21 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       if (!context.createdWikiCategoryId) {
         return skipEndpoint(path, "Missing created wiki category id");
       }
+      if (!context.wikiCategoryRevisionToken) {
+        return skipEndpoint(path, "Missing wiki category catalog revision");
+      }
       return buildJsonRequest(path, {
+        expected_revision_token: context.wikiCategoryRevisionToken,
         updates: [{ id: context.createdWikiCategoryId, sort_order: 0 }],
       });
 
     case "POST /api/wiki/articles":
-      if (!context.wikiArticleCategoryId && !context.wikiCategoryId) {
+      if (!context.createdWikiCategoryId && !context.wikiArticleCategoryId && !context.wikiCategoryId) {
         return skipEndpoint(path, "Missing wiki category id");
       }
       return buildJsonRequest(path, {
         title: `[systemtest] API Article ${nowId}`,
-        category_id: context.wikiArticleCategoryId ?? context.wikiCategoryId,
+        category_id: context.createdWikiCategoryId ?? context.wikiArticleCategoryId ?? context.wikiCategoryId,
         body_json: JSON.stringify({
           type: "doc",
           content: [{
@@ -816,9 +932,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/wiki/articles/:id":
-      return buildJsonRequest(path, {
+      if (!context.wikiArticleEtag) {
+        return skipEndpoint(path, "Missing wiki article revision ETag");
+      }
+      return withIfMatch(buildJsonRequest(path, {
         title: `[systemtest] API Article Updated ${nowId}`,
-      });
+      }), context.wikiArticleEtag);
 
     case "POST /api/wiki/articles/:id/images":
       return buildImageUploadRequest(path);
@@ -902,9 +1021,6 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "POST /api/admin/users/:id/reset-password":
       return skipEndpoint(path, "Requires current administrator password", true);
 
-    case "POST /api/admin/users/:id/reset-login-lock":
-      return buildJsonRequest(path, {});
-
     case "POST /api/admin/roles":
       return buildJsonRequest(path, {
         id: `systemtest_role_${nowId}`,
@@ -914,8 +1030,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/admin/roles/:id":
+      if (!context.adminRoleRevisionToken) {
+        return skipEndpoint(path, "Missing role revision token");
+      }
       return buildJsonRequest(path, {
         name: `[systemtest] API Role Updated ${nowId}`,
+        expected_revision_token: context.adminRoleRevisionToken,
       });
 
     case "POST /api/auth/login":
@@ -990,9 +1110,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       if (!context.createdConcludedWarHistoryId || (!context.warMemberUserId && !testMemberId)) {
         return skipEndpoint(path, "Missing war history id or test member id");
       }
-      return buildJsonRequest(path, {
+      if (!context.warHistoryEtag) {
+        return skipEndpoint(path, "Missing guild war history revision ETag");
+      }
+      return withIfMatch(buildJsonRequest(path, {
         updates: [{ user_id: context.warMemberUserId ?? testMemberId, stats: { stats: { kills: 2 } } }],
-      });
+      }), context.warHistoryEtag);
 
     case "POST /api/badges":
       return buildJsonRequest(path, {
@@ -1003,8 +1126,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/badges/:id":
+      if (!context.createdBadgeUpdatedAt) {
+        return skipEndpoint(path, "Missing created badge revision");
+      }
       return buildJsonRequest(path, {
         name: `[systemtest] API Badge Updated ${nowId}`,
+        expected_updated_at: context.createdBadgeUpdatedAt,
       });
 
     case "PATCH /api/badges/reorder":
@@ -1044,13 +1171,22 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/storage/storages/:id":
+      if (!context.storageName || context.storageStructureRevision === null) {
+        return skipEndpoint(path, "Missing storage revision baseline for update");
+      }
       return buildJsonRequest(path, {
         name: fixtureName("[systemtest] API Storage Updated ", nowId, LIMITS.content.storageName.max),
         description: "[systemtest] Updated by admin API tester",
+        expected_name: context.storageName,
+        expected_description: context.storageDescription,
+        expected_structure_revision: context.storageStructureRevision,
       });
 
     case "POST /api/storage/storages/:storageId/categories":
     case "POST /api/storage/storages/:storageId/categories?fixture=transactions":
+      if (context.storageStructureRevision === null) {
+        return skipEndpoint(path, "Missing storage structure revision for category creation");
+      }
       return buildJsonRequest(stripTestFixture(path), {
         name: fixtureName(
           endpoint.path.includes("fixture=transactions")
@@ -1059,11 +1195,17 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
           nowId,
           LIMITS.content.storageCategoryName.max,
         ),
+        expected_structure_revision: context.storageStructureRevision,
       });
 
     case "PATCH /api/storage/storages/:storageId/categories/:id":
+      if (!context.storageCategoryName || context.storageStructureRevision === null) {
+        return skipEndpoint(path, "Missing storage category revision baseline for update");
+      }
       return buildJsonRequest(path, {
         name: fixtureName("[systemtest] API Category Updated ", nowId, LIMITS.content.storageCategoryName.max),
+        expected_name: context.storageCategoryName,
+        expected_structure_revision: context.storageStructureRevision,
       });
 
     case "POST /api/storage/items":
@@ -1087,15 +1229,20 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/storage/items/:id":
+      if (!context.storageItemUpdatedAt) {
+        return skipEndpoint(path, "Missing storage item revision baseline for update");
+      }
       return buildJsonRequest(path, {
         name: fixtureName("[systemtest] API Item Updated ", nowId, LIMITS.content.storageItemName.max),
         description: "[systemtest] Updated by admin API tester",
         allow_member_deposit: true,
         allow_member_withdraw: true,
+        expected_updated_at: context.storageItemUpdatedAt,
       });
 
     case "POST /api/storage/items/:id/transactions?fixture=intake":
       return buildJsonRequest(stripTestFixture(path), {
+        idempotency_key: crypto.randomUUID(),
         type: "intake",
         quantity: 3,
         note: "[systemtest] API storage intake",
@@ -1106,6 +1253,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         return skipEndpoint(stripTestFixture(path), "Missing test member id for storage distribution");
       }
       return buildJsonRequest(stripTestFixture(path), {
+        idempotency_key: crypto.randomUUID(),
         type: "distribute",
         quantity: 1,
         recipient_user_id: testMemberId,
@@ -1114,6 +1262,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
 
     case "POST /api/storage/items/:id/transactions?fixture=adjust":
       return buildJsonRequest(stripTestFixture(path), {
+        idempotency_key: crypto.randomUUID(),
         type: "adjust",
         target_quantity: 6,
         note: "[systemtest] API storage adjustment",
@@ -1131,7 +1280,10 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/storage/items/:id/images":
-      return buildImageUploadRequest(path);
+      if (!context.storageItemUpdatedAt) {
+        return skipEndpoint(path, "Missing storage item revision for image upload");
+      }
+      return buildImageUploadRequest(path, [["expected_updated_at", context.storageItemUpdatedAt]]);
 
     default:
       return { path };

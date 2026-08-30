@@ -1,8 +1,14 @@
-import { readApplicationConfig, type ApplicationConfig } from "@guild/application";
+import {
+  readApplicationConfig,
+  readMaintenanceDetails,
+  type ApplicationConfig,
+  type MaintenanceDetails,
+} from "@guild/application";
 
 export type CloudflareRuntimeConfig = Readonly<{
   application: ApplicationConfig;
   localDevelopment: boolean;
+  maintenance: MaintenanceDetails;
 }>;
 
 export function readCloudflareRuntimeConfig(
@@ -18,7 +24,11 @@ export function readCloudflareRuntimeConfig(
   if (publicUrl.protocol !== "https:" && !isLoopbackHttp) {
     throw new TypeError("Cloudflare IG_PUBLIC_URL must use HTTPS, except for loopback local development");
   }
-  return Object.freeze({ application, localDevelopment });
+  return Object.freeze({
+    application,
+    localDevelopment,
+    maintenance: readMaintenanceDetails(environment),
+  });
 }
 
 export function cloudflareClientIdentifier(request: Request, localDevelopment = false): string {

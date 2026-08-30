@@ -2,8 +2,16 @@ import type { MemberAbsence, MemberProfile, PaginatedResponse, User, UserBadge }
 import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
 
-type UserDetailResponse = { user: User; profile: MemberProfile; badges: UserBadge[] };
-export type UsersListResponse = PaginatedResponse<{ user: User; profile: MemberProfile; badges: UserBadge[] }>;
+type UserDetailResponse = {
+  user: User;
+  profile: MemberProfile;
+  badges: UserBadge[];
+  edit_revisions?: {
+    user_revision_token: string;
+    profile_revision_token: string;
+  };
+};
+export type UsersListResponse = PaginatedResponse<UserDetailResponse>;
 export type UsersStatsResponse = { active_members: number; total_members: number };
 
 type UsersListOptions = {

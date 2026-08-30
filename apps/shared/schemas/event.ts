@@ -250,6 +250,7 @@ function refineEventRules(
 export const createEventSchema = eventMutationSchema.superRefine((v, ctx) => refineEventRules(v, ctx, false));
 
 export const updateEventSchema = eventMutationSchema.partial().extend({
+  expected_updated_at: z.string().datetime(),
   description: z.string().max(L.eventDescription.max).nullable().optional(),
   end_at: z.string().datetime().nullable().optional(),
   capacity: z.number().int().positive().max(L.eventParticipantsPerEvent.max).nullable().optional(),
@@ -286,6 +287,11 @@ export const eventListResponseSchema = z.object({
 });
 
 export const eventOkResponseSchema = z.object({ ok: z.literal(true) });
+
+export const eventMediaIdsResponseSchema = z.object({
+  media_ids: z.array(mediaIdSchema),
+  updated_at: z.string().datetime(),
+});
 
 export const eventParticipantListResponseSchema = z.object({
   data: z.array(eventParticipantSchema),
@@ -349,6 +355,7 @@ const templateMutationSchema = z.object({
 export const createTemplateSchema = templateMutationSchema.superRefine(refineClassQuotas);
 
 export const updateTemplateSchema = templateMutationSchema.partial().extend({
+  expected_updated_at: z.string().datetime(),
   description: z.string().max(L.eventDescription.max).nullable().optional(),
   duration_minutes: z.number().int().min(0).nullable().optional(),
   capacity: z.number().int().positive().max(L.eventParticipantsPerEvent.max).nullable().optional(),

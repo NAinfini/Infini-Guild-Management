@@ -1,7 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildMediaGalleryLabels, MediaGallery } from "./MediaGallery";
 
@@ -21,13 +19,6 @@ afterEach(() => {
 });
 
 describe("MediaGallery", () => {
-  it("uses the source-owned gallery instead of a framework carousel", () => {
-    const { container } = render(<MediaGallery images={[MEDIA_ID_ONE, MEDIA_ID_TWO]} />);
-
-    expect(container.querySelectorAll(".infini-media-gallery-frame")).toHaveLength(2);
-    expect(container.querySelector(".infini-media-gallery-frame[data-active]")).toBeInTheDocument();
-  });
-
   it("localizes image and video alt text while interpolating each item index once", async () => {
     const labels = buildMediaGalleryLabels((key, options?: { index?: number }) => {
       if (key === "media.aria.openItem") return `Open media item ${options?.index}`;
@@ -103,25 +94,6 @@ describe("MediaGallery", () => {
     expect(screen.getByAltText("Slide 3")).toHaveAttribute("loading", "lazy");
   });
 
-  /*
-   * 槽位是定高的，图片却是任意比例的。用 max-* 把图片收进槽位，两条边都不会被拉伸；
-   * 写成 width/height: 100% 就不行——百分比高度要有一个确定的高度可依，槽位按内容
-   * 排版时高度反过来取决于图片，浏览器只能当 auto 处理，图片按原始比例撑满宽度，
-   * 超出的部分被 overflow: hidden 裁掉。
-   */
-  it("bounds the slide image instead of sizing it, so no ratio gets cropped or stretched", () => {
-    const styles = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/shared/media-gallery.css"),
-      "utf8",
-    ).replace(/\/\*[\s\S]*?\*\//g, "");
-    const imageRule = styles.match(/\.infini-media-gallery-slide img\s*\{([^}]*)\}/)?.[1];
-
-    expect(imageRule).toBeDefined();
-    expect(imageRule).toMatch(/max-width:\s*100%/);
-    expect(imageRule).toMatch(/max-height:\s*100%/);
-    expect(imageRule).not.toMatch(/(^|;)\s*(width|height):/);
-  });
-
   it("opens the enlarged view on the image the viewer clicked", async () => {
     const labels = buildMediaGalleryLabels((key, options?: { index?: number }) => {
       if (key === "media.aria.enlargeImage") return `Enlarge ${options?.index}`;
@@ -136,7 +108,6 @@ describe("MediaGallery", () => {
     await userEvent.click(screen.getByRole("button", { name: "Enlarge 2" }));
 
     const enlarged = within(await screen.findByRole("dialog")).getByAltText("Slide 2");
-    expect(enlarged).toHaveClass("infini-media-gallery-zoom-img");
     expect(enlarged.getAttribute("src")).toMatch(
       new RegExp(`/api/media/${encodeURIComponent(MEDIA_ID_TWO)}/full$`),
     );

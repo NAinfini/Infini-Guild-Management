@@ -65,6 +65,25 @@ describe("NotificationService", () => {
     expect(canReceiveNotification(authorization([]), message)).toBe(true);
   });
 
+  it.each(["item_liked", "item_unliked"] as const)(
+    "accepts gallery %s updates and broadcasts them to members",
+    async (hint) => {
+      const publish = vi.fn();
+      const service = new NotificationService({ publish });
+      const message = {
+        type: "entity_changed",
+        entity_type: "gallery",
+        entity_id: "gallery-1",
+        updated_at: "2026-08-09T00:00:00.000Z",
+        hint,
+      } as const;
+
+      await service.publish(message);
+      expect(publish).toHaveBeenCalledWith(message);
+      expect(canReceiveNotification(authorization([]), message)).toBe(true);
+    },
+  );
+
   it("delivers personal inbox changes only to the targeted user", () => {
     const message = { type: "inbox_changed", user_id: "user-1" } as const;
 

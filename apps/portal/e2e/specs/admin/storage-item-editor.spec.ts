@@ -2,7 +2,7 @@ import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
 import { webpUpload } from "../../support/files";
-import { confirmDialog, dialogTitled, expectNoDialog, field, selectOption } from "../../support/ui";
+import { confirmDialog, dialogTitled, expectNoDialog, field, selectOption, setToggle } from "../../support/ui";
 
 /*
  * 物品编辑抽屉：字段、两个自助开关、分类下拉、图片上传/删除、删除物品。
@@ -31,6 +31,7 @@ type ServerItem = {
   allow_member_deposit: boolean;
   allow_member_withdraw: boolean;
   images: { media_id: string }[];
+  updated_at: string;
 };
 
 let stamp: number;
@@ -46,15 +47,17 @@ test.beforeEach(async ({ page, api }) => {
       data: { name: `${SYSTEM_TEST_CONTENT_MARKER} Editor ${stamp}`, description: null },
     }),
     "创建一次性仓库",
-  ) as { id: string };
+  ) as { id: string; structure_revision: number };
   storageId = storage.id;
 
   categoryName = `${SYSTEM_TEST_CONTENT_MARKER} Cat ${stamp}`;
   const category = await readJson(
-    await api.post(`/api/storage/storages/${storageId}/categories`, { data: { name: categoryName } }),
+    await api.post(`/api/storage/storages/${storageId}/categories`, {
+      data: { name: categoryName, expected_structure_revision: storage.structure_revision },
+    }),
     "创建一次性分类",
-  ) as { id: string };
-  categoryId = category.id;
+  ) as { category: { id: string }; structure_revision: number };
+  categoryId = category.category.id;
 
   item = { id: "", name: `${SYSTEM_TEST_CONTENT_MARKER} Item ${stamp}` };
   const created = await readJson(
@@ -84,12 +87,21 @@ test.afterEach(async ({ api }) => {
   const list = await readJson(
     await api.get(`/api/storage/items?storage_id=${storageId}&limit=50`),
     "回读待清理的物品",
-  ) as { data: { id: string }[] };
+  ) as { data: { id: string; updated_at: string }[] };
   for (const entry of list.data) {
-    const removed = await api.delete(`/api/storage/items/${entry.id}`);
+    const removed = await api.delete(`/api/storage/items/${entry.id}`, {
+      data: { expected_updated_at: entry.updated_at },
+    });
     expect([200, 204, 404], `清理物品返回 ${removed.status()}`).toContain(removed.status());
   }
-  const response = await api.delete(`/api/storage/storages/${storageId}`);
+  const tree = await readJson(await api.get("/api/storage"), "回读待清理仓库") as {
+    data: Array<{ id: string; structure_revision: number }>;
+  };
+  const storage = tree.data.find((candidate) => candidate.id === storageId);
+  if (!storage) return;
+  const response = await api.delete(`/api/storage/storages/${storageId}`, {
+    data: { expected_structure_revision: storage.structure_revision },
+  });
   expect([200, 204, 404], `清理仓库返回 ${response.status()}`).toContain(response.status());
 });
 
@@ -136,7 +148,7 @@ test("新建物品完整链路：字段原样落库，成功后抽屉转入编�
   await field(drawer, "Item name").fill(name);
   await field(drawer, "Description").fill("created by e2e");
   await selectOption(drawer, "Category", categoryName);
-  await drawer.getByLabel("Allow member deposit", { exact: true }).check();
+  await setToggle(drawer, "Allow member deposit", true);
 
   const created = await flow.click(
     drawer.getByRole("button", { name: "New Item", exact: true }),
@@ -162,8 +174,8 @@ test("编辑物品：改名、描述、分类和两个开关一起落库", async
   await field(drawer, "Item name").fill(renamed);
   await field(drawer, "Description").fill("updated by e2e");
   await selectOption(drawer, "Category", categoryName);
-  await drawer.getByLabel("Allow member deposit", { exact: true }).check();
-  await drawer.getByLabel("Allow member withdraw", { exact: true }).check();
+  await setToggle(drawer, "Allow member deposit", true);
+  await setToggle(drawer, "Allow member withdraw", true);
 
   await flow.click(drawer.getByRole("button", { name: "Save Item", exact: true }), UPDATE_ITEM);
 
@@ -178,14 +190,17 @@ test("编辑物品：改名、描述、分类和两个开关一起落库", async
 });
 
 test("分类可以退回未分类：category_id 必须变成 null，不是空字符串", async ({ page, flow, api }) => {
+  const before = await readItem(api, item.id);
   await readJson(
-    await api.patch(`/api/storage/items/${item.id}`, { data: { category_id: categoryId } }),
+    await api.patch(`/api/storage/items/${item.id}`, {
+      data: { category_id: categoryId, expected_updated_at: before.updated_at },
+    }),
     "预置分类归属",
   );
   await page.reload();
 
   const drawer = await openEditor(page);
-  await expect(field(drawer, "Category")).toHaveValue(categoryName);
+  await expect(field(drawer, "Category")).toContainText(categoryName);
   await selectOption(drawer, "Category", "Uncategorized");
   await flow.click(drawer.getByRole("button", { name: "Save Item", exact: true }), UPDATE_ITEM);
 
@@ -203,11 +218,11 @@ test("图片上传与删除：服务端 images 数组和界面计数必须一起
   const uploaded = await flow.act(
     () => drawer.locator("input[type='file']").setInputFiles(webpUpload(`e2e-${stamp}.webp`)),
     UPLOAD_IMAGE,
-  ) as { media_id: string }[];
-  expect(uploaded, "上传接口必须回一条图片记录").toHaveLength(1);
+  ) as { data: { media_id: string }[]; updated_at: string };
+  expect(uploaded.data, "上传接口必须回一条图片记录").toHaveLength(1);
 
   const afterUpload = await readItem(api, item.id);
-  const mediaId = uploaded[0]!.media_id;
+  const mediaId = uploaded.data[0]!.media_id;
   expect(mediaId, "上传接口必须返回统一媒体 ID").toMatch(/^[A-Za-z0-9_-]{21}$/);
   expect(afterUpload.images.map((image) => image.media_id), "服务端必须记下这张图").toEqual([mediaId]);
   for (const variant of ["view", "full"] as const) {

@@ -3,11 +3,11 @@ import type { useAnimation } from "motion/react";
 
 const INTERACTIVE_SELECTOR = "button, a, [role='button'], [role='menuitem'], [role='tab'], [role='option'], [data-animate-icon-trigger]";
 
-export function useParentInteractiveHover(
+export function useParentInteractiveHover<T extends HTMLElement = HTMLDivElement>(
   controls: ReturnType<typeof useAnimation>,
   isControlledRef: React.RefObject<boolean>,
 ) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<T>(null);
 
   useEffect(() => {
     if (isControlledRef.current) return;

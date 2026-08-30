@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   useQuery: vi.fn(),
+  useInfiniteQuery: vi.fn(),
   navigate: vi.fn(),
   warningToast: vi.fn(),
   siteConfig: {
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: mocks.useQuery,
+  useInfiniteQuery: mocks.useInfiniteQuery,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -81,6 +83,15 @@ function successfulQuery(data: unknown) {
 describe("DashboardPage initial load errors", () => {
   beforeEach(() => {
     mocks.useQuery.mockReset();
+    mocks.useInfiniteQuery.mockReset();
+    mocks.useInfiniteQuery.mockReturnValue({
+      data: undefined,
+      isError: false,
+      isLoading: false,
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+    });
     mocks.warningToast.mockReset();
     mocks.siteConfig.features = { announcements: true, events: true, guildWar: true };
   });
@@ -103,7 +114,7 @@ describe("DashboardPage initial load errors", () => {
     mocks.useQuery.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
       if (queryKey[1] === "events") return eventsQuery;
       if (queryKey[1] === "wars") return warsQuery;
-      if (queryKey[1] === "list") return successfulQuery({ data: [] });
+      if (queryKey[1] === "latest-announcement") return successfulQuery({ data: [] });
       throw new Error(`Unexpected dashboard query: ${String(queryKey[1])}`);
     });
 
@@ -128,7 +139,7 @@ describe("DashboardPage initial load errors", () => {
       if (queryKey[1] === "wars") {
         return successfulQuery({ all_war_win_rate: 0, recent_war_mvps: [], recent_wars: [] });
       }
-      if (queryKey[1] === "list") return successfulQuery({ data: [] });
+      if (queryKey[1] === "latest-announcement") return successfulQuery({ data: [] });
       throw new Error(`Unexpected dashboard query: ${String(queryKey[1])}`);
     });
 
@@ -157,7 +168,7 @@ describe("DashboardPage initial load errors", () => {
       if (queryKey[1] === "wars") {
         return successfulQuery({ all_war_win_rate: 0, recent_war_mvps: [], recent_wars: [] });
       }
-      if (queryKey[1] === "list") return successfulQuery({ data: [] });
+      if (queryKey[1] === "latest-announcement") return successfulQuery({ data: [] });
       throw new Error(`Unexpected dashboard query: ${String(queryKey[1])}`);
     });
 

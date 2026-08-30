@@ -182,6 +182,49 @@ export class SqliteAuditArchiveStore implements AuditArchiveStore {
     return observedBacklog(pendingAt);
   }
 
+  async inspectExpiredBacklog(completedBefore: string) {
+    const pendingAt = allRows(await this.sql.execute({
+      method: "all",
+      columns: ["pending_at"],
+      sql: `SELECT completed_at AS pending_at FROM audit_archives
+        WHERE status = 'ready' AND completed_at <= ?
+        ORDER BY completed_at, id LIMIT ?`,
+      params: [completedBefore, SCHEDULED_BACKLOG_READ_LIMIT],
+    })).map((row) => {
+      const pendingAt = row[0];
+      if (typeof pendingAt !== "string") throw corrupt("Invalid expired audit archive backlog projection");
+      return pendingAt;
+    });
+    return observedBacklog(pendingAt);
+  }
+
+  async listExpired(completedBefore: string, limit: number): Promise<readonly AuditArchiveManifest[]> {
+    return allRows(await this.sql.execute({
+      method: "all",
+      sql: `${manifestSelect()} WHERE status = 'ready' AND completed_at <= ?
+        ORDER BY completed_at, id LIMIT ?`,
+      params: [completedBefore, limit],
+    })).map(mapManifest);
+  }
+
+  async deleteExpired(input: Parameters<AuditArchiveStore["deleteExpired"]>[0]): Promise<boolean> {
+    const predicate = "id = ? AND status = 'ready' AND completed_at <= ?";
+    const guard = {
+      sql: `SELECT 1 FROM audit_archives WHERE ${predicate}`,
+      params: [input.id, input.completedBefore],
+    };
+    const results = await this.sql.batch([
+      auditInsertStatement(input.audit, guard),
+      {
+        method: "all",
+        columns: ["archive_id"],
+        sql: `DELETE FROM audit_archives WHERE ${predicate} RETURNING id AS archive_id`,
+        params: [input.id, input.completedBefore],
+      },
+    ]);
+    return returnedRowCount(results[1]) === 1;
+  }
+
   async listMonths(): Promise<readonly string[]> {
     return allRows(await this.sql.execute({
       method: "all",

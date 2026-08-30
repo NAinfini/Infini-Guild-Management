@@ -1,41 +1,7 @@
-.roster-search-input {
-  width: min(17rem, 100%);
-}
-
 .roster-filter-controls {
   display: grid;
-  gap: var(--space-md);
+  gap: 0;
   min-width: 0;
-}
-
-.roster-filter-options {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.roster-filter-option {
-  display: flex;
-  align-items: center;
-  min-height: var(--control-height-regular);
-  gap: var(--space-sm);
-  padding-inline: var(--space-xs);
-  border-radius: var(--radius-control);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition:
-    background-color var(--transition-fast),
-    color var(--transition-fast);
-}
-
-.roster-filter-option:hover {
-  background: var(--surface-sunken);
-  color: var(--text-primary);
-}
-
-.roster-filter-option:has([data-checked]) {
-  color: var(--text-primary);
-  font-weight: var(--fw-strong);
 }
 
 .roster-volume-control {
@@ -94,10 +60,6 @@
   padding-bottom: var(--space-sm);
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
-}
-
-.roster-count-text {
-  margin-inline-start: auto;
 }
 
 .roster-page {
@@ -163,20 +125,6 @@
   scrollbar-gutter: stable;
 }
 
-.roster-virtual-inner {
-  position: relative;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.roster-virtual-row {
-  position: absolute;
-  inset-inline: 0;
-  top: 0;
-  display: grid;
-  gap: var(--space-sm);
-}
-
 .roster-card-grid {
   display: grid;
   align-content: start;
@@ -186,7 +134,7 @@
 
 /*
  * Two unstyled wrappers sit between the grid and the card: the list item and
- * RosterGrid's hover-handler. Both pass the stretched row height down, or
+ * RosterGrid's hover handler. Both pass the stretched row height down, or
  * MemberCard's height:100% resolves against auto and a member with an extra badge
  * row ends up taller than the rest of their row.
  */
@@ -204,11 +152,6 @@
   height: 100%;
 }
 
-.roster-virtual-cell {
-  min-width: 0;
-  height: 100%;
-}
-
 /*
  * 悬停时卡片放大（MemberCard.tsx 的 HOVER_SCALE）并做三维倾斜，越界量已经小于
  * 网格的 8px 间距，但倾斜本身仍会让卡角探到邻居上方——被压的那张必须在下面，
@@ -218,44 +161,34 @@
  * .member-card__frame 带 perspective，那是一个层叠上下文，在它内部提 z-index
  * 出不去这个格子。而网格项即使 position: static 也认 z-index（弹性/网格子项的
  * 例外规则），所以下面两条都不需要额外加 position。
- *
- * 两个分支的网格项各不相同，各提各的：
- * - 非虚拟：网格项就是 .roster-card-cell。
- * - 虚拟：网格项确实是 .roster-virtual-cell，但整行 .roster-virtual-row 带
- *   transform（虚拟滚动的位移），那是一个层叠上下文，行内提再高也压不过
- *   DOM 顺序在后面的下一行——卡片底部被下一行盖住就是这么来的。行本身也要提。
+ * 网格项始终是 .roster-card-cell；悬停层级必须在这个网格项上提升。
  */
 .roster-card-grid > .roster-card-cell:hover {
   z-index: 5;
 }
 
-.roster-virtual-row:has(.roster-virtual-cell:hover) {
-  z-index: 5;
-}
-
-.roster-virtual-cell:hover {
-  z-index: 5;
-}
-
-.roster-load-more {
+.roster-pagination {
   display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
+  gap: var(--space-xs);
+  padding-inline: var(--space-lg);
+  font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 991px) {
-  .roster-search-input {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .roster-count-text {
-    margin-inline-start: 0;
-    width: 100%;
-  }
+.roster-pagination__ellipsis {
+  display: inline-flex;
+  min-width: var(--control-hit-area);
+  min-height: var(--control-hit-area);
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
 }
 
 @media (max-width: 767px) {
-  /* 名册的卡片面板是窄屏唯一的滚动容器；筛选栏停在它外面，虚拟化仍有真实视口。 */
+  /* 名册的卡片面板是窄屏唯一的滚动容器；筛选栏与分页停在它外面。 */
   .page-layout.roster-page[data-workspace-mode="contained"] .page-layout__workspace {
     display: flex;
     flex-direction: column;

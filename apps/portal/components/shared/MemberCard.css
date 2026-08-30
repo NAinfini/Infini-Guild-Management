@@ -25,7 +25,7 @@
  * 挂在自己身上时每张卡各有一个灭点，鼠标扫过一排会看到透视方向逐张跳变。
  * 附带后果——perspective 会建立层叠上下文，所以悬停时把卡抬到邻居之上的
  * z-index 提不到这里，必须提到网格项上（见 RosterPage.css 的
- * .roster-card-cell:hover / .roster-virtual-cell:hover）。 */
+ * .roster-card-cell:hover）。 */
 .member-card__frame {
   cursor: pointer;
   height: 100%;
@@ -308,7 +308,7 @@
   gap: 4px;
   min-width: 0;
   border: 1px solid color-mix(in srgb, var(--class-color) 30%, var(--border-subtle));
-  border-radius: var(--radius-control);
+  border-radius: var(--shape-pill);
   background: color-mix(in srgb, var(--class-color) 9%, transparent);
   color: color-mix(in srgb, var(--class-color) 52%, var(--text-primary));
 }
@@ -324,8 +324,6 @@
   flex: 0 1 auto;
   width: fit-content;
   max-width: 100%;
-  padding: var(--space-xs) var(--space-sm);
-  font-size: var(--text-sm);
   font-weight: var(--fw-strong);
 }
 

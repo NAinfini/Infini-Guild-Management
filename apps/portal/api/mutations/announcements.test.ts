@@ -16,8 +16,10 @@ vi.mock("../../utils/upload-media", () => ({
 }));
 
 import {
+  archiveAnnouncement,
+  deleteAnnouncement,
+  updateAnnouncement,
   uploadAnnouncementAttachment,
-  uploadAnnouncementImages,
   uploadPendingAnnouncementImages,
 } from "./announcements";
 
@@ -31,7 +33,7 @@ const imageVariants = [{
   viewHeight: 1080,
 }];
 
-describe("announcement image mutations", () => {
+describe("announcement mutations", () => {
   beforeEach(() => {
     mocks.apiRequest.mockReset();
     mocks.convertImagesForUpload.mockReset();
@@ -57,28 +59,14 @@ describe("announcement image mutations", () => {
     );
   });
 
-  it("uploads full/view pairs directly to an existing announcement", async () => {
-    const source = new File(["source"], "source.png", { type: "image/png" });
-    mocks.apiRequest.mockResolvedValue({ media_ids: [mediaId] });
-
-    await expect(uploadAnnouncementImages("announcement-1", [source])).resolves.toEqual({
-      media_ids: [mediaId],
-    });
-
-    expect(mocks.apiRequest).toHaveBeenCalledWith(
-      "/api/announcements/announcement-1/images",
-      expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
-    );
-  });
-
   it("uploads one announcement attachment through the staged media endpoint", async () => {
-    const file = new File(["%PDF-1.7"], "guild-guide.pdf", { type: "application/pdf" });
+    const file = new File(["strategy"], "strategy.guildpack", { type: "application/x-guild-pack" });
     const response = {
       expires_at: "2026-07-29T00:00:00.000Z",
       attachment: {
         media_id: mediaId,
         name: file.name,
-        content_type: "application/pdf",
+        content_type: "application/octet-stream",
         byte_size: file.size,
       },
     };
@@ -92,5 +80,28 @@ describe("announcement image mutations", () => {
       "/api/announcements/attachments",
       expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
     );
+  });
+
+  it("forwards the frozen aggregate ETag on update, archive, and permanent delete", async () => {
+    const etag = '"announcement-announcement-1-2026-08-01T00:00:00.000Z"';
+    mocks.apiRequest.mockResolvedValue({ ok: true });
+
+    await updateAnnouncement("announcement-1", { title: "Updated" }, etag);
+    await archiveAnnouncement("announcement-1", etag);
+    await deleteAnnouncement("announcement-1", etag);
+
+    expect(mocks.apiRequest).toHaveBeenNthCalledWith(1, "/api/announcements/announcement-1", {
+      method: "PATCH",
+      bodyJson: { title: "Updated" },
+      ifMatch: etag,
+    });
+    expect(mocks.apiRequest).toHaveBeenNthCalledWith(2, "/api/announcements/announcement-1", {
+      method: "DELETE",
+      ifMatch: etag,
+    });
+    expect(mocks.apiRequest).toHaveBeenNthCalledWith(3, "/api/announcements/announcement-1/permanent", {
+      method: "DELETE",
+      ifMatch: etag,
+    });
   });
 });

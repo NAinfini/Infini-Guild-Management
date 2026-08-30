@@ -5,13 +5,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/t
 import { MetricGridInput } from "@portal/components/shared/MetricGridInput";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import {
-  type ColumnDef,
   type SortingState,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
+  useTable,
 } from "@tanstack/react-table";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  dataTableFeatures,
+  type DataTableColumnDef,
+} from "@portal/components/shared/data-table-features";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   HistoryDetailData,
@@ -57,7 +58,7 @@ type UseWarHistoryTabControllerParams = {
   canManage: boolean;
   saveMemberStatsPending: boolean;
   onSelectHistoryId: (historyId: string) => void;
-  onSaveMemberStats: (updates: HistoryMemberStatsUpdate[]) => Promise<void>;
+  onSaveMemberStats: (updates: HistoryMemberStatsUpdate[], etag: string) => Promise<void>;
   onDeleteHistory: (historyId: string) => void;
 };
 
@@ -91,6 +92,7 @@ export function useWarHistoryTabController({
   const [detailSorting, setDetailSorting] = useState<SortingState>([]);
   const [memberStatsBaseline, setMemberStatsBaseline] = useState<Record<string, MemberStatDraft>>({});
   const [memberStatsDraft, setMemberStatsDraft] = useState<Record<string, MemberStatDraft>>({});
+  const memberStatsRevision = useRef<{ historyId: string; etag: string } | null>(null);
   // Member statistics are read-only until the moderator explicitly enters edit mode.
   const [isEditingMemberStats, setIsEditingMemberStats] = useState(false);
 
@@ -130,6 +132,18 @@ export function useWarHistoryTabController({
       return;
     }
 
+    const currentRevision = memberStatsRevision.current;
+    if (isEditingMemberStats && currentRevision?.historyId === historyDetail.id) {
+      return;
+    }
+    if (
+      !isEditingMemberStats
+      && currentRevision?.historyId === historyDetail.id
+      && currentRevision.etag === historyDetail.etag
+    ) {
+      return;
+    }
+
     const nextBaseline = createDraftMap(historyDetail.member_stats, editableMetricKeys);
     setMemberStatsBaseline(nextBaseline);
     const nextDraft: Record<string, MemberStatDraft> = {};
@@ -137,9 +151,10 @@ export function useWarHistoryTabController({
       nextDraft[userId] = { ...draft };
     }
     setMemberStatsDraft(nextDraft);
+    memberStatsRevision.current = { historyId: historyDetail.id, etag: historyDetail.etag };
     /* 换了一条战史就回到只读态，否则会带着上一条的编辑态进入新记录。 */
     setIsEditingMemberStats(false);
-  }, [editableMetricKeys, historyDetail, historyDetailId]);
+  }, [editableMetricKeys, historyDetail, historyDetailId, isEditingMemberStats]);
 
   const filteredHistoryRows = historyRows;
 
@@ -206,11 +221,12 @@ export function useWarHistoryTabController({
   }, [confirmDiscardUnsavedChanges, saveMemberStatsPending]);
 
   const beginEditMemberStats = useCallback(() => {
-    if (!canManage) {
+    if (!canManage || !historyDetail) {
       return;
     }
+    memberStatsRevision.current = { historyId: historyDetail.id, etag: historyDetail.etag };
     setIsEditingMemberStats(true);
-  }, [canManage]);
+  }, [canManage, historyDetail]);
 
   /* 退出编辑态时把草稿退回基线，避免下次进来还留着上次没保存的数字。 */
   const cancelEditMemberStats = useCallback(async () => {
@@ -227,12 +243,15 @@ export function useWarHistoryTabController({
   }, [confirmDiscardUnsavedChanges, memberStatsBaseline]);
 
   const handleSaveMemberStats = useCallback(async () => {
-    if (!canManage) {
+    if (!canManage || !historyDetail) {
       return;
     }
     /* 没改任何东西时不发请求，但仍然退出编辑态——「保存」就是退出的那个动作。 */
     if (pendingMemberStatUpdates.length > 0) {
-      await onSaveMemberStats(pendingMemberStatUpdates);
+      const expectedEtag = memberStatsRevision.current?.historyId === historyDetail.id
+        ? memberStatsRevision.current.etag
+        : historyDetail.etag;
+      await onSaveMemberStats(pendingMemberStatUpdates, expectedEtag);
       const nextBaseline: Record<string, MemberStatDraft> = {};
       for (const [userId, draft] of Object.entries(memberStatsDraft)) {
         nextBaseline[userId] = { ...draft };
@@ -240,7 +259,7 @@ export function useWarHistoryTabController({
       setMemberStatsBaseline(nextBaseline);
     }
     setIsEditingMemberStats(false);
-  }, [canManage, memberStatsDraft, onSaveMemberStats, pendingMemberStatUpdates]);
+  }, [canManage, historyDetail, memberStatsDraft, onSaveMemberStats, pendingMemberStatUpdates]);
 
   const handleDeleteHistory = useCallback(async () => {
     if (!canManage || !historyDetail) {
@@ -308,7 +327,7 @@ export function useWarHistoryTabController({
     setMobileView("detail");
   }, [confirmDiscardUnsavedChanges, onSelectHistoryId]);
 
-  const detailColumns = useMemo<ColumnDef<HistoryMemberStat, unknown>[]>(() => [
+  const detailColumns = useMemo<DataTableColumnDef<HistoryMemberStat>[]>(() => [
     {
       header: t("history.table.user"),
       id: "user_id",
@@ -321,7 +340,7 @@ export function useWarHistoryTabController({
       accessorFn: (row) => row.role_tag ?? "",
       cell: ({ row }) => row.original.role_tag ?? "-",
     },
-    ...warRules.member_stats.map((definition, columnIndex): ColumnDef<HistoryMemberStat, unknown> => ({
+    ...warRules.member_stats.map((definition, columnIndex): DataTableColumnDef<HistoryMemberStat> => ({
       header: getGuildWarMemberStatLabel(definition.key),
       id: definition.key,
       accessorFn: (row) => row.stats?.[definition.key] ?? 0,
@@ -399,13 +418,13 @@ export function useWarHistoryTabController({
     },
   ], [canManage, editableMetricKeys.length, gameRules, isEditingMemberStats, t, updateDraftMetric, warRules]);
 
-  const detailTable = useReactTable({
+  const detailTable = useTable({
+    features: dataTableFeatures,
     data: detailRows,
     columns: detailColumns,
     state: { sorting: detailSorting },
     onSortingChange: setDetailSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    manualPagination: true,
     getRowId: (row) => row.id,
   });
 

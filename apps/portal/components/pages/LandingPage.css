@@ -18,6 +18,10 @@
   pointer-events: none;
 }
 
+[data-theme="light"] .landing-page::before {
+  background: color-mix(in srgb, var(--surface-base) 10%, transparent);
+}
+
 .landing-page__backdrop {
   position: fixed;
   inset: 0;
@@ -57,29 +61,33 @@
   background: color-mix(in srgb, var(--surface-base) 72%, transparent);
 }
 
+.landing-hero__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.landing-hero__logo {
+  width: clamp(3.5rem, 6vw, 5.5rem);
+  height: clamp(3.5rem, 6vw, 5.5rem);
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
 .landing-hero__title {
+  min-width: 0;
   max-width: 14ch;
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(var(--text-h1), 4vw, var(--text-display));
   font-weight: var(--fw-strong);
   line-height: 0.98;
+  overflow-wrap: anywhere;
   text-wrap: balance;
 }
 
 .landing-hero__title:lang(en) {
   letter-spacing: -0.045em;
-}
-
-.landing-hero__motto {
-  max-width: 32ch;
-  margin: var(--space-lg) 0 0;
-  color: var(--brand-text);
-  font-family: var(--font-display);
-  font-size: clamp(var(--text-h3), 2vw, var(--text-section));
-  font-weight: var(--fw-strong);
-  line-height: var(--lh-tight);
-  text-wrap: balance;
 }
 
 .landing-hero__action {
@@ -161,6 +169,10 @@
 
   .landing-hero__title {
     font-size: var(--text-display);
+  }
+
+  .landing-hero__identity {
+    gap: var(--space-md);
   }
 
   .landing-values {

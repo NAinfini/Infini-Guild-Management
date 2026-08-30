@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createVpsStaticFiles } from "./static-files.js";
 
-const INDEX = "<!doctype html><title>{{SITE_NAME}}</title><meta name=\"description\" content=\"{{SITE_DESCRIPTION}}\"><img src=\"{{SITE_LOGO_URL}}\">";
+const INDEX = "<!doctype html><title>{{SITE_NAME}}</title><meta name=\"description\" content=\"{{SITE_DESCRIPTION}}\"><link rel=\"icon\" href=\"{{SITE_LOGO_URL}}\"><img src=\"{{SITE_LOGO_URL}}\">";
 const ASSET = Buffer.alloc(2 * 1024 * 1024, "a");
 ASSET.set(Buffer.from("0123456789abcdefghijklmnopqrstuvwxyz"), 0);
 
@@ -83,6 +83,16 @@ describe("VPS static files", () => {
     await mkdir(live);
     await writeFile(path.join(live, "asset.txt"), "opened inside dist");
     const opened = await handler(new Request("https://guild.test/live/asset.txt"));
+    if (process.platform === "win32") {
+      // Windows intentionally prevents renaming a directory while the response owns
+      // an open file handle. Consume it first, then verify the replacement junction
+      // is still rejected on the next lookup.
+      expect(await opened?.text()).toBe("opened inside dist");
+      await rename(live, moved);
+      await symlink(outside, live, "junction");
+      expect((await handler(new Request("https://guild.test/live/secret.txt")))?.status).toBe(404);
+      return;
+    }
     await rename(live, moved);
     await symlink(outside, live, "junction");
     expect(await opened?.text()).toBe("opened inside dist");
@@ -99,6 +109,7 @@ describe("VPS static files", () => {
       const html = await response?.text();
       expect(html).toContain("<title>Guild &amp; Co</title>");
       expect(html).toContain('content="Events &amp; wiki &lt;together&gt; &quot;safely&quot; today&#39;s"');
+      expect(html).toContain('rel="icon" href="/brand?a=1&amp;b=2"');
       expect(html).toContain("src=\"/brand?a=1&amp;b=2\"");
       expect(response?.headers.get("Cache-Control")).toContain("no-cache");
       expectSecurityHeaders(response!);

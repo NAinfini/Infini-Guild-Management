@@ -32,6 +32,9 @@
 /* Active war command bar */
 
 .guild-war-active-top-card {
+  container-name: guild-war-active-top-card;
+  container-type: inline-size;
+  flex: 0 0 auto;
   padding: var(--card-padding);
 }
 
@@ -85,6 +88,55 @@
 .guild-war-active-top-card__danger {
   padding-inline-start: var(--space-sm);
   border-inline-start: 1px solid var(--border-subtle);
+}
+
+/* The app sidebar changes this card's usable width without changing the viewport.
+   Reflow from the card itself so the action group can never squeeze the search field. */
+@container guild-war-active-top-card (max-width: 58rem) {
+  .guild-war-active-top-card__filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .guild-war-active-top-card__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-subtle);
+  }
+}
+
+@container guild-war-active-top-card (max-width: 40rem) {
+  .guild-war-active-top-card__filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .guild-war-active-top-card__actions {
+    grid-column: auto;
+    flex-wrap: wrap;
+  }
+
+  .guild-war-active-top-card__danger {
+    width: 100%;
+    padding: var(--space-md) 0 0;
+    border-top: 1px solid var(--border-subtle);
+    border-inline-start: 0;
+  }
+
+  .guild-war-active-top-card__danger > [data-slot="tooltip"] > [data-slot="tooltip-trigger"] > [data-slot="button"] {
+    width: 100%;
+  }
+}
+
+@media (max-width: 47.99em) {
+  .guild-war-active-top-card__event,
+  .guild-war-active-top-card__search,
+  .guild-war-active-top-card__matches [data-slot="button"] {
+    min-height: var(--control-hit-area);
+  }
+
+  .guild-war-active-top-card__matches [data-slot="button"] {
+    min-width: var(--control-hit-area);
+  }
 }
 
 .guild-war-active-empty {
@@ -1465,8 +1517,8 @@
 }
 
 .gwa-toolbar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: var(--space-md);
   min-width: 0;
@@ -1482,25 +1534,19 @@
   min-width: 0;
 }
 
+.gwa-toolbar__item--range {
+  justify-self: end;
+}
+
 .gwa-toolbar__label {
   color: var(--text-secondary);
   font-size: var(--text-meta);
   font-weight: 600;
 }
 
-.gwa-toolbar__control-scroll {
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-}
-
-.gwa-toolbar__control-scroll > * {
-  min-width: max-content;
-}
-
 .gwa-choice-group {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
   padding: 2px;
@@ -1524,40 +1570,6 @@
 
 .gwa-loading__line {
   height: 18px;
-}
-
-.gwa-war-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-surface);
-  background: var(--plate-fill);
-}
-
-.gwa-war-summary__result,
-.gwa-war-summary__rate {
-  font-size: var(--text-sm);
-}
-
-.gwa-war-summary__result {
-  display: inline-flex;
-  gap: var(--space-xs);
-}
-
-.gwa-war-summary__result[data-result="win"] strong {
-  color: var(--status-success);
-}
-
-.gwa-war-summary__result[data-result="loss"] strong {
-  color: var(--status-danger);
-}
-
-.gwa-war-summary__result[data-result="draw"] strong,
-.gwa-war-summary__rate {
-  color: var(--domain-war);
 }
 
 .gwa-content {
@@ -1735,7 +1747,7 @@
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
-  background: var(--surface-base);
+  background: transparent;
 }
 
 .gwa-listbox__search {
@@ -1853,6 +1865,62 @@
   place-items: center;
 }
 
+.gwa-chart__outcomes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr));
+  gap: var(--space-xs);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-sm) 0 0;
+  list-style: none;
+}
+
+.gwa-chart__outcomes li {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-sm);
+  background: color-mix(in srgb, var(--surface-base) 78%, transparent);
+}
+
+.gwa-chart__outcomes li::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--text-muted);
+  content: "";
+}
+
+.gwa-chart__outcomes li[data-result="win"]::before {
+  background: var(--status-success);
+}
+
+.gwa-chart__outcomes li[data-result="loss"]::before {
+  background: var(--status-danger);
+}
+
+.gwa-chart__outcomes li[data-result="draw"]::before {
+  background: var(--domain-war);
+}
+
+.gwa-chart__outcomes strong,
+.gwa-chart__outcomes span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gwa-chart__outcomes strong {
+  color: var(--text-primary);
+  font-size: var(--text-meta);
+}
+
+.gwa-chart__outcomes span {
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+}
+
 /* Normalization silently rewrites every number on screen. When it is on, the
    block carries the warning accent and the chart header repeats the state, so
    the reader can never be looking at adjusted values without knowing it. */
@@ -1934,6 +2002,20 @@
   text-align: end;
 }
 
+.gwa-norm-panel__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.gwa-norm-panel__validation {
+  margin: 0;
+  color: var(--status-danger);
+  font-size: var(--text-meta);
+}
+
 .gwa-table-section {
   min-width: 0;
   padding: var(--space-md);
@@ -2005,6 +2087,32 @@
 
 .gwa-table tbody tr:hover {
   background: color-mix(in srgb, var(--brand-fill) 6%, var(--surface-raised));
+}
+
+.gwa-result {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.6rem;
+  padding-inline: var(--space-sm);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  font-size: var(--text-meta);
+  font-weight: 700;
+}
+
+.gwa-result[data-result="win"] {
+  background: color-mix(in srgb, var(--status-success) 15%, transparent);
+  color: var(--status-success);
+}
+
+.gwa-result[data-result="loss"] {
+  background: color-mix(in srgb, var(--status-danger) 15%, transparent);
+  color: var(--status-danger);
+}
+
+.gwa-result[data-result="draw"] {
+  background: color-mix(in srgb, var(--domain-war) 15%, transparent);
+  color: var(--domain-war);
 }
 
 .gwa-table-action__tooltip {
@@ -2378,17 +2486,6 @@
 }
 
 @media (max-width: 1199px) {
-  .guild-war-active-top-card__filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .guild-war-active-top-card__actions {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-    padding-top: var(--space-md);
-    border-top: 1px solid var(--border-subtle);
-  }
-
   .war-history-workspace {
     grid-template-columns: minmax(300px, 0.62fr) minmax(0, 1.38fr);
   }
@@ -2526,6 +2623,18 @@
   .gwa-content,
   .gwa-content--expanded {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gwa-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gwa-toolbar__item--range {
+    justify-self: stretch;
+  }
+
+  .gwa-toolbar .gwa-choice-group {
+    width: 100%;
   }
 
   .gwa-console {
@@ -2670,26 +2779,6 @@
     gap: var(--space-sm);
   }
 
-  .guild-war-active-top-card__filters {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .guild-war-active-top-card__actions {
-    grid-column: auto;
-    flex-wrap: wrap;
-  }
-
-  .guild-war-active-top-card__danger {
-    width: 100%;
-    padding: var(--space-md) 0 0;
-    border-top: 1px solid var(--border-subtle);
-    border-inline-start: 0;
-  }
-
-  .guild-war-active-top-card__danger > [data-slot="tooltip"] > [data-slot="tooltip-trigger"] > [data-slot="button"] {
-    width: 100%;
-  }
-
   .war-history-list-card__header {
     align-items: flex-start;
   }
@@ -2739,19 +2828,18 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .gwa-toolbar__control-scroll {
-    overflow: visible;
-  }
-
-  .gwa-toolbar__control-scroll > * {
-    width: 100%;
-    min-width: 0;
-  }
-
   .gwa-choice-group {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
+  }
+
+  .gwa-toolbar__item--mode .gwa-choice-group {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .gwa-toolbar__item--range .gwa-choice-group {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .gwa-choice-group__option {

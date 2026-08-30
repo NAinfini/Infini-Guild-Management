@@ -6,8 +6,8 @@ import { fetchClassCatalog } from "../../api/queries/classes";
 import { compareClassCatalogItems, compareClassTags } from "../../utils/class-catalog";
 
 /*
- * 职业目录与标签的唯一数据源。bootstrap 启动时用这两份 options 预热缓存，
- * 管理页的增删改写的也是同一个 queryKey，所以全站读到的永远是最新一次写入。
+ * 职业目录与标签的唯一数据源。使用它们的页面按需加载，管理页的增删改写的也是
+ * 同一个 queryKey，所以全站读到的永远是最新一次写入。
  */
 export const classCatalogQueryOptions = {
   queryKey: queryKeys.classes.list(),

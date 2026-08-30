@@ -10,7 +10,7 @@ const defaultRoot = resolve(scriptDirectory, "../..");
 
 export function parseCloudflareLocalAction(args) {
   if (args.length !== 1 || !["migrate", "seed", "serve"].includes(args[0])) {
-    throw new TypeError("Usage: node scripts/dev/cloudflare-local.mjs migrate|seed|serve");
+    throw new TypeError("Usage: tsx scripts/dev/cloudflare-local.mjs migrate|seed|serve");
   }
   return args[0];
 }

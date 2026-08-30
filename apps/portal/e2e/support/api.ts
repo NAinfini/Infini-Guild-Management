@@ -1,4 +1,5 @@
 import { request, type APIRequestContext } from "@playwright/test";
+import { memberProfileRevisionEtag } from "@guild/shared";
 import {
   SYSTEM_TEST_HEADER,
   SYSTEM_TEST_HEADER_VALUE,
@@ -10,6 +11,8 @@ import {
   SETUP_CLIENT_ADDRESS,
   type SiteFingerprint,
 } from "./config";
+
+export { cleanupSystemTestRun } from "./system-test-cleanup";
 
 /*
  * 每个 /api/* 变更都卡在 Origin + X-Requested-With 双重校验后面，
@@ -24,6 +27,34 @@ export function mutationHeaders(origin: string): Record<string, string> {
 
 /** 本进程所属槽位的那一份。跨槽位操作（globalSetup/teardown）必须显式传 origin。 */
 export const MUTATION_HEADERS = mutationHeaders(PORTAL_ORIGIN);
+
+/**
+ * 资料和资料媒体共享一条 revision。测试夹具每次变更前都重新读取当前值，
+ * 才能既保留生产 CAS 保护，又让连续清理请求使用各自真实的最新基线。
+ */
+export async function profileMutationHeaders(
+  api: APIRequestContext,
+  userId: string,
+): Promise<Record<string, string>> {
+  const response = await api.get(`/api/users/${userId}`);
+  const raw = await response.text();
+  if (!response.ok()) {
+    throw new Error(`GET /api/users/${userId} -> ${response.status()}: ${raw}`);
+  }
+
+  let detail: { edit_revisions?: { profile_revision_token?: unknown } };
+  try {
+    detail = JSON.parse(raw) as typeof detail;
+  } catch {
+    throw new Error(`GET /api/users/${userId} returned invalid JSON: ${raw}`);
+  }
+
+  const token = detail.edit_revisions?.profile_revision_token;
+  if (typeof token !== "string" || token.length === 0) {
+    throw new Error(`GET /api/users/${userId} returned no editable profile revision`);
+  }
+  return { "If-Match": memberProfileRevisionEtag(token) };
+}
 
 /** 让一次请求进入服务端的系统测试运行：产物会被按主键登记，等着被清掉。 */
 export function systemTestHeaders(runId: string): Record<string, string> {
@@ -97,26 +128,6 @@ export async function createSystemTestRun(adminApi: APIRequestContext): Promise<
   const body = await expectOk(adminApi, "post", "/api/admin/status/system-test-runs") as { run_id?: string };
   if (!body.run_id) throw new Error("system-test run creation returned no run_id");
   return body.run_id;
-}
-
-export async function cleanupSystemTestRun(adminApi: APIRequestContext, runId: string): Promise<void> {
-  for (let page = 0; page < 100; page += 1) {
-    const response = await adminApi.post(`/api/admin/status/system-test-runs/${runId}/cleanup`);
-    const text = await response.text();
-    let body: { ok?: boolean; status?: string };
-    try {
-      body = JSON.parse(text) as { ok?: boolean; status?: string };
-    } catch {
-      throw new Error(`cleanup of run ${runId} returned invalid JSON (${response.status()}): ${text}`);
-    }
-    if (response.ok() && body.ok === true && body.status === "completed") {
-      await expectOk(adminApi, "post", `/api/admin/status/system-test-runs/${runId}/finalize`);
-      return;
-    }
-    if (response.status() === 409 && body.ok === false && body.status === "cleaning") continue;
-    throw new Error(`cleanup of run ${runId} failed (${response.status()}): ${text}`);
-  }
-  throw new Error(`cleanup of run ${runId} exceeded 100 local cleanup pages`);
 }
 
 export type FingerprintDrift = {

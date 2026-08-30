@@ -31,3 +31,16 @@ test("受保护路由会把游客送去登录页并带上回跳地址", async ({
   await page.waitForURL(/\/login\?/);
   expect(new URL(page.url()).searchParams.get("returnTo")).toBe("/storage");
 });
+
+test("公开首页的跳转链接把键盘焦点移到主内容", async ({ page }) => {
+  await page.goto("/");
+  const skipLink = page.getByRole("link", { name: "Skip to content" });
+  await expect(skipLink).toBeVisible();
+  await expect(page.locator("html")).toHaveClass(/splash-done/);
+
+  await page.keyboard.press("Tab");
+  await expect(skipLink).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#landing-main")).toBeFocused();
+});

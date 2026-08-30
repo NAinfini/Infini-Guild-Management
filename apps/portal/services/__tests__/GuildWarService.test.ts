@@ -24,7 +24,16 @@ const baseTeams = [
     notes: null,
     is_locked: false,
     members: [
-      { id: "m-1", war_team_id: "team-1", user_id: "u-1", role_tag: "tank", sort_order: 0, stats: null, note: null },
+      {
+        id: "m-1",
+        war_team_id: "team-1",
+        user_id: "u-1",
+        avatar_media_id: null,
+        role_tag: "tank",
+        sort_order: 0,
+        stats: null,
+        note: null,
+      },
     ],
   },
 ];
@@ -64,7 +73,13 @@ describe("GuildWarService", () => {
     const payload = service.buildSaveTeamsPayload({
       eventId: "event-1",
       teams: baseTeams,
-      pool: [{ id: "pool-1", warHistoryId: null, eventId: "event-1", userId: "u-9" }],
+      pool: [{
+        id: "pool-1",
+        warHistoryId: null,
+        eventId: "event-1",
+        userId: "u-9",
+        avatar_media_id: null,
+      }],
       teamDraftNames: { "team-1": " Alpha Prime " },
       teamDraftNotes: { "team-1": " Burst comp " },
       teamDraftLocks: { "team-1": true },

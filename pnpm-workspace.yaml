@@ -4,19 +4,28 @@ packages:
 
 autoInstallPeers: true
 strictPeerDependencies: false
-shamefullyHoist: true
+nodeLinker: hoisted
+injectWorkspacePackages: true
+dedupeInjectedDeps: false
 
 overrides:
   "@babel/core": 7.29.6
   brace-expansion: 5.0.9
-  esbuild: ^0.28.1
+  esbuild: ^0.28.2
   flatted: 3.4.2
   picomatch: 4.0.5
-  sharp: 0.35.0
+  sharp: 0.35.4
   shell-quote: 1.9.0
   undici: 7.29.0
-  ws: 8.21.0
+  ws: 8.21.3
 
 allowBuilds:
   esbuild: true
   workerd: true
+
+minimumReleaseAgeExclude:
+  - '@cloudflare/workers-types@5.20260830.1'
+  - mediabunny@1.55.4
+  - react-hook-form@7.87.0
+  - tsx@4.23.13
+  - zod@4.5.4

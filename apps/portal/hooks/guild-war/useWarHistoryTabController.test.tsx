@@ -132,6 +132,7 @@ describe("history metric editing", () => {
     const user = userEvent.setup();
     const historyDetail: HistoryDetailData = {
       id: "war-1",
+      etag: '"history-war-1-1"',
       war_name: "War 1",
       enemy_name: "Rivals",
       result: "win",
@@ -181,7 +182,7 @@ describe("history metric editing", () => {
       result.current.detailTable.getColumn("kills")?.toggleSorting(true);
     });
     await waitFor(() => {
-      expect(result.current.detailTable.getState().sorting).toEqual([
+      expect(result.current.detailTable.state.sorting).toEqual([
         { id: "kills", desc: true },
       ]);
     });
@@ -217,6 +218,7 @@ describe("history metric editing", () => {
     const onSaveMemberStats = vi.fn().mockResolvedValue(undefined);
     const historyDetail: HistoryDetailData = {
       id: "war-1",
+      etag: '"history-war-1-1"',
       war_name: "War 1",
       enemy_name: null,
       result: "win",
@@ -280,5 +282,70 @@ describe("history metric editing", () => {
     expect(onSaveMemberStats.mock.calls[0]![0]).toEqual([
       { userId: "user-1", payload: expectedPayload },
     ]);
+    expect(onSaveMemberStats.mock.calls[0]![1]).toBe('"history-war-1-1"');
+  });
+
+  it("keeps the draft and opening revision when the same history refetches", async () => {
+    const onSaveMemberStats = vi.fn().mockResolvedValue(undefined);
+    const initialDetail: HistoryDetailData = {
+      id: "war-1",
+      etag: '"history-war-1-1"',
+      war_name: "War 1",
+      enemy_name: null,
+      result: "win",
+      own_stats: null,
+      enemy_stats: null,
+      notes: null,
+      teams: [],
+      member_stats: [{
+        id: "stat-1",
+        user_id: "user-1",
+        display_name: "Alice",
+        role_tag: null,
+        stats: { kills: 3, deaths: 2, assists: 1 },
+      }],
+    };
+    const { result, rerender } = renderHook(
+      ({ detail }: { detail: HistoryDetailData }) => useWarHistoryTabController({
+        historySearch: "",
+        onHistorySearchChange: vi.fn(),
+        historyRows: [historyRow("war-1")],
+        historyPage: 1,
+        historyPerPage: 20,
+        historyDetail: detail,
+        canManage: true,
+        saveMemberStatsPending: false,
+        onSelectHistoryId: vi.fn(),
+        onSaveMemberStats,
+        onDeleteHistory: vi.fn(),
+      }),
+      { initialProps: { detail: initialDetail } },
+    );
+
+    act(() => result.current.beginEditMemberStats());
+    render(<DataTableAdapter table={result.current.detailTable} />);
+    fireEvent.change(screen.getByLabelText("Alice — Kills"), { target: { value: "9" } });
+
+    rerender({
+      detail: {
+        ...initialDetail,
+        etag: '"history-war-1-2"',
+        member_stats: [{
+          ...initialDetail.member_stats[0]!,
+          stats: { kills: 7, deaths: 2, assists: 1 },
+        }],
+      },
+    });
+
+    expect(result.current.isEditingMemberStats).toBe(true);
+    expect(result.current.hasUnsavedMemberChanges).toBe(true);
+    await act(async () => result.current.handleSaveMemberStats());
+
+    expect(onSaveMemberStats).toHaveBeenCalledTimes(1);
+    expect(onSaveMemberStats.mock.calls[0]![0][0]).toMatchObject({
+      userId: "user-1",
+      payload: expect.objectContaining({ kills: 9 }),
+    });
+    expect(onSaveMemberStats.mock.calls[0]![1]).toBe('"history-war-1-1"');
   });
 });

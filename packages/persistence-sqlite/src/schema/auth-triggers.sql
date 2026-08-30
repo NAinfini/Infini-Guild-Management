@@ -1,6 +1,5 @@
 -- Role management is dynamic. The system must retain at least one active,
 -- non-deleted user whose current role grants admin.roles.manage.
-
 CREATE TRIGGER auth_role_permission_identity_immutable
 BEFORE UPDATE OF role_id, permission ON role_permissions
 WHEN OLD.role_id IS NOT NEW.role_id OR OLD.permission IS NOT NEW.permission
@@ -79,13 +78,4 @@ WHEN OLD.is_active = 1
  )
 BEGIN
   SELECT RAISE(ABORT, 'last role manager required');
-END;
-
--- login_failures also records unknown login names, so it cannot reference
--- users. Capture the credential before its cascade delete removes it.
-CREATE TRIGGER auth_login_failure_cleanup_after_user_delete
-BEFORE DELETE ON users
-BEGIN
-  DELETE FROM login_failures
-  WHERE login_name = lower((SELECT login_name FROM user_credentials WHERE user_id = OLD.id));
 END;

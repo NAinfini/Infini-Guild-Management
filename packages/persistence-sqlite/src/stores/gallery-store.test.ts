@@ -107,10 +107,10 @@ describe("SqliteGalleryStore quota claims", () => {
   it("audits only the gallery rows actually deleted with readable labels", async () => {
     const value = fixture();
     const insert = value.database.prepare(`INSERT INTO gallery_items (
-      id, type, url, caption, uploaded_by, revision_token, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`);
-    insert.run("gallery-blank", "video", "https://example.com/video", "   ", OWNER, "revision-gallery-blank-0001", NOW);
-    insert.run("gallery-named", "video", "https://example.com/video", "Named video", OWNER, "revision-gallery-named-0001", NOW);
+      id, type, url, caption, uploaded_by, revision_token, created_at, title
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    insert.run("gallery-blank", "video", "https://example.com/video", "   ", OWNER, "revision-gallery-blank-0001", NOW, "video");
+    insert.run("gallery-named", "video", "https://example.com/video", "Named video", OWNER, "revision-gallery-named-0001", NOW, "Named video");
     const mutation = createAuditEvent(requestContext(), {
       subjectType: "gallery_item",
       subjectId: "request-batch",
@@ -140,6 +140,99 @@ describe("SqliteGalleryStore quota claims", () => {
       ],
     });
   });
+
+  it("returns not found without an audit or foreign-key failure when the item is deleted before a like commits", async () => {
+    const { database, executor, store } = fixture();
+    insertGalleryItem(database, "gallery-like-race");
+    const auditEvent = audit("gallery-like-race");
+    executor.beforeNextBatch = () => {
+      database.prepare("DELETE FROM gallery_items WHERE id = ?").run("gallery-like-race");
+    };
+
+    await expect(store.setLike({
+      id: "gallery-like-race",
+      userId: OWNER,
+      liked: true,
+      audit: auditEvent,
+    })).resolves.toEqual({ outcome: "not_found" });
+
+    expect(number(database, "SELECT COUNT(*) FROM gallery_likes WHERE item_id = ?", "gallery-like-race")).toBe(0);
+    expect(number(database, "SELECT COUNT(*) FROM audit_log WHERE id = ?", auditEvent.eventId)).toBe(0);
+  });
+
+  it("updates metadata and writes its audit atomically behind the item revision", async () => {
+    const { database, store } = fixture();
+    insertGalleryItem(database, "gallery-update");
+    const updateAudit = createAuditEvent(requestContext(), {
+      subjectType: "gallery_item",
+      subjectId: "gallery-update",
+      subjectLabel: "Renamed",
+      action: "update",
+      changes: [{
+        field: "title",
+        before: { type: "text", value: "Race" },
+        after: { type: "text", value: "Renamed" },
+      }],
+    });
+
+    await expect(store.updateMetadata({
+      id: "gallery-update",
+      expectedRevisionToken: "gallery-like-race-revision-0001",
+      newRevisionToken: "gallery-update-revision-0002",
+      title: "Renamed",
+      description: "Updated description",
+      audit: updateAudit,
+    })).resolves.toBe(true);
+
+    expect(database.prepare(
+      "SELECT title, caption, revision_token FROM gallery_items WHERE id = ?",
+    ).get("gallery-update")).toEqual({
+      title: "Renamed",
+      caption: "Updated description",
+      revision_token: "gallery-update-revision-0002",
+    });
+    expect(number(database, "SELECT COUNT(*) FROM audit_log WHERE id = ?", updateAudit.eventId)).toBe(1);
+
+    const staleAudit = createAuditEvent(requestContext(), {
+      subjectType: "gallery_item",
+      subjectId: "gallery-update",
+      action: "update",
+    });
+    await expect(store.updateMetadata({
+      id: "gallery-update",
+      expectedRevisionToken: "gallery-like-race-revision-0001",
+      newRevisionToken: "gallery-update-revision-stale",
+      title: "Stale",
+      description: null,
+      audit: staleAudit,
+    })).resolves.toBe(false);
+    expect(number(database, "SELECT COUNT(*) FROM audit_log WHERE id = ?", staleAudit.eventId)).toBe(0);
+  });
+
+  it("keeps successful like and unlike writes paired with their audit records", async () => {
+    const { database, store } = fixture();
+    insertGalleryItem(database, "gallery-like-atomic");
+    const likedAudit = audit("gallery-like-atomic-liked");
+    const unlikedAudit = audit("gallery-like-atomic-unliked");
+
+    await expect(store.setLike({
+      id: "gallery-like-atomic",
+      userId: OWNER,
+      liked: true,
+      audit: likedAudit,
+    })).resolves.toEqual({ outcome: "ok", changed: true, likeCount: 1 });
+    expect(number(database, "SELECT COUNT(*) FROM gallery_likes WHERE item_id = ?", "gallery-like-atomic")).toBe(1);
+    expect(number(database, "SELECT COUNT(*) FROM audit_log WHERE id = ?", likedAudit.eventId)).toBe(1);
+
+    await expect(store.setLike({
+      id: "gallery-like-atomic",
+      userId: OWNER,
+      liked: false,
+      audit: unlikedAudit,
+    })).resolves.toEqual({ outcome: "ok", changed: true, likeCount: 0 });
+    expect(number(database, "SELECT COUNT(*) FROM gallery_likes WHERE item_id = ?", "gallery-like-atomic")).toBe(0);
+    expect(number(database, "SELECT COUNT(*) FROM audit_log WHERE id = ?", unlikedAudit.eventId)).toBe(1);
+  });
 });
 
 function fixture(): { database: DatabaseSync; executor: SqliteTestExecutor; store: SqliteGalleryStore } {
@@ -160,15 +253,25 @@ function insertMedia(database: DatabaseSync, mediaId: string): void {
     .run(mediaId, OWNER, NOW, NOW);
 }
 
+function insertGalleryItem(database: DatabaseSync, id: string): void {
+  database.prepare(`INSERT INTO gallery_items (
+    id, type, url, caption, uploaded_by, revision_token, created_at, title
+  ) VALUES (?, 'video', 'https://example.com/video', NULL, ?, 'gallery-like-race-revision-0001', ?, 'Race')`)
+    .run(id, OWNER, NOW);
+}
+
 function record(id: string, mediaId: string): GalleryRecord {
   return {
     id,
     type: "image",
     media_id: mediaId,
     url: null,
-    caption: null,
+    title: "Gallery image",
+    description: null,
     uploaded_by: OWNER,
     uploaded_by_name: null,
+    like_count: 0,
+    liked_by_viewer: false,
     created_at: NOW,
     revisionToken: `revision-${id}-0001`,
   };

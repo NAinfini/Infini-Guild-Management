@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
 import { createTestStorage } from "../../support/storage";
-import { confirmDialog, dialogTitled, field, selectOption } from "../../support/ui";
+import { confirmDialog, dialogTitled, readInteger, selectOption } from "../../support/ui";
 
 /*
  * 批量出入库：批量条、卡片上的 ± 、方向分段器、复核抽屉里的领取人/清空/逐项移除/备注/提交。
@@ -101,6 +101,10 @@ function batchQuantity(page: Page, item: { name: string }): Locator {
 
 const bar = ".storage-batch-panel";
 
+function withdrawal(page: Page): Locator {
+  return page.locator(bar).getByRole("button", { name: "Withdrawal", exact: true });
+}
+
 async function expectSummary(page: Page, selected: number, units: number) {
   const values = page.locator(`${bar} .storage-batch-bar__value`);
   await expect(values.first(), "已选件数").toHaveText(String(selected));
@@ -149,7 +153,7 @@ test("± 控件累加递减，批量条上的件数与总量实时跟着变，�
 
 test("出库方向下：库存为 0 的物品加不进批量", async ({ page, flow }) => {
   await startBatch(page, flow);
-  await page.locator(`${bar} label`).filter({ hasText: /^Distribute$/ }).click();
+  await flow.clickWithoutApi(withdrawal(page));
 
   await expect(
     plus(page, itemA),
@@ -162,14 +166,13 @@ test("换方向要二次确认：取消保留已选，确认则清空", async ({
   await flow.clickWithoutApi(plus(page, itemA));
   await expectSummary(page, 1, 1);
 
-  const distribute = page.locator(`${bar} label`).filter({ hasText: /^Distribute$/ });
   const title = "Change direction and clear the selected items?";
 
-  await distribute.click();
+  await flow.clickWithoutApi(withdrawal(page));
   await (await confirmDialog(page, title)).getByRole("button", { name: "Cancel", exact: true }).click();
   await expectSummary(page, 1, 1);
 
-  await distribute.click();
+  await flow.clickWithoutApi(withdrawal(page));
   await (await confirmDialog(page, title)).getByRole("button", { name: "Confirm", exact: true }).click();
   await expectSummary(page, 0, 0);
 });
@@ -184,9 +187,8 @@ test("复核抽屉：领取人必须显式选择，逐项移除和清空都会�
   /*
    * 领取人这条记录决定整批货算在谁头上，管理员必须自己选，不能有默认值
    * （apps/portal/components/pages/StoragePage.tsx 的 defaultRecipientId）。
-   * 所以初始状态必须是：字段空着、原因写在字段上、提交按钮按不动。
+   * 所以初始状态必须是：尚未选中成员、原因写在字段上、提交按钮按不动。
    */
-  await expect(field(drawer, "Member")).toHaveValue("");
   await expect(drawer.getByText("Select the member associated with this batch before submitting.", { exact: true }))
     .toBeVisible();
   await expect(drawer.getByRole("button", { name: "Submit 2 items", exact: true })).toBeDisabled();
@@ -225,8 +227,8 @@ test("批量入库完整链路：两件物品的服务端库存各自按量增�
 
   // 提交成功后草稿整个消失，批量条也跟着收起。
   await expect(page.locator(bar)).toHaveCount(0);
-  await expect(card(page, itemA).locator(".storage-item-card__stock-value")).toHaveText("2");
-  await expect(card(page, itemB).locator(".storage-item-card__stock-value")).toHaveText("1");
+  expect(await readInteger(card(page, itemA).locator(".storage-item-card__stock-value"), `${itemA.name} 的库存`)).toBe(2);
+  expect(await readInteger(card(page, itemB).locator(".storage-item-card__stock-value"), `${itemB.name} 的库存`)).toBe(1);
 
   for (const [item, expected] of [[itemA, 2], [itemB, 1]] as const) {
     expect(

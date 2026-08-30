@@ -9,6 +9,7 @@ import { SqliteAbsencePolicyReader } from "./absence-policy-reader.js";
 import { SqliteMemberMediaPort } from "./member-media-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
+const CLASS_ICON_UPDATED_AT = "2026-08-09T12:00:01.000Z";
 const OLD_AVATAR = "aaaaaaaaaaaaaaaaaaaaa";
 const NEW_AVATAR = "bbbbbbbbbbbbbbbbbbbbb";
 const NEW_IMAGE = "ccccccccccccccccccccc";
@@ -124,7 +125,11 @@ describe("SqliteMemberMediaPort composite media links", () => {
     value.nextImages.push(NEW_AVATAR);
 
     const mediaId = await value.port.uploadAvatar(
-      context(), "member-1", { full: new Uint8Array(), view: new Uint8Array() }, audit("audit-avatar", "upload_avatar"),
+      context(),
+      "member-1",
+      { full: new Uint8Array(), view: new Uint8Array() },
+      audit("audit-avatar", "upload_avatar"),
+      "profile-one-revision-0001",
     );
 
     expect(mediaId).toBe(NEW_AVATAR);
@@ -132,6 +137,8 @@ describe("SqliteMemberMediaPort composite media links", () => {
     expect(text(value.database, "SELECT media_id FROM media_links WHERE entity_id = 'member-2' AND slot = 'avatar'")).toBe(OLD_AVATAR);
     expect(text(value.database, "SELECT state FROM media_assets WHERE id = ?", OLD_AVATAR)).toBe("attached");
     expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE id = 'audit-avatar'")).toBe(1);
+    expect(text(value.database, "SELECT revision_token FROM member_profiles WHERE user_id = 'member-1'")).toBe("profile-audit-avatar");
+    expect(text(value.database, "SELECT updated_at FROM member_profiles WHERE user_id = 'member-1'")).toBe(NOW);
   });
 
   it("attaches and reads profile images, then detaches them through the shared trigger lifecycle", async () => {
@@ -140,12 +147,15 @@ describe("SqliteMemberMediaPort composite media links", () => {
     expect(await value.port.uploadProfileImages(
       context(), "member-1", [{ full: new Uint8Array(), view: new Uint8Array() }],
       audit("audit-image-upload", "upload_images"),
+      "profile-one-revision-0001",
     )).toEqual([NEW_IMAGE]);
     expect((await value.port.listForMembers(["member-1"])).get("member-1")?.images).toEqual([NEW_IMAGE]);
     expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE id = 'audit-image-upload'")).toBe(1);
+    expect(text(value.database, "SELECT revision_token FROM member_profiles WHERE user_id = 'member-1'")).toBe("profile-audit-image-upload");
 
     expect(await value.port.deleteProfileImages(
       context(), "member-1", [NEW_IMAGE, MISSING_IMAGE], audit("audit-image", "delete_images"),
+      "profile-audit-image-upload",
     )).toBe(1);
     expect(text(value.database, "SELECT state FROM media_assets WHERE id = ?", NEW_IMAGE)).toBe("deleting");
     expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE id = 'audit-image'")).toBe(1);
@@ -154,6 +164,57 @@ describe("SqliteMemberMediaPort composite media links", () => {
       changes: [],
       context: [{ field: "media_count", value: { type: "number", value: 1 } }],
     });
+    expect(text(value.database, "SELECT revision_token FROM member_profiles WHERE user_id = 'member-1'")).toBe("profile-audit-image");
+
+    expect(await value.port.deleteProfileImages(
+      context(), "member-1", [MISSING_IMAGE], audit("audit-image-noop", "delete_images"),
+      "profile-audit-image",
+    )).toBe(0);
+    expect(text(value.database, "SELECT revision_token FROM member_profiles WHERE user_id = 'member-1'")).toBe("profile-audit-image");
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE id = 'audit-image-noop'")).toBe(0);
+  });
+
+  it("advances the aggregate root only for actual avatar and audio removals", async () => {
+    const value = harness();
+    insertAsset(value.database, OLD_AVATAR, "member_avatar", "image", null);
+    insertAsset(value.database, OLD_AUDIO, "member_audio", "audio", "old.opus");
+    link(value.database, OLD_AVATAR, "member-1", "avatar");
+    link(value.database, OLD_AUDIO, "member-1", "audio");
+
+    await expect(value.port.deleteAvatar(
+      context(), "member-1", audit("audit-avatar-delete", "delete_avatar"), "profile-one-revision-0001",
+    )).resolves.toBe(true);
+    expect(text(value.database, "SELECT revision_token FROM member_profiles WHERE user_id = 'member-1'")).toBe("profile-audit-avatar-delete");
+
+    await expect(value.port.deleteAvatar(
+      context(), "member-1", audit("audit-avatar-noop", "delete_avatar"), "profile-audit-avatar-delete",
+    )).resolves.toBe(false);
+    expect(text(value.database, "SELECT revision_token FROM member_profiles WHERE user_id = 'member-1'")).toBe("profile-audit-avatar-delete");
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE id = 'audit-avatar-noop'")).toBe(0);
+
+    await expect(value.port.deleteAudio(
+      context(), "member-1", audit("audit-audio-delete", "delete_audio"), "profile-audit-avatar-delete",
+    )).resolves.toBe(true);
+    expect(text(value.database, "SELECT revision_token FROM member_profiles WHERE user_id = 'member-1'")).toBe("profile-audit-audio-delete");
+  });
+
+  it("rejects a stale profile media mutation without changing links, audit, or the root revision", async () => {
+    const value = harness();
+    insertAsset(value.database, OLD_AVATAR, "member_avatar", "image", null);
+    link(value.database, OLD_AVATAR, "member-1", "avatar");
+
+    await expect(value.port.deleteAvatar(
+      context(),
+      "member-1",
+      audit("audit-stale-avatar", "delete_avatar"),
+      "profile-stale",
+    )).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(text(value.database, "SELECT media_id FROM media_links WHERE entity_id = 'member-1' AND slot = 'avatar'"))
+      .toBe(OLD_AVATAR);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE id = 'audit-stale-avatar'")).toBe(0);
+    expect(text(value.database, "SELECT revision_token FROM member_profiles WHERE user_id = 'member-1'"))
+      .toBe("profile-one-revision-0001");
   });
 
   it("rolls back profile image links when their audit insert fails and leaves the staged blob for GC", async () => {
@@ -168,9 +229,11 @@ describe("SqliteMemberMediaPort composite media links", () => {
     await expect(value.port.uploadProfileImages(
       context(), "member-1", [{ full: new Uint8Array(), view: new Uint8Array() }],
       audit("duplicate-image-audit", "upload_images"),
+      "profile-one-revision-0001",
     )).rejects.toThrow();
     expect(scalar(value.database, "SELECT count(*) FROM media_links WHERE media_id = ?", NEW_IMAGE)).toBe(0);
     expect(text(value.database, "SELECT state FROM media_assets WHERE id = ?", NEW_IMAGE)).toBe("staged");
+    expect(text(value.database, "SELECT revision_token FROM member_profiles WHERE user_id = 'member-1'")).toBe("profile-one-revision-0001");
   });
 
   it("commits class icon metadata, link, and audit in one transaction", async () => {
@@ -179,12 +242,48 @@ describe("SqliteMemberMediaPort composite media links", () => {
 
     await expect(value.port.uploadClassIcon(
       context(), "class-1", { full: new Uint8Array(), view: new Uint8Array() },
+      { expectedUpdatedAt: NOW, updatedAt: CLASS_ICON_UPDATED_AT },
       audit("audit-class-icon", "upload_icon", "class_catalog", "class-1"),
-    )).resolves.toBe(CLASS_ICON);
+    )).resolves.toEqual({
+      iconType: "image",
+      vectorIcon: null,
+      updatedAt: CLASS_ICON_UPDATED_AT,
+      iconMediaId: CLASS_ICON,
+    });
     expect(text(value.database, "SELECT icon_type FROM class_catalog WHERE id = 'class-1'")).toBe("image");
     expect(text(value.database, "SELECT vector_icon FROM class_catalog WHERE id = 'class-1'")).toBeNull();
     expect(text(value.database, "SELECT media_id FROM media_links WHERE entity_type = 'class_catalog' AND entity_id = 'class-1' AND slot = 'icon'")).toBe(CLASS_ICON);
+    expect(text(value.database, "SELECT updated_at FROM class_catalog WHERE id = 'class-1'")).toBe(CLASS_ICON_UPDATED_AT);
     expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE id = 'audit-class-icon'")).toBe(1);
+    expect(value.executor.batches[0]?.at(-1)).toMatchObject({
+      method: "get",
+      columns: ["icon_type", "vector_icon", "updated_at", "icon_media_id"],
+    });
+  });
+
+  it("returns the committed vector snapshot when deleting a class icon", async () => {
+    const value = harness();
+    value.nextImages.push(CLASS_ICON);
+    await value.port.uploadClassIcon(
+      context(), "class-1", { full: new Uint8Array(), view: new Uint8Array() },
+      { expectedUpdatedAt: NOW, updatedAt: CLASS_ICON_UPDATED_AT },
+      audit("audit-class-icon-upload", "upload_icon", "class_catalog", "class-1"),
+    );
+
+    await expect(value.port.deleteClassIcon(
+      context(), "class-1",
+      { expectedUpdatedAt: CLASS_ICON_UPDATED_AT, updatedAt: "2026-08-09T12:00:02.000Z" },
+      audit("audit-class-icon-delete", "delete", "class_catalog", "class-1"),
+    )).resolves.toEqual({
+      iconType: "vector",
+      vectorIcon: "sword",
+      updatedAt: "2026-08-09T12:00:02.000Z",
+      iconMediaId: null,
+    });
+    expect(value.executor.batches[1]?.at(-1)).toMatchObject({
+      method: "get",
+      columns: ["icon_type", "vector_icon", "updated_at", "icon_media_id"],
+    });
   });
 
   it("rolls back class links and audit when class metadata fails, leaving the staged blob for GC", async () => {
@@ -195,12 +294,45 @@ describe("SqliteMemberMediaPort composite media links", () => {
 
     await expect(value.port.uploadClassIcon(
       context(), "class-1", { full: new Uint8Array(), view: new Uint8Array() },
+      { expectedUpdatedAt: NOW, updatedAt: CLASS_ICON_UPDATED_AT },
       audit("audit-class-failed", "upload_icon", "class_catalog", "class-1"),
     )).rejects.toThrow(/class metadata blocked/);
     expect(text(value.database, "SELECT icon_type FROM class_catalog WHERE id = 'class-1'")).toBe("vector");
     expect(scalar(value.database, "SELECT count(*) FROM media_links WHERE entity_type = 'class_catalog'")).toBe(0);
     expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE id = 'audit-class-failed'")).toBe(0);
     expect(text(value.database, "SELECT state FROM media_assets WHERE id = ?", CLASS_ICON)).toBe("staged");
+  });
+
+  it("rejects stale class icon upload and deletion baselines without changing links or audits", async () => {
+    const value = harness();
+    value.nextImages.push(CLASS_ICON);
+
+    await expect(value.port.uploadClassIcon(
+      context(), "class-1", { full: new Uint8Array(), view: new Uint8Array() },
+      { expectedUpdatedAt: NOW, updatedAt: CLASS_ICON_UPDATED_AT },
+      audit("audit-class-icon-current", "upload_icon", "class_catalog", "class-1"),
+    )).resolves.toMatchObject({
+      iconType: "image",
+      vectorIcon: null,
+      updatedAt: CLASS_ICON_UPDATED_AT,
+      iconMediaId: CLASS_ICON,
+    });
+
+    value.nextImages.push(NEW_IMAGE);
+    await expect(value.port.uploadClassIcon(
+      context(), "class-1", { full: new Uint8Array(), view: new Uint8Array() },
+      { expectedUpdatedAt: NOW, updatedAt: "2026-08-09T12:00:02.000Z" },
+      audit("audit-class-icon-stale-upload", "upload_icon", "class_catalog", "class-1"),
+    )).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    await expect(value.port.deleteClassIcon(
+      context(), "class-1",
+      { expectedUpdatedAt: NOW, updatedAt: "2026-08-09T12:00:02.000Z" },
+      audit("audit-class-icon-stale-delete", "delete", "class_catalog", "class-1"),
+    )).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(text(value.database, "SELECT icon_type FROM class_catalog WHERE id = 'class-1'")).toBe("image");
+    expect(text(value.database, "SELECT media_id FROM media_links WHERE entity_type = 'class_catalog' AND entity_id = 'class-1' AND slot = 'icon'")).toBe(CLASS_ICON);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE id IN ('audit-class-icon-stale-upload', 'audit-class-icon-stale-delete')")).toBe(0);
   });
 
   it("rolls back an audio replacement when its audit insert fails", async () => {
@@ -215,11 +347,16 @@ describe("SqliteMemberMediaPort composite media links", () => {
     value.nextAudio.push(NEW_AUDIO);
 
     await expect(value.port.uploadAudio(
-      context(), "member-1", { full: new Uint8Array(), originalName: "new.opus" }, audit("duplicate-audit", "upload_audio"),
+      context(),
+      "member-1",
+      { full: new Uint8Array(), originalName: "new.opus" },
+      audit("duplicate-audit", "upload_audio"),
+      "profile-one-revision-0001",
     )).rejects.toThrow();
     expect(text(value.database, "SELECT media_id FROM media_links WHERE entity_id = 'member-1' AND slot = 'audio'")).toBe(OLD_AUDIO);
     expect(text(value.database, "SELECT state FROM media_assets WHERE id = ?", OLD_AUDIO)).toBe("attached");
     expect(text(value.database, "SELECT state FROM media_assets WHERE id = ?", NEW_AUDIO)).toBe("staged");
+    expect(text(value.database, "SELECT revision_token FROM member_profiles WHERE user_id = 'member-1'")).toBe("profile-one-revision-0001");
   });
 });
 

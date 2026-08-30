@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
+import {
+  createAuthorizationContext,
+  createRequestContext,
+  type DeferredTask,
+} from "@guild/kernel";
 import type { AuthStore } from "./auth-types";
-import { digestToken } from "./crypto";
+import { createPasswordHash, digestToken } from "./crypto";
 import { OAuthService } from "./oauth-service";
 import type { OAuthChallenge, OAuthProviderClient, OAuthStore } from "./oauth-types";
 
@@ -12,6 +16,20 @@ function anonymousContext() {
     requestId: "request-anonymous",
     now: NOW,
     authorization: createAuthorizationContext(null),
+  });
+}
+
+function authenticatedContext() {
+  return createRequestContext({
+    requestId: "request-authenticated",
+    now: NOW,
+    authorization: createAuthorizationContext({
+      userId: "user-1",
+      sessionId: "session-1",
+      roleId: "member",
+      roleLevel: 100,
+      permissions: [],
+    }),
   });
 }
 
@@ -47,6 +65,55 @@ function authStore() {
 }
 
 describe("OAuthService", () => {
+  it("immediately refreshes live authorization after unlink revokes account sessions", async () => {
+    const tasks: DeferredTask[] = [];
+    const publish = vi.fn().mockResolvedValue(undefined);
+    const unlinkIdentity = vi.fn().mockResolvedValue(true);
+    const passwordHash = await createPasswordHash("correct horse battery staple");
+    const service = new OAuthService({
+      store: { unlinkIdentity } as unknown as OAuthStore,
+      authStore: {
+        findCredentialRecord: vi.fn().mockResolvedValue({
+          loginName: "member-login",
+          passwordHash,
+          authRevision: 1,
+        }),
+        findUser: vi.fn().mockResolvedValue({
+          id: "user-1",
+          displayName: "Public One",
+          isActive: true,
+          deletedAt: null,
+        }),
+      },
+      siteConfig: { oauthEnabled: async () => true },
+      clients: clients({
+        provider: "google",
+        supported: true,
+        authorizationUrl: () => "https://provider.example",
+        resolveSubject: async () => "subject",
+      }),
+      publicUrl: "https://guild.example",
+      notifications: { publish },
+      deferred: { defer: (task) => { tasks.push(task); } },
+    });
+
+    await expect(service.unlink(
+      authenticatedContext(),
+      "google",
+      "correct horse battery staple",
+    )).resolves.toEqual({ ok: true });
+    expect(unlinkIdentity).toHaveBeenCalledWith(expect.objectContaining({
+      userId: "user-1",
+      expectedAuthRevision: 1,
+    }));
+    expect(tasks).toHaveLength(1);
+    await tasks[0]!();
+    expect(publish).toHaveBeenCalledWith({
+      type: "authorization_refresh",
+      user_ids: ["user-1"],
+    });
+  });
+
   it("stores only digested state, uses fixed callback data, and rejects replay", async () => {
     let saved: (OAuthChallenge & { createdAt: string }) | null = null;
     let consumed = false;

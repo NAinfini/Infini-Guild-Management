@@ -86,6 +86,19 @@ describe("AdminAuditSection filters", () => {
     expect(filters.queryByLabelText("audit.aria.dateFrom")).not.toBeInTheDocument();
   });
 
+  it("does not count the custom editor as active until its dates change the query", async () => {
+    const user = userEvent.setup();
+    renderSection({ auditDateFrom: isoDate(7), auditDateTo: isoDate(0) });
+
+    const trigger = screen.getByRole("button", { name: "common:filter.toggle" });
+    await user.click(trigger);
+    const filters = within(await screen.findByRole("dialog"));
+    await user.click(filters.getByRole("radio", { name: "audit.range.custom" }));
+
+    expect(trigger).toHaveAccessibleName("common:filter.toggle");
+    expect(filters.queryByRole("button", { name: "common:filter.reset" })).not.toBeInTheDocument();
+  });
+
   /* 认不出来的区间（手填的、翻过页的旧区间）才落到自定义，并把手填框摊开。 */
   it("falls back to custom and opens the manual inputs for a hand-picked range", async () => {
     const user = userEvent.setup();
@@ -133,7 +146,7 @@ describe("AdminAuditSection filters", () => {
     expect(onAuditDateToChange).not.toHaveBeenCalled();
   });
 
-  it("shows an exact entity timeline as a removable toolbar summary", async () => {
+  it("shows the exact entity timeline once inside the filter panel", async () => {
     const user = userEvent.setup();
     const onClearAuditEntity = vi.fn();
     const entityId = "fcd3254e-6e59-46b9-bf99-6d9fb4e10660";
@@ -152,10 +165,14 @@ describe("AdminAuditSection filters", () => {
       onClearAuditEntity,
     });
 
-    const chip = screen.getByRole("button", { name: "Timeline: Summer Raid" });
-    expect(chip).not.toHaveTextContent(entityId);
-    expect(chip).not.toHaveTextContent("event/");
-    await user.click(chip);
+    expect(screen.queryByText("Timeline: Summer Raid")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^common:filter\.toggle/ }));
+    const filters = within(await screen.findByRole("dialog"));
+    const clearTimeline = filters.getByRole("button", { name: "Timeline: Summer Raid" });
+    expect(clearTimeline).not.toHaveTextContent(entityId);
+    expect(clearTimeline).not.toHaveTextContent("event/");
+    await user.click(clearTimeline);
     expect(onClearAuditEntity).toHaveBeenCalledOnce();
   });
 
@@ -167,6 +184,7 @@ describe("AdminAuditSection filters", () => {
       color: null,
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-01T00:00:00.000Z",
+      revision_token: "raid-lead-v1",
       permissions: {} as SectionProps["rolesData"][number]["permissions"],
       assigned_user_count: 0,
     }];

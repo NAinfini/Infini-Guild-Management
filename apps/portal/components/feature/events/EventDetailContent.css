@@ -41,7 +41,6 @@
   display: grid;
   align-content: start;
   gap: var(--space-xs);
-  min-height: 88px;
   padding: var(--space-xs) var(--space-md);
 }
 
@@ -364,11 +363,11 @@
  * 右栏里只有名单这一块滚：标题、报名按钮、加人下拉钉在上面不动，翻名单的时候
  * 一直看得见还剩几个名额、以及从哪儿加人。
  *
- * 44vh 让它跟随可见高度，14rem 保住短视口里的可操作面积，32rem 防止超宽屏把名单
+ * 56vh 让它跟随可见高度，18rem 保住短视口里的可操作面积，40rem 防止超宽屏把名单
  * 再次拉成整页。用 max-height 而不是固定高度：只封顶、不占位，短名单不会留下空洞。
  */
 .event-detail-content__member-list {
-  max-height: clamp(14rem, 44vh, 32rem);
+  max-height: clamp(18rem, 56vh, 40rem);
   overflow-x: clip;
   overflow-y: auto;
   padding-inline-end: 6px;
@@ -436,8 +435,10 @@
 }
 
 /* The detail page owns a compact media stage; fullscreen remains available on demand. */
-.event-detail-content__media .infini-media-gallery-slide {
+.event-detail-content__media .infini-media-gallery-slides {
+  height: auto;
   max-height: 420px;
+  aspect-ratio: 16 / 9;
 }
 
 .event-detail-content__member-info > strong {
@@ -466,12 +467,6 @@
 .event-detail-content__quota-label,
 .quota-status-text {
   font-size: var(--text-meta);
-}
-
-@media (min-width: 64em) {
-  .event-detail-content__media .infini-media-gallery-slide {
-    height: clamp(260px, 25vw, 420px);
-  }
 }
 
 /* 窄屏收成一栏；参与任务优先，名单仍保持内部滚动。 */

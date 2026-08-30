@@ -1,8 +1,6 @@
 import type { Event } from "@guild/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useEventsFiltering } from "./useEventsFiltering";
@@ -149,13 +147,14 @@ describe("useEventsFiltering list-only data", () => {
     });
   });
 
-  it("keeps route detail state outside the list hook", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/hooks/useEventsFiltering.ts"),
-      "utf8",
+  it("requests the public member projection for an anonymous visitor", () => {
+    renderHook(
+      () => useEventsFiltering({ currentUserId: undefined }),
+      { wrapper: createWrapper() },
     );
 
-    expect(source).toContain("previewDetailsQuery");
-    expect(source).not.toContain("queryKeys.events.detail(");
+    expect(mocks.useEventsData).toHaveBeenCalledWith(expect.objectContaining({
+      publicMemberProjection: true,
+    }));
   });
 });

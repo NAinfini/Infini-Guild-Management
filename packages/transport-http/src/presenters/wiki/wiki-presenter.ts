@@ -1,11 +1,14 @@
 import {
   mediaIdsResponseSchema,
   wikiArticleSchema,
+  wikiArticleViewCountSchema,
+  wikiCategoryCatalogSchema,
   wikiCategorySchema,
   wikiRevisionListItemSchema,
   wikiRevisionSchema,
   type PaginatedResponse,
   type WikiArticle,
+  type WikiCategoryCatalog,
   type WikiCategory,
   type WikiRevision,
   type WikiRevisionListItem,
@@ -21,8 +24,8 @@ const wikiArticlePageSchema = z.object({
 });
 const okSchema = z.object({ ok: z.literal(true) });
 
-export function presentWikiCategories(value: unknown): WikiCategory[] {
-  return z.array(wikiCategorySchema).parse(value);
+export function presentWikiCategories(value: unknown): WikiCategoryCatalog {
+  return wikiCategoryCatalogSchema.parse(value);
 }
 
 export function presentWikiCategory(value: unknown): WikiCategory {
@@ -51,4 +54,8 @@ export function presentWikiMediaIds(value: unknown): { media_ids: string[] } {
 
 export function presentWikiOk(value: unknown): { ok: true } {
   return okSchema.parse(value);
+}
+
+export function presentWikiArticleViewCount(value: unknown): { view_count: number } {
+  return wikiArticleViewCountSchema.parse(value);
 }

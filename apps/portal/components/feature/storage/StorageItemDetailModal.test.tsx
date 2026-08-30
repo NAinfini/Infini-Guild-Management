@@ -1,8 +1,6 @@
 import type { StorageItem, StorageTransaction } from "@guild/shared";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageItemDetailModal } from "./StorageItemDetailModal";
 
@@ -15,7 +13,10 @@ vi.mock("../../../hooks/useStorage", () => ({
 }));
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { page?: number }) =>
+      key === "pagination.goToPage" ? String(options?.page) : key,
+  }),
 }));
 
 const item = (
@@ -27,6 +28,8 @@ const item = (
   category_id: null,
   name: `Item ${id}`,
   description: null,
+  rarity: "common",
+  unit: null,
   quantity: 10,
   allow_member_deposit: true,
   allow_member_withdraw: true,
@@ -97,6 +100,7 @@ describe("StorageItemDetailModal ledger pagination", () => {
     const user = userEvent.setup();
     const view = renderModal(item("item-1"));
     await user.click(screen.getByRole("button", { name: "2" }));
+    const callCountBeforeScopeChange = storageHook.useStorageTransactions.mock.calls.length;
 
     view.rerender(
       <StorageItemDetailModal
@@ -110,6 +114,12 @@ describe("StorageItemDetailModal ledger pagination", () => {
         onEdit={vi.fn()}
       />,
     );
+
+    const scopeChangeCalls = storageHook.useStorageTransactions.mock.calls
+      .slice(callCountBeforeScopeChange)
+      .map(([params]) => params);
+    expect(scopeChangeCalls[0]).toMatchObject({ itemId: "item-2", page: 1 });
+    expect(scopeChangeCalls).not.toContainEqual(expect.objectContaining({ itemId: "item-2", page: 2 }));
 
     await waitFor(() => {
       expect(storageHook.useStorageTransactions).toHaveBeenLastCalledWith({
@@ -158,20 +168,52 @@ describe("StorageItemDetailModal ledger pagination", () => {
     expect(next).toBeDisabled();
   });
 
-  it("keeps the detail preview inside a 390px viewport", () => {
-    const { container } = renderModal(item("item-1"));
-    const modal = container.ownerDocument.querySelector(".storage-detail-drawer");
-    const preview = container.ownerDocument.querySelector(".storage-detail-media");
-    const storageCss = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/StoragePage.css"),
-      "utf8",
-    );
+  it("shows the ledger title and subtitle", () => {
+    renderModal(item("item-1"));
 
-    expect(modal).toBeInTheDocument();
-    expect(preview).toHaveClass("storage-detail-media");
-    expect(storageCss).toMatch(
-      /\.storage-detail-media\s*\{[\s\S]*?min-width:\s*0/,
-    );
+    expect(screen.getByText("ledger.title")).toBeInTheDocument();
+    expect(screen.getByText("ledger.subtitle")).toBeInTheDocument();
+  });
+
+  it("announces a ledger refresh to assistive technology", () => {
+    storageHook.useStorageTransactions.mockReturnValue({
+      data: {
+        data: [transaction("tx-refresh")],
+        total: 1,
+        page: 1,
+        limit: 20,
+        total_pages: 1,
+      },
+      isFetching: true,
+    });
+
+    renderModal(item("item-1"));
+
+    expect(screen.getByRole("status", { name: "ledger.loading" })).toBeInTheDocument();
+  });
+
+  it("keeps cached ledger rows visible with a retry after a refresh failure", async () => {
+    const refetch = vi.fn();
+    storageHook.useStorageTransactions.mockReturnValue({
+      data: {
+        data: [{ ...transaction("tx-cached"), note: "cached ledger row" }],
+        total: 1,
+        page: 1,
+        limit: 20,
+        total_pages: 1,
+      },
+      isFetching: false,
+      isError: true,
+      refetch,
+    });
+    const user = userEvent.setup();
+
+    renderModal(item("item-1"));
+
+    expect(screen.getByText("cached ledger row")).toBeInTheDocument();
+    expect(screen.getByText("ledger.error")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "action.retry" }));
+    expect(refetch).toHaveBeenCalledOnce();
   });
 
   it("offers direct deposit and withdraw actions from item detail", async () => {

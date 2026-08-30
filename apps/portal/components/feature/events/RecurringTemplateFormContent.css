@@ -204,6 +204,33 @@
   user-select: none;
 }
 
+.rtf-media__content {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.rtf-media__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.rtf-media__heading p {
+  max-width: 54ch;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--lh-normal);
+}
+
+.rtf-media__heading span {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
 /* .dark 覆盖只把透明度从 78% 微调到 72%，整块删除，理由同上。 */
 
 /* ── Weekday picker ── */
@@ -406,6 +433,13 @@
   font-size: 12px;
   font-style: italic;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+}
+
+@media (max-width: 47.99em) {
+  .rtf-media__heading {
+    display: grid;
+    gap: var(--space-xs);
+  }
 }
 
 /* .dark 覆盖是纯粹的兜底 hex 替换，不透明度同为 65%，整块删除，理由同上。 */

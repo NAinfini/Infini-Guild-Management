@@ -27,18 +27,18 @@ describe("SystemStatusPage", () => {
   it("presents a complete 404 scene with one status panel and one recovery link", () => {
     const { container } = renderStatus("not-found");
 
-    expect(screen.getByTestId("scene")).toHaveAttribute("data-variant", "status");
+    expect(screen.getByTestId("scene")).toHaveAttribute("data-variant", "status-not-found");
     expect(screen.getByText("404")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "This page is not here" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Return to portal" })).toHaveAttribute("href", "/");
     expect(container.querySelectorAll(".system-status-page__panel")).toHaveLength(1);
   });
 
-  it("uses the same scene and a single retry action for a server error", () => {
+  it("uses the error-specific scene and a single retry action for a server error", () => {
     const onClick = vi.fn();
     renderStatus("error", onClick);
 
-    expect(screen.getByTestId("scene")).toHaveAttribute("data-variant", "status");
+    expect(screen.getByTestId("scene")).toHaveAttribute("data-variant", "status-error");
     expect(screen.getByText("500")).toBeInTheDocument();
     screen.getByRole("button", { name: "Retry" }).click();
     expect(onClick).toHaveBeenCalledOnce();
@@ -50,6 +50,7 @@ describe("SystemStatusPage", () => {
   ] as const)("renders the %s status as a focused full-scene recovery flow", (kind, code, title, actionRole) => {
     renderStatus(kind);
 
+    expect(screen.getByTestId("scene")).toHaveAttribute("data-variant", `status-${kind}`);
     expect(screen.getByText(code)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
     expect(screen.getByRole(actionRole, { name: actionRole === "link" ? "Return to portal" : "Retry" })).toBeInTheDocument();

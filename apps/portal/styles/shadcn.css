@@ -71,18 +71,27 @@
 }
 
 @layer components {
+  [data-slot="skeleton"] {
+    position: relative;
+    overflow: hidden;
+    background: var(--skeleton-fill);
+    box-shadow: inset 0 0 0 1px var(--skeleton-edge);
+  }
+
   [data-slot="button"] {
     position: relative;
   }
 
-  [data-slot="button"]::before {
-    content: "";
-    position: absolute;
-    inset-block-start: 50%;
-    inset-inline-start: 50%;
-    inline-size: max(100%, var(--control-hit-area));
-    block-size: max(100%, var(--control-hit-area));
-    transform: translate(-50%, -50%);
-    background: transparent;
+  @media (hover: none), (pointer: coarse) {
+    [data-slot="button"]::before {
+      content: "";
+      position: absolute;
+      inset-block-start: 50%;
+      inset-inline-start: 50%;
+      inline-size: max(100%, var(--control-hit-area));
+      block-size: max(100%, var(--control-hit-area));
+      transform: translate(-50%, -50%);
+      background: transparent;
+    }
   }
 }

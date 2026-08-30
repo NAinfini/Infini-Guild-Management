@@ -1,6 +1,7 @@
 import { Suspense, lazy, type FocusEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
+import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { UsersIcon } from "@portal/components/icons";
 import { Button } from "@portal/components/ui/button";
 import { Card, CardContent } from "@portal/components/ui/card";
@@ -8,6 +9,7 @@ import { Skeleton } from "@portal/components/ui/skeleton";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useRosterPageController } from "../../hooks/useRosterPageController";
 import { resolveMediaUrl } from "../../utils/media";
+import { buildVisiblePages } from "../../utils/pagination";
 import { PageLayout } from "../layout/PageLayout";
 import { EmptyState } from "../shared/EmptyState";
 import { RosterFilterCard } from "../feature/roster/RosterFilterCard";
@@ -26,9 +28,7 @@ export function RosterPage() {
 
   useLoadWarningToast(controller.usersQuery.isError, t("common:loadErrorRetry"));
 
-  const { sortedRows, visibleCount, setVisibleCount, debouncedSearch, classFilter, sortMode } = controller;
-  const shouldVirtualize = sortedRows.length > 50;
-  const renderedRows = shouldVirtualize ? sortedRows : sortedRows.slice(0, visibleCount);
+  const { sortedRows, pageRows, currentPage, pageCount, debouncedSearch, classFilter, sortMode } = controller;
   const rosterUnavailable = controller.usersQuery.isError && sortedRows.length === 0;
 
   const handleCardFocus = (entry: RosterEntry) => {
@@ -57,7 +57,7 @@ export function RosterPage() {
             onAudioMutedChange={controller.setAudioMutedState}
             audioVolume={controller.audioVolume}
             onAudioVolumeChange={controller.setAudioVolumeState}
-            renderedCount={renderedRows.length}
+            renderedCount={pageRows.length}
             totalCount={sortedRows.length}
           />
         )}
@@ -110,8 +110,8 @@ export function RosterPage() {
 
           {sortedRows.length > 0 ? (
             <RosterGrid
-              rows={renderedRows}
-              shouldVirtualize={shouldVirtualize}
+              key={currentPage}
+              rows={pageRows}
               ariaLabel={t("grid.aria")}
               onCardClick={controller.openMemberProfile}
               onCardMouseEnter={controller.playHoverAudio}
@@ -121,10 +121,44 @@ export function RosterPage() {
             />
           ) : null}
 
-          {!shouldVirtualize && sortedRows.length > renderedRows.length ? (
-            <div className="roster-load-more">
-              <Button variant="default" onClick={() => setVisibleCount((count) => count + 20)}>{t("action.loadMore")}</Button>
-            </div>
+          {pageCount > 1 ? (
+            <nav className="roster-pagination" aria-label={t("common:pagination.page")}>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t("common:pagination.prev")}
+                disabled={currentPage === 1}
+                onClick={() => controller.setPage(currentPage - 1)}
+              >
+                <IconChevronLeft aria-hidden />
+              </Button>
+              {buildVisiblePages(currentPage, pageCount).map((page, index) => page === "ellipsis" ? (
+                <span key={`ellipsis-${index}`} className="roster-pagination__ellipsis" aria-hidden>…</span>
+              ) : (
+                <Button
+                  key={page}
+                  type="button"
+                  size="icon-sm"
+                  variant={page === currentPage ? "secondary" : "ghost"}
+                  aria-label={t("common:pagination.goToPage", { page })}
+                  aria-current={page === currentPage ? "page" : undefined}
+                  onClick={() => controller.setPage(page)}
+                >
+                  {page}
+                </Button>
+              ))}
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t("common:pagination.next")}
+                disabled={currentPage === pageCount}
+                onClick={() => controller.setPage(currentPage + 1)}
+              >
+                <IconChevronRight aria-hidden />
+              </Button>
+            </nav>
           ) : null}
         </div>
       </PageLayout>

@@ -7,8 +7,8 @@ export function fetchAnnouncements(params: {
   page?: number;
   limit?: number;
   status?: string;
+  category?: AnnouncementSummary["category"];
   pinned?: boolean;
-  archived?: boolean;
   search?: string;
   sort?: AnnouncementSort;
 }): Promise<PaginatedResponse<AnnouncementSummary>> {
@@ -17,11 +17,15 @@ export function fetchAnnouncements(params: {
   query.set("limit", String(params.limit ?? LIMITS.pagination.announcements));
   query.set("sort", params.sort ?? "updated_desc");
   if (params.status) query.set("status", params.status);
+  if (params.category) query.set("category", params.category);
   if (params.pinned !== undefined) query.set("pinned", String(params.pinned));
-  if (params.archived !== undefined) query.set("archived", String(params.archived));
   if (params.search) query.set("search", params.search);
 
-  return apiRequest<PaginatedResponse<Announcement>>(`/api/announcements?${query.toString()}`);
+  return apiRequest<PaginatedResponse<AnnouncementSummary>>(`/api/announcements?${query.toString()}`);
+}
+
+export function recordAnnouncementView(id: string): Promise<{ view_count: number }> {
+  return apiRequest<{ view_count: number }>(`/api/announcements/${id}/view`, { method: "POST" });
 }
 
 export function fetchAnnouncement(id: string): Promise<Announcement> {

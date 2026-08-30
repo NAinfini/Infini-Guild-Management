@@ -68,6 +68,7 @@ export const auditArchives = sqliteTable(
       .on(table.status)
       .where(sql`${table.status} = 'pending'`),
     index("idx_audit_archives_month_ready").on(table.month, table.status, table.createdAt, table.id),
+    index("idx_audit_archives_retention").on(table.status, table.completedAt, table.id),
     check("audit_archives_id_present", sql`length(trim(${table.id})) BETWEEN 1 AND 64`),
     check("audit_archives_month_valid", sql`${table.month} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'`),
     check("audit_archives_status_valid", sql`${table.status} IN ('pending', 'ready')`),

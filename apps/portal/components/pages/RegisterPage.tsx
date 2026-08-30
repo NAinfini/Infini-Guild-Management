@@ -1,4 +1,5 @@
-import { registerSchema } from "@guild/shared";
+import { inviteCodeSchema, registerSchema } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
@@ -18,6 +19,8 @@ import {
 } from "../../services/AuthService";
 import { transitionSession } from "../../session-transition";
 import { AuthPageFrame } from "./AuthPageFrame";
+import { PasswordRequirements } from "../shared/PasswordRequirements";
+import { newPasswordValidationKey } from "../../utils/password-validation";
 import "./AuthPages.css";
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -58,6 +61,11 @@ function parseValidationFieldErrors(details: unknown): FieldErrorMap {
     }
   }
   return mapped;
+}
+
+function parseInviteCodeInput(value: string): string {
+  const parsed = inviteCodeSchema.safeParse(value.trim().toUpperCase());
+  return parsed.success ? parsed.data : "";
 }
 
 export function RegisterPage() {
@@ -128,12 +136,12 @@ export function RegisterPage() {
   });
 
   const submitInviteCode = () => {
-    const trimmed = inviteCodeDraft.trim();
-    if (!trimmed) {
+    const code = parseInviteCodeInput(inviteCodeDraft);
+    if (!code) {
       setInviteCodeError(t("validation.inviteCodeRequired"));
       return;
     }
-    setTypedInviteCode(trimmed);
+    setTypedInviteCode(code);
   };
 
   const onSubmit = (values: RegisterFormValues) => {
@@ -144,14 +152,19 @@ export function RegisterPage() {
 
   const loginNameError = errors.login_name?.message ?? apiFieldErrors.login_name;
   const displayNameError = errors.display_name?.message ?? apiFieldErrors.display_name;
-  const passwordError = errors.password?.message ?? apiFieldErrors.password;
-  const confirmPasswordError = errors.confirmPassword?.message ?? apiFieldErrors.confirmPassword;
+  const passwordErrorKey = newPasswordValidationKey(passwordValue);
+  const passwordError = errors.password && passwordErrorKey
+    ? t(passwordErrorKey, LIMITS.content.password)
+    : apiFieldErrors.password;
+  const confirmPasswordError = errors.confirmPassword && confirmPasswordValue !== passwordValue
+    ? t("validation.passwordMismatch")
+    : apiFieldErrors.confirmPassword;
 
   return (
     <AuthPageFrame mode="register">
       {inviteCode.length === 0 ? (
         <div className="login-page__form-stack">
-          <p className="login-page__form-description">{t("register.enterCode.hint")}</p>
+          <p className="login-page__form-description">{t("register.enterInviteCode.hint")}</p>
           <div className={`login-floating-field${inviteCodeDraft.length > 0 ? " login-floating-field--filled" : ""}`}>
             <div className="login-floating-root">
               <Input
@@ -160,8 +173,10 @@ export function RegisterPage() {
                 className="login-floating-input"
                 aria-invalid={Boolean(inviteCodeError)}
                 aria-describedby={inviteCodeError ? "invite-code-error" : undefined}
+                maxLength={10}
+                autoCapitalize="characters"
                 onChange={(event) => {
-                  setInviteCodeDraft(event.currentTarget.value);
+                  setInviteCodeDraft(event.currentTarget.value.toUpperCase());
                   setInviteCodeError(null);
                 }}
                 onKeyDown={(event) => {
@@ -253,72 +268,79 @@ export function RegisterPage() {
                 {displayNameError ? <p id="register-display-name-error" className="login-page__field-error">{displayNameError}</p> : null}
               </div>
 
-              <div
-                className={`login-floating-field${passwordValue.length > 0 ? " login-floating-field--filled" : ""}`}
-                onClickCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
-                onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
-                onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
-              >
-                <div className="login-floating-root login-page__password-control">
-                  <Input
-                    id="register-password"
-                    type={showPassword ? "text" : "password"}
-                    value={passwordValue}
-                    onChange={(event) => setValue("password", event.currentTarget.value)}
-                    className="login-floating-input login-page__password-input"
-                    aria-invalid={Boolean(passwordError)}
-                    aria-describedby={passwordError ? "register-password-error" : undefined}
-                    autoComplete="new-password"
-                  />
-                  <label className="login-floating-label" htmlFor="register-password">{t("field.password")}</label>
-                  <div className="login-page__password-actions">
-                    {isCapsLockOn ? <KeyboardIcon size={18} className="login-page__caps-icon" aria-hidden="true" /> : null}
-                    <button
-                      type="button"
-                      className="login-page__eye-btn"
-                      onClick={() => setShowPassword((visible) => !visible)}
-                      aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
-                      aria-pressed={showPassword}
+              <div className="password-setup">
+                <div className="password-setup__layout">
+                  <div className="password-setup__fields">
+                    <div
+                      className={`login-floating-field${passwordValue.length > 0 ? " login-floating-field--filled" : ""}`}
+                      onClickCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+                      onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+                      onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
                     >
-                      {showPassword ? <EyeOffIcon size={18} aria-hidden="true" /> : <EyeIcon size={18} aria-hidden="true" />}
-                    </button>
-                  </div>
-                </div>
-                {passwordError ? <p id="register-password-error" className="login-page__field-error">{passwordError}</p> : null}
-              </div>
+                      <div className="login-floating-root login-page__password-control">
+                        <Input
+                          id="register-password"
+                          type={showPassword ? "text" : "password"}
+                          value={passwordValue}
+                          onChange={(event) => setValue("password", event.currentTarget.value)}
+                          className="login-floating-input login-page__password-input"
+                          aria-invalid={Boolean(passwordError)}
+                          aria-describedby={`register-password-requirements${passwordError ? " register-password-error" : ""}`}
+                          autoComplete="new-password"
+                        />
+                        <label className="login-floating-label" htmlFor="register-password">{t("field.password")}</label>
+                        <div className="login-page__password-actions">
+                          {isCapsLockOn ? <KeyboardIcon size={18} className="login-page__caps-icon" aria-hidden="true" /> : null}
+                          <button
+                            type="button"
+                            className="login-page__eye-btn"
+                            onClick={() => setShowPassword((visible) => !visible)}
+                            aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
+                            aria-pressed={showPassword}
+                          >
+                            {showPassword ? <EyeOffIcon size={18} aria-hidden="true" /> : <EyeIcon size={18} aria-hidden="true" />}
+                          </button>
+                        </div>
+                      </div>
+                      {passwordError ? <p id="register-password-error" className="login-page__field-error">{passwordError}</p> : null}
+                    </div>
 
-              <div
-                className={`login-floating-field${confirmPasswordValue.length > 0 ? " login-floating-field--filled" : ""}`}
-                onClickCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
-                onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
-                onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
-              >
-                <div className="login-floating-root login-page__password-control">
-                  <Input
-                    id="register-confirm-password"
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={confirmPasswordValue}
-                    onChange={(event) => setValue("confirmPassword", event.currentTarget.value)}
-                    className="login-floating-input login-page__password-input"
-                    aria-invalid={Boolean(confirmPasswordError)}
-                    aria-describedby={confirmPasswordError ? "register-confirm-password-error" : undefined}
-                    autoComplete="new-password"
-                  />
-                  <label className="login-floating-label" htmlFor="register-confirm-password">{t("field.confirmPassword")}</label>
-                  <div className="login-page__password-actions">
-                    {isCapsLockOn ? <KeyboardIcon size={18} className="login-page__caps-icon" aria-hidden="true" /> : null}
-                    <button
-                      type="button"
-                      className="login-page__eye-btn"
-                      onClick={() => setShowConfirmPassword((visible) => !visible)}
-                      aria-label={showConfirmPassword ? t("aria.hideConfirmPassword") : t("aria.showConfirmPassword")}
-                      aria-pressed={showConfirmPassword}
+                    <div
+                      className={`login-floating-field${confirmPasswordValue.length > 0 ? " login-floating-field--filled" : ""}`}
+                      onClickCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+                      onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+                      onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
                     >
-                      {showConfirmPassword ? <EyeOffIcon size={18} aria-hidden="true" /> : <EyeIcon size={18} aria-hidden="true" />}
-                    </button>
+                      <div className="login-floating-root login-page__password-control">
+                        <Input
+                          id="register-confirm-password"
+                          type={showConfirmPassword ? "text" : "password"}
+                          value={confirmPasswordValue}
+                          onChange={(event) => setValue("confirmPassword", event.currentTarget.value)}
+                          className="login-floating-input login-page__password-input"
+                          aria-invalid={Boolean(confirmPasswordError)}
+                          aria-describedby={confirmPasswordError ? "register-confirm-password-error" : undefined}
+                          autoComplete="new-password"
+                        />
+                        <label className="login-floating-label" htmlFor="register-confirm-password">{t("field.confirmPassword")}</label>
+                        <div className="login-page__password-actions">
+                          {isCapsLockOn ? <KeyboardIcon size={18} className="login-page__caps-icon" aria-hidden="true" /> : null}
+                          <button
+                            type="button"
+                            className="login-page__eye-btn"
+                            onClick={() => setShowConfirmPassword((visible) => !visible)}
+                            aria-label={showConfirmPassword ? t("aria.hideConfirmPassword") : t("aria.showConfirmPassword")}
+                            aria-pressed={showConfirmPassword}
+                          >
+                            {showConfirmPassword ? <EyeOffIcon size={18} aria-hidden="true" /> : <EyeIcon size={18} aria-hidden="true" />}
+                          </button>
+                        </div>
+                      </div>
+                      {confirmPasswordError ? <p id="register-confirm-password-error" className="login-page__field-error">{confirmPasswordError}</p> : null}
+                    </div>
                   </div>
+                  <PasswordRequirements id="register-password-requirements" password={passwordValue} confirmation={confirmPasswordValue} />
                 </div>
-                {confirmPasswordError ? <p id="register-confirm-password-error" className="login-page__field-error">{confirmPasswordError}</p> : null}
               </div>
 
               {isCapsLockOn ? (

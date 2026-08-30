@@ -7,7 +7,6 @@ import { useGuildWarData } from "./useGuildWarData";
 
 const mocks = vi.hoisted(() => ({
   fetchEventsList: vi.fn(),
-  fetchEventDetail: vi.fn(),
   fetchGuildWarActive: vi.fn(),
   fetchGuildWarConcludedEventIds: vi.fn(),
   fetchGuildWarHistory: vi.fn(),
@@ -16,7 +15,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../services/EventService", () => ({
   fetchEventsList: mocks.fetchEventsList,
-  fetchEventDetail: mocks.fetchEventDetail,
 }));
 
 vi.mock("../../services/GuildWarService", () => ({
@@ -70,9 +68,10 @@ function createWrapper() {
   };
 }
 
-function renderData(selectedEventId: string | undefined) {
+function renderData(selectedEventId: string | undefined, tab: "active" | "history" | "analytics" = "active") {
   return renderHook(
     () => useGuildWarData({
+      tab,
       selectedEventId,
       selectedHistoryId: null,
       historyDateFrom: "",
@@ -105,10 +104,6 @@ describe("useGuildWarData active event eligibility", () => {
       limit: 20,
       total_pages: 0,
     });
-    mocks.fetchEventDetail.mockResolvedValue({
-      ...archivedEvent,
-      participants: [],
-    });
     mocks.fetchGuildWarActive.mockResolvedValue({
       event: archivedEvent,
       teams: [],
@@ -117,7 +112,7 @@ describe("useGuildWarData active event eligibility", () => {
     });
   });
 
-  it("excludes an archived persisted selection before detail or active-war queries run", async () => {
+  it("excludes an archived persisted selection before active-war queries run", async () => {
     const { result } = renderData("archived-war");
 
     await waitFor(() => {
@@ -131,15 +126,10 @@ describe("useGuildWarData active event eligibility", () => {
     }));
     expect(result.current.eligibleWarEvents.map((item) => item.id)).toEqual(["live-war"]);
     expect(result.current.activeSelectedEventId).toBeUndefined();
-    expect(mocks.fetchEventDetail).not.toHaveBeenCalled();
     expect(mocks.fetchGuildWarActive).not.toHaveBeenCalled();
   });
 
   it("allows active non-concluded events through to the active query", async () => {
-    mocks.fetchEventDetail.mockResolvedValue({
-      ...liveEvent,
-      participants: [],
-    });
     mocks.fetchGuildWarActive.mockResolvedValue({
       event: liveEvent,
       teams: [],
@@ -153,5 +143,106 @@ describe("useGuildWarData active event eligibility", () => {
       expect(result.current.activeSelectedEventId).toBe("live-war");
       expect(mocks.fetchGuildWarActive).toHaveBeenCalledWith("live-war");
     });
+  });
+
+  it("does not expose the previous history result after filters change", async () => {
+    let resolveFilteredHistory!: (value: {
+      data: [];
+      total: number;
+      page: number;
+      limit: number;
+      total_pages: number;
+    }) => void;
+    mocks.fetchGuildWarHistory
+      .mockResolvedValueOnce({
+        data: [{
+          id: "history-old",
+          war_name: "Old war",
+          enemy_name: null,
+          result: "win",
+          created_at: "2026-07-01T00:00:00.000Z",
+          own_stats: null,
+          enemy_stats: null,
+        }],
+        total: 1,
+        page: 1,
+        limit: 20,
+        total_pages: 1,
+      })
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFilteredHistory = resolve;
+      }));
+    const { result, rerender } = renderHook(
+      ({ search }: { search: string }) => useGuildWarData({
+        tab: "history",
+        selectedEventId: undefined,
+        selectedHistoryId: null,
+        historyDateFrom: "",
+        historyDateTo: "",
+        historySearch: search,
+        historyPage: 1,
+        historyPerPage: 20,
+      }),
+      { initialProps: { search: "" }, wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.historyQuery.data?.data[0]?.id).toBe("history-old"));
+    rerender({ search: "new war" });
+
+    expect(result.current.historyQuery.data).toBeUndefined();
+    expect(result.current.historyQuery.isLoading).toBe(true);
+
+    resolveFilteredHistory({ data: [], total: 0, page: 1, limit: 20, total_pages: 0 });
+    await waitFor(() => expect(result.current.historyQuery.isSuccess).toBe(true));
+  });
+
+  it("loads only the history data needed by the current tab", async () => {
+    mocks.fetchGuildWarHistoryDetail.mockResolvedValue({ id: "history-1" });
+    const { result } = renderHook(
+      () => useGuildWarData({
+        tab: "history",
+        selectedEventId: "live-war",
+        selectedHistoryId: "history-1",
+        historyDateFrom: "",
+        historyDateTo: "",
+        historySearch: "",
+        historyPage: 1,
+        historyPerPage: 20,
+      }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.historyQuery.isSuccess).toBe(true);
+      expect(result.current.historyDetailQuery.isSuccess).toBe(true);
+    });
+
+    expect(mocks.fetchEventsList).not.toHaveBeenCalled();
+    expect(mocks.fetchGuildWarConcludedEventIds).not.toHaveBeenCalled();
+    expect(mocks.fetchGuildWarActive).not.toHaveBeenCalled();
+    expect(mocks.fetchGuildWarHistoryDetail).toHaveBeenCalledWith("history-1");
+  });
+
+  it("does not load a history detail for analytics", async () => {
+    const { result } = renderHook(
+      () => useGuildWarData({
+        tab: "analytics",
+        selectedEventId: "live-war",
+        selectedHistoryId: "history-1",
+        historyDateFrom: "",
+        historyDateTo: "",
+        historySearch: "",
+        historyPage: 1,
+        historyPerPage: 20,
+      }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.historyQuery.isSuccess).toBe(true));
+
+    expect(mocks.fetchEventsList).not.toHaveBeenCalled();
+    expect(mocks.fetchGuildWarConcludedEventIds).not.toHaveBeenCalled();
+    expect(mocks.fetchGuildWarActive).not.toHaveBeenCalled();
+    expect(mocks.fetchGuildWarHistoryDetail).not.toHaveBeenCalled();
   });
 });

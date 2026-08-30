@@ -58,6 +58,19 @@ function loadLeaves(locale: string, file: string): Record<string, unknown> {
   return flattenLeaves(parsed);
 }
 
+function duplicateTopLevelKeys(source: string): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const line of source.split(/\r?\n/)) {
+    const match = /^\s*"((?:\\.|[^"\\])*)"\s*:/.exec(line);
+    if (!match) continue;
+    const key = JSON.parse(`"${match[1]}"`) as string;
+    if (seen.has(key)) duplicates.add(key);
+    seen.add(key);
+  }
+  return [...duplicates].sort();
+}
+
 function interpolationVariables(value: string): string[] {
   const variables = new Set<string>();
   for (const match of value.matchAll(/{{\s*([^{}\s]+)\s*}}/g)) variables.add(match[1]!);
@@ -76,6 +89,13 @@ describe("i18n locale parity (en ↔ zh)", () => {
     for (const locale of LOCALES) {
       const files = readdirSync(join(I18N_ROOT, locale)).filter((file) => file.endsWith(".json")).sort();
       expect(files, `${locale} namespace files`).toEqual([...NAMESPACE_FILES]);
+    }
+  });
+
+  it.each(NAMESPACE_FILES)("does not silently overwrite duplicate keys in %s", (file) => {
+    for (const locale of LOCALES) {
+      const source = readFileSync(join(I18N_ROOT, locale, file), "utf8");
+      expect(duplicateTopLevelKeys(source), `${locale} duplicate keys in ${file}`).toEqual([]);
     }
   });
 

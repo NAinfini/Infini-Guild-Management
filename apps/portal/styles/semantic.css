@@ -257,6 +257,11 @@
   --meter-fill: var(--accent-on-surface);
   --meter-track: var(--surface-sunken);
 
+  /* Loading placeholders use the recess level from the page-state contract. A small
+   * text mix keeps that recess legible on both the page field and raised cards. */
+  --skeleton-fill: color-mix(in srgb, var(--text-primary) 5%, var(--surface-sunken));
+  --skeleton-edge: color-mix(in srgb, var(--text-primary) 5%, transparent);
+
   /* ── Secondary brand accent（与模式、与 accent 选择都无关）──
    *
    * tokens.css 的 --palette-bronze-warm 不随 [data-theme] 或 [data-accent]
@@ -292,6 +297,15 @@
 
   /* Search highlights are mode-independent; L1 owns hue and L2 owns alpha. */
   --highlight-search: color-mix(in srgb, var(--palette-highlight-search) 35%, transparent);
+
+  /* Text and controls placed over arbitrary user media need one theme-independent
+   * contrast contract. Components consume these L2 roles, never fixed colour literals. */
+  --media-scrim: color-mix(in srgb, var(--palette-neutral-950) 48%, transparent);
+  --media-scrim-strong: color-mix(in srgb, var(--palette-neutral-950) 82%, transparent);
+  --media-badge-surface: color-mix(in srgb, var(--palette-neutral-950) 76%, transparent);
+  --media-text: var(--palette-neutral-0);
+  --media-text-muted: color-mix(in srgb, var(--palette-neutral-0) 74%, transparent);
+  --media-border: color-mix(in srgb, var(--palette-neutral-0) 24%, transparent);
   --highlight-search-active: color-mix(in srgb, var(--palette-highlight-search-active) 55%, transparent);
 }
 

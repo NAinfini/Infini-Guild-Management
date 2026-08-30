@@ -1,6 +1,4 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GuildWarAnalyticsController } from "@portal/hooks/guild-war/useGuildWarAnalytics";
 import { buildEChartsTheme } from "@portal/theme/echarts";
@@ -87,13 +85,18 @@ function createAnalytics(
     setAnalyticsHeatmapEnabled: vi.fn(),
     modifierWeights: {},
     setModifierWeights: vi.fn(),
+    modifierWeightsDirty: false,
+    modifierWeightsValid: true,
+    saveModifierWeights: vi.fn(),
+    saveModifierWeightsPending: false,
     referenceDuration: 30,
     analyticsWarOptions: [{ value: "war-1", label: "War 1" }],
     analyticsSelectableUserIds: selectableUserIds,
     analyticsUserIdToUsername: new Map(selectableUserIds.map((id) => [id, id])),
+    analyticsUserIdToAvatarMediaId: new Map(),
     analyticsTeamOptions: [],
     analyticsMetricLabel: vi.fn(),
-    analyticsWarSummary: { counts: new Map(), winRate: null },
+    analyticsWarSummary: { counts: new Map(), decided: 0, winRate: null },
     analyticsChartOption: {},
     analyticsRadarOption: null,
     analyticsTableRows: [],
@@ -113,14 +116,19 @@ function createAnalytics(
   } as GuildWarAnalyticsController;
 }
 
-function renderAnalyticsTab(analytics: GuildWarAnalyticsController) {
+function renderAnalyticsTab(
+  analytics: GuildWarAnalyticsController,
+  onRetry = vi.fn(),
+  canManageWeights = false,
+) {
   return render(
     <GuildWarAnalyticsTab
       analytics={analytics}
       chartThemeName="test-theme"
       chartThemeConfig={buildEChartsTheme("light")}
       loadErrorMessage="load error"
-      canManageWeights={false}
+      onRetry={onRetry}
+      canManageWeights={canManageWeights}
     />,
   );
 }
@@ -150,6 +158,65 @@ describe("GuildWarAnalyticsTab", () => {
     );
   });
 
+  it("renders an error empty state with retry when analytics has no cached result", () => {
+    const onRetry = vi.fn();
+    renderAnalyticsTab(createAnalytics({
+      analyticsQuery: { isLoading: false, isFetching: false, isError: true, data: undefined } as unknown as GuildWarAnalyticsController["analyticsQuery"],
+      analyticsDetailsQuery: { isLoading: false, isFetching: false, isError: true, data: undefined } as unknown as GuildWarAnalyticsController["analyticsDetailsQuery"],
+    }), onRetry);
+
+    expect(screen.getByText("load error")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "common:action.retry" }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it("keeps cached analytics visible and offers retry when refresh fails", () => {
+    const onRetry = vi.fn();
+    renderAnalyticsTab(createAnalytics({
+      analyticsMode: "wars",
+      analyticsTableRows: [{ key: "war-1" }],
+      analyticsWarSummary: {
+        counts: new Map([["win", 1]]),
+        decided: 1,
+        winRate: 100,
+      },
+      analyticsQuery: { isLoading: false, isFetching: false, isError: true, data: {} } as unknown as GuildWarAnalyticsController["analyticsQuery"],
+      analyticsDetailsQuery: { isLoading: false, isFetching: false, isError: false, data: [] } as unknown as GuildWarAnalyticsController["analyticsDetailsQuery"],
+    }), onRetry);
+
+    expect(screen.getByTestId("analytics-chart")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "common:action.retry" }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it("treats an empty team filter as all available teams", () => {
+    renderAnalyticsTab(createAnalytics({
+      analyticsMode: "teams",
+      analyticsSelectedTeams: [],
+      analyticsTeamOptions: ["Vanguard", "Support"],
+    }));
+
+    expect(screen.getAllByText("analytics.chart.subject.teams:2")).not.toHaveLength(0);
+  });
+
+  it("enters radar mode with enough metrics to form a readable chart", () => {
+    const setAnalyticsMode = vi.fn();
+    const setAnalyticsSelectedMetrics = vi.fn();
+    renderAnalyticsTab(createAnalytics({
+      analyticsSelectedMetrics: ["damage"],
+      setAnalyticsMode,
+      setAnalyticsSelectedMetrics,
+    }));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "analytics.toolbar.mode.radar" }),
+    );
+
+    expect(setAnalyticsSelectedMetrics).toHaveBeenCalledOnce();
+    expect(setAnalyticsSelectedMetrics.mock.calls[0]?.[0]).toHaveLength(5);
+    expect(setAnalyticsMode).toHaveBeenCalledWith("radar");
+  });
+
   it("renders every analytics table row without asking the reader to expand it", () => {
     const rows = Array.from({ length: 21 }, (_, index) => ({
       key: `row-${index + 1}`,
@@ -163,25 +230,6 @@ describe("GuildWarAnalyticsTab", () => {
       screen.getByRole("button", { name: "analytics.table.title:21" }),
     ).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("Player 21")).toBeInTheDocument();
-  });
-
-  it("puts every control on one console rail instead of two facing sidebars", () => {
-    const { container } = renderAnalyticsTab(createAnalytics());
-
-    expect(container.querySelectorAll(".gwa-console")).toHaveLength(1);
-    const rail = container.querySelector(".gwa-console")!;
-    fireEvent.click(screen.getByRole("button", { name: /analytics\.toolbar\.warSet/ }));
-    expect(rail.querySelector('[aria-label="analytics.aria.selectWars"]')).not.toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /analytics\.console\.section\.members/ }),
-    );
-    expect(rail.querySelector('[aria-label="analytics.aria.selectMembers"]')).not.toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /analytics\.console\.section\.metric/ }),
-    );
-    expect(rail.querySelector('[aria-label="analytics.aria.selectMetrics"]')).not.toBeNull();
   });
 
   it("opens one console field at a time so the rail keeps a fixed height", () => {
@@ -207,21 +255,51 @@ describe("GuildWarAnalyticsTab", () => {
     expect(memberField).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("wraps narrow analytics choice controls instead of creating a horizontal scrollbar", () => {
-    const styles = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/GuildWarPage.css"),
-      "utf8",
-    );
-    const mobileStyles = styles.slice(styles.lastIndexOf("@media (max-width: 767px)"));
+  it("saves edited normalization weights only for an authorized manager", () => {
+    const saveModifierWeights = vi.fn();
+    const modifierWeights = {
+      kills: 0.31,
+      towers: 0.1,
+      base_hp: 0.15,
+      credits: 0.29,
+      distance: 0.15,
+    };
+    renderAnalyticsTab(createAnalytics({
+      analyticsNormEnabled: true,
+      modifierWeights,
+      modifierWeightsDirty: true,
+      modifierWeightsValid: true,
+      saveModifierWeights,
+    }), vi.fn(), true);
 
-    expect(mobileStyles).toMatch(
-      /\.gwa-toolbar__control-scroll\s*\{[^}]*overflow:\s*visible/,
-    );
-    expect(mobileStyles).toMatch(
-      /\.gwa-choice-group\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
-    );
-    expect(mobileStyles).toMatch(
-      /\.gwa-choice-group__option\s*\{[^}]*min-width:\s*0[^}]*white-space:\s*normal/,
-    );
+    fireEvent.click(screen.getByRole("button", { name: "analytics.normalization" }));
+    const save = screen.getByRole("button", { name: "analytics.normalization.save" });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    expect(saveModifierWeights).toHaveBeenCalledOnce();
   });
+
+  it("explains and blocks an all-zero normalization weight set", () => {
+    renderAnalyticsTab(createAnalytics({
+      analyticsNormEnabled: true,
+      modifierWeights: {
+        kills: 0,
+        towers: 0,
+        base_hp: 0,
+        credits: 0,
+        distance: 0,
+      },
+      modifierWeightsDirty: true,
+      modifierWeightsValid: false,
+    }), vi.fn(), true);
+
+    fireEvent.click(screen.getByRole("button", { name: "analytics.normalization" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "analytics.normalization.weightsRequired",
+    );
+    expect(
+      screen.getByRole("button", { name: "analytics.normalization.save" }),
+    ).toBeDisabled();
+  });
+
 });

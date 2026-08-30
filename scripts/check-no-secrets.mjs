@@ -16,7 +16,7 @@ const HIGH_CONFIDENCE_PATTERNS = [
 ];
 
 const ASSIGNMENT_PATTERN =
-  /\b(SIGNING_SECRET|IG_INVITE_TOKEN_SECRET|IG_AUDIT_DOWNLOAD_SECRET|IG_BOOTSTRAP_PASSWORD|api[_-]?key|api[_-]?token|client[_-]?secret|private[_-]?key|auth[_-]?token|access[_-]?token|secret[_-]?access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\r\n]{8,})["']/gi;
+  /\b(SIGNING_SECRET|IG_BOOTSTRAP_PASSWORD|api[_-]?key|api[_-]?token|client[_-]?secret|private[_-]?key|auth[_-]?token|access[_-]?token|secret[_-]?access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\r\n]{8,})["']/gi;
 
 const PLACEHOLDER_PATTERN =
   /^(?:test|fake|dummy|mock|example|placeholder|replace|your[_-]|change[_-]?me|not[-_ ]?a[-_ ]?real|development)/i;
@@ -49,7 +49,7 @@ export function isForbiddenTrackedFile(file) {
     /^\.dev\.vars(?:\.|$)/i.test(name) ||
     name === "wrangler.jsonc" ||
     /^(?:id_rsa|id_ed25519)/i.test(name) ||
-    /\.(?:pem|key|p12|pfx|jks|keystore|tfstate|kdbx|sqlite3?|db(?:-wal|-shm)?|dump)$/i.test(name) ||
+    /\.(?:pem|key|p12|pfx|jks|keystore|tfstate|kdbx|sqlite3?(?:-wal|-shm|-journal)?|db3?(?:-wal|-shm|-journal)?|dump)$/i.test(name) ||
     /^(?:credentials|secrets|service-account)\.json$/i.test(name)
   );
 }

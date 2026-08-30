@@ -1,6 +1,8 @@
 import { createRoot } from "react-dom/client";
 import { config as configureZod } from "zod";
 import { applySplashVisualTheme, dismissSplash } from "./splash";
+import { usePreferencesStore } from "./stores/preferences";
+import { ACTIVE_VISUAL_THEME } from "./visual/themes";
 import "./styles.css";
 
 configureZod({ jitless: true });
@@ -11,14 +13,12 @@ if (!rootElement) {
 }
 
 const root = createRoot(rootElement);
+const initialThemeMode = usePreferencesStore.getState().themeMode;
 
-void Promise.all([
-  import("./visual/themes").then(({ ACTIVE_VISUAL_THEME }) => {
-    applySplashVisualTheme(ACTIVE_VISUAL_THEME);
-  }),
-  import("./bootstrap"),
-])
-  .then(([, { mountApp }]) => {
+applySplashVisualTheme(ACTIVE_VISUAL_THEME, initialThemeMode);
+
+void import("./bootstrap")
+  .then(({ mountApp }) => {
     return mountApp(root);
   })
   .catch((error) => {

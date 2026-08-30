@@ -84,6 +84,7 @@ describe("StorageManagePage query states", () => {
         name: "Vault",
         description: null,
         created_at: "2026-08-04T00:00:00.000Z",
+        structure_revision: 0,
         categories: [],
       }],
     };

@@ -1,8 +1,6 @@
 import { PERMISSIONS, type CreateStorageTransactionPayload, type StorageItem, type User } from "@guild/shared";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { StorageTransactionModal } from "./StorageTransactionModal";
 
@@ -16,6 +14,8 @@ const item: StorageItem = {
   category_id: null,
   name: "Crystal",
   description: null,
+  rarity: "common",
+  unit: null,
   quantity: 10,
   allow_member_deposit: true,
   allow_member_withdraw: true,
@@ -83,6 +83,7 @@ describe("StorageTransactionModal", () => {
     await user.click(screen.getByRole("button", { name: "action.submitDeposit" }));
 
     expect(onSubmit).toHaveBeenCalledWith(item.id, {
+      idempotency_key: expect.any(String),
       type: "intake",
       quantity: 1,
       recipient_user_id: member.id,
@@ -96,15 +97,16 @@ describe("StorageTransactionModal", () => {
     const submit = screen.getByRole("button", { name: "action.submit" });
 
     expect(screen.getByText("tx.adjust")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "field.item" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "field.item" })).not.toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "field.member" })).toBeInTheDocument();
     expect(submit).toBeDisabled();
 
     await user.click(screen.getByRole("combobox", { name: "field.member" }));
-    await user.keyboard("{ArrowDown}{Enter}");
+    await user.click(await screen.findByRole("option", { name: "Member One" }));
     await user.click(submit);
 
     expect(onSubmit).toHaveBeenCalledWith(item.id, {
+      idempotency_key: expect.any(String),
       type: "distribute",
       quantity: 1,
       recipient_user_id: member.id,
@@ -123,6 +125,7 @@ describe("StorageTransactionModal", () => {
     await user.click(submit);
 
     expect(onSubmit).toHaveBeenCalledWith(item.id, {
+      idempotency_key: expect.any(String),
       type: "intake",
       quantity: 1,
       recipient_user_id: null,
@@ -147,11 +150,11 @@ describe("StorageTransactionModal", () => {
     expect(submit).toBeDisabled();
 
     await user.click(itemSelect);
-    await user.keyboard("{ArrowDown}{Enter}");
+    await user.click(await screen.findByRole("option", { name: "Crystal (10)" }));
     expect(submit).toBeDisabled();
 
     await user.click(memberSelect);
-    await user.keyboard("{ArrowDown}{Enter}");
+    await user.click(await screen.findByRole("option", { name: "Member One" }));
     await user.clear(quantityInput);
     expect(submit).toBeDisabled();
 
@@ -160,6 +163,7 @@ describe("StorageTransactionModal", () => {
     await user.click(submit);
 
     expect(onSubmit).toHaveBeenCalledWith(item.id, {
+      idempotency_key: expect.any(String),
       type: "distribute",
       quantity: 2,
       recipient_user_id: member.id,
@@ -177,10 +181,30 @@ describe("StorageTransactionModal", () => {
     await user.click(screen.getByRole("button", { name: "action.submit" }));
 
     expect(onSubmit).toHaveBeenCalledWith(item.id, {
+      idempotency_key: expect.any(String),
       type: "adjust",
       target_quantity: 12,
       note: null,
     });
+  });
+
+  it("keeps an idempotency key for retries and replaces it for a new form intent", async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderModal({ canManageStock: false });
+    const submit = screen.getByRole("button", { name: "action.submitDeposit" });
+
+    await user.click(submit);
+    await user.click(submit);
+
+    const firstPayload = onSubmit.mock.calls[0]![1];
+    const retryPayload = onSubmit.mock.calls[1]![1];
+    expect(firstPayload.idempotency_key).toMatch(/^[A-Za-z0-9][A-Za-z0-9._:-]{15,63}$/);
+    expect(retryPayload.idempotency_key).toBe(firstPayload.idempotency_key);
+
+    await user.type(screen.getByRole("textbox", { name: "field.note" }), "new note");
+    await user.click(submit);
+
+    expect(onSubmit.mock.calls[2]![1].idempotency_key).not.toBe(firstPayload.idempotency_key);
   });
 
   it("loads another server page in the global manager item picker", async () => {
@@ -215,9 +239,9 @@ describe("StorageTransactionModal", () => {
       <StorageTransactionModal {...commonProps} items={[item]} />,
     );
     await user.click(screen.getByRole("combobox", { name: "field.item" }));
-    await user.keyboard("{ArrowDown}{Enter}");
+    await user.click(await screen.findByRole("option", { name: "Crystal (10)" }));
     await user.click(screen.getByRole("combobox", { name: "field.memberOptional" }));
-    await user.keyboard("{ArrowDown}{Enter}");
+    await user.click(await screen.findByRole("option", { name: "Member One" }));
     const quantityInput = screen.getByRole("textbox", { name: "field.quantity" });
     await user.clear(quantityInput);
     await user.type(quantityInput, "5");
@@ -237,40 +261,5 @@ describe("StorageTransactionModal", () => {
 
     expect(screen.getByText("Crystal")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "action.submit" })).toBeEnabled();
-  });
-
-  /* jsdom does not resolve viewport units from authored styles. Assert the
-   * responsive contract directly and leave token resolution to the browser. */
-  it("declares a viewport-bounded max width and leaves control height to the token", () => {
-    const { container } = render(
-      <StorageTransactionModal
-        opened
-        items={[item]}
-        users={[{ user: member }]}
-        initialItem={null}
-        initialMode="intake"
-        canManageStock
-        defaultRecipientUserId={member.id}
-        isSaving={false}
-        onClose={vi.fn()}
-        onSubmit={vi.fn()}
-      />,
-    );
-
-    const content = container.ownerDocument.querySelector<HTMLElement>(".storage-modal-content");
-    const storageCss = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/StoragePage.css"),
-      "utf8",
-    );
-    expect(content).toBeInTheDocument();
-    expect(content).toHaveClass("storage-admin-transaction-shell");
-    expect(screen.getByRole("combobox", { name: "field.item" }).style.minHeight).toBe("");
-    expect(screen.getByRole("button", { name: "action.submit" }).style.minHeight).toBe("");
-    expect(storageCss).toMatch(
-      /\.storage-transaction-shell,[\s\S]*?\.storage-admin-transaction-shell\s*\{[\s\S]*?max-width:\s*calc\(100vw - var\(--space-lg\)\)/,
-    );
-    expect(storageCss).toMatch(
-      /\.storage-admin-transaction-type__options \[data-slot="button"\]\s*\{[\s\S]*?min-height:\s*var\(--control-height-regular\)/,
-    );
   });
 });

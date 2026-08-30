@@ -46,11 +46,21 @@ export async function createEvent(payload: CreateEventPayload, files?: File[]): 
   });
 }
 
-export function updateEvent(eventId: string, payload: UpdateEventPayload): Promise<Event> {
+export async function updateEvent(eventId: string, payload: UpdateEventPayload, files?: File[]): Promise<Event> {
   const bodyJson = updateEventSchema.parse(payload);
+  if (!files || files.length === 0) {
+    return apiRequest<Event>(`/api/events/${eventId}`, {
+      method: "PATCH",
+      bodyJson,
+    });
+  }
+  const converted = await convertImagesForUpload(files);
+  const formData = new FormData();
+  formData.append("data", JSON.stringify(bodyJson));
+  appendImageUploadVariants(formData, converted);
   return apiRequest<Event>(`/api/events/${eventId}`, {
     method: "PATCH",
-    bodyJson,
+    body: formData,
   });
 }
 
@@ -66,11 +76,16 @@ export function deleteEvent(eventId: string): Promise<{ ok: true }> {
   });
 }
 
-export async function uploadEventImages(eventId: string, files: File[]): Promise<{ media_ids: string[] }> {
+export async function uploadEventImages(
+  eventId: string,
+  files: File[],
+  expectedUpdatedAt: string,
+): Promise<{ media_ids: string[]; updated_at: string }> {
   const converted = await convertImagesForUpload(files);
   const formData = new FormData();
+  formData.append("expected_updated_at", expectedUpdatedAt);
   appendImageUploadVariants(formData, converted);
-  return apiRequest<{ media_ids: string[] }>(`/api/events/${eventId}/images`, {
+  return apiRequest<{ media_ids: string[]; updated_at: string }>(`/api/events/${eventId}/images`, {
     method: "POST",
     body: formData,
   });
@@ -109,19 +124,45 @@ export function removeEventParticipants(eventId: string, userIds: string[]): Pro
 
 // ── Recurring Templates ──
 
-export function createTemplate(payload: CreateTemplatePayload): Promise<RecurringTemplate> {
+export function createTemplate(payload: CreateTemplatePayload, files?: File[]): Promise<RecurringTemplate> {
   const bodyJson = createTemplateSchema.parse(payload);
-  return apiRequest<RecurringTemplate>("/api/events/templates", {
-    method: "POST",
-    bodyJson,
+  if (!files || files.length === 0) {
+    return apiRequest<RecurringTemplate>("/api/events/templates", {
+      method: "POST",
+      bodyJson,
+    });
+  }
+  return convertImagesForUpload(files).then((converted) => {
+    const formData = new FormData();
+    formData.append("data", JSON.stringify(bodyJson));
+    appendImageUploadVariants(formData, converted);
+    return apiRequest<RecurringTemplate>("/api/events/templates", {
+      method: "POST",
+      body: formData,
+    });
   });
 }
 
-export function updateTemplate(templateId: string, payload: UpdateTemplatePayload): Promise<RecurringTemplate> {
+export function updateTemplate(
+  templateId: string,
+  payload: UpdateTemplatePayload,
+  files?: File[],
+): Promise<RecurringTemplate> {
   const bodyJson = updateTemplateSchema.parse(payload);
-  return apiRequest<RecurringTemplate>(`/api/events/templates/${templateId}`, {
-    method: "PATCH",
-    bodyJson,
+  if (!files || files.length === 0) {
+    return apiRequest<RecurringTemplate>(`/api/events/templates/${templateId}`, {
+      method: "PATCH",
+      bodyJson,
+    });
+  }
+  return convertImagesForUpload(files).then((converted) => {
+    const formData = new FormData();
+    formData.append("data", JSON.stringify(bodyJson));
+    appendImageUploadVariants(formData, converted);
+    return apiRequest<RecurringTemplate>(`/api/events/templates/${templateId}`, {
+      method: "PATCH",
+      body: formData,
+    });
   });
 }
 

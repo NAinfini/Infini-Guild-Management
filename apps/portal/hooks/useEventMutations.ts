@@ -20,13 +20,12 @@ import {
 import { notifyError, notifySuccess } from "../utils/notifications";
 import { useEventsParticipantMutations } from "./useEventsParticipantMutations";
 
-async function invalidateEventsAndDashboard(queryClient: QueryClient, eventId?: string) {
-  await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-  await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-  await queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.events() });
-  if (eventId) {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
-  }
+async function invalidateEventsAndDashboard(queryClient: QueryClient) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.events.all }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.events() }),
+  ]);
 }
 
 type UseEventActionsParams = {
@@ -83,8 +82,8 @@ export function useEventActions({
   const patchEventMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateEvent>[1] }) =>
       updateEvent(id, payload),
-    onSuccess: async (_, variables) => {
-      await invalidateEventsAndDashboard(queryClient, variables.id);
+    onSuccess: async () => {
+      await invalidateEventsAndDashboard(queryClient);
       notifySuccess(t("message.updated"));
     },
     onError: (error) => {
@@ -94,8 +93,8 @@ export function useEventActions({
 
   const archiveEventMutation = useMutation({
     mutationFn: (eventId: string) => archiveEvent(eventId),
-    onSuccess: async (_, eventId) => {
-      await invalidateEventsAndDashboard(queryClient, eventId);
+    onSuccess: async () => {
+      await invalidateEventsAndDashboard(queryClient);
       notifySuccess(t("message.archived"));
     },
     onError: (error) => {
@@ -104,9 +103,12 @@ export function useEventActions({
   });
 
   const unarchiveEventMutation = useMutation({
-    mutationFn: (eventId: string) => updateEvent(eventId, { archived_at: null }),
-    onSuccess: async (_, eventId) => {
-      await invalidateEventsAndDashboard(queryClient, eventId);
+    mutationFn: (event: Event) => updateEvent(event.id, {
+      archived_at: null,
+      expected_updated_at: event.updated_at,
+    }),
+    onSuccess: async () => {
+      await invalidateEventsAndDashboard(queryClient);
       notifySuccess(t("message.unarchived"));
     },
     onError: (error) => {
@@ -117,7 +119,7 @@ export function useEventActions({
   const deleteEventMutation = useMutation({
     mutationFn: (eventId: string) => deleteEvent(eventId),
     onSuccess: async (_, eventId) => {
-      await invalidateEventsAndDashboard(queryClient, eventId);
+      await invalidateEventsAndDashboard(queryClient);
       queryClient.removeQueries({ queryKey: queryKeys.events.detail(eventId) });
       notifySuccess(t("message.deleted"));
     },
@@ -128,9 +130,7 @@ export function useEventActions({
 
   const votePollMutation = useMutation({
     mutationFn: ({ eventId, optionIds }: { eventId: string; optionIds: string[] }) => votePoll(eventId, optionIds),
-    onSuccess: async (_, { eventId }) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.previewDetails() });
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
       notifySuccess(t("poll.message.voted"));
     },
@@ -141,11 +141,11 @@ export function useEventActions({
 
   const drawRaffleMutation = useMutation({
     mutationFn: (eventId: string) => drawRaffle(eventId),
-    onSuccess: async (_, eventId) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.previewDetails() });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.events.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
+      ]);
       notifySuccess(t("raffle.message.drawSuccess"));
     },
     onError: (error) => {
@@ -171,11 +171,17 @@ export function useEventActions({
   };
 
   const togglePinnedEvent = (event: Event) => {
-    patchEventMutation.mutate({ id: event.id, payload: { pinned: !event.pinned } });
+    patchEventMutation.mutate({
+      id: event.id,
+      payload: { pinned: !event.pinned, expected_updated_at: event.updated_at },
+    });
   };
 
   const toggleLockedEvent = (event: Event) => {
-    patchEventMutation.mutate({ id: event.id, payload: { signup_locked: !event.signup_locked } });
+    patchEventMutation.mutate({
+      id: event.id,
+      payload: { signup_locked: !event.signup_locked, expected_updated_at: event.updated_at },
+    });
   };
 
   const deleteEventWithConfirm = async (event: Event): Promise<boolean> => {
@@ -203,7 +209,7 @@ export function useEventActions({
     togglePinnedEvent,
     toggleLockedEvent,
     archiveEventById: (eventId: string) => archiveEventMutation.mutate(eventId),
-    unarchiveEventById: (eventId: string) => unarchiveEventMutation.mutate(eventId),
+    unarchiveEvent: (event: Event) => unarchiveEventMutation.mutate(event),
     deleteEventWithConfirm,
     votePoll: (eventId: string, optionIds: string[]) => votePollMutation.mutate({ eventId, optionIds }),
     drawRaffle: (eventId: string) => drawRaffleMutation.mutate(eventId),

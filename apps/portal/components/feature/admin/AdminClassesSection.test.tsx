@@ -119,6 +119,7 @@ describe("AdminClassesSection icon source", () => {
         vectorIcon: "shield",
         iconMode: "image",
         imageFile: null,
+        updatedAt: customImage.updated_at,
       },
     });
 
@@ -132,6 +133,25 @@ describe("AdminClassesSection drag-to-sort", () => {
   const withRows = {
     query: { data: CLASS_ROWS, isLoading: false, isError: false, refetch: vi.fn() },
   } as unknown as Partial<ReturnType<typeof useAdminClassesController>>;
+
+  it("keeps cached class rows visible after a failed refresh", async () => {
+    const user = userEvent.setup();
+    const refetch = vi.fn();
+    renderSection("vector", "light", {
+      query: {
+        data: CLASS_ROWS,
+        isLoading: false,
+        isError: true,
+        isFetching: false,
+        refetch,
+      } as unknown as ReturnType<typeof useAdminClassesController>["query"],
+    });
+
+    expect(screen.getByText("Warden")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("loadError");
+    await user.click(screen.getByRole("button", { name: "action.retry" }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
 
   it("keeps the drag handle in the row surface without nesting it in the edit button", async () => {
     const { openEdit } = renderSection("vector", "light", withRows);

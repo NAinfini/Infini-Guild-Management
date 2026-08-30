@@ -1,6 +1,7 @@
 import {
   MEDIA_CONTRACT,
   type AnnouncementAttachment,
+  type AnnouncementAttachmentContentType,
   type MediaEntityType,
   type MediaPurpose,
   type MediaType,
@@ -11,14 +12,15 @@ import { AppError, type BlobMetadata, type BlobRange, type BlobStore, type Reque
 import { nanoid } from "nanoid";
 import type { AuditEventWrite } from "../audit/public.js";
 import { validateAnnouncementAttachment, validateImagePair, validateOggOpus } from "./media-validation";
+import { contentReadScopes, type ContentReadScopes } from "../../content-read-scope.js";
 
 const STAGED_TTL_MS = 24 * 60 * 60 * 1_000;
-const MAX_GC_BATCH = 50;
+export const MEDIA_GARBAGE_COLLECTION_BATCH_SIZE = 10;
 
 export type MediaVariantReservation = Readonly<{
   variant: MediaVariant;
   objectKey: string;
-  contentType: "image/webp" | "audio/ogg" | "application/pdf" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  contentType: "image/webp" | "audio/ogg" | AnnouncementAttachmentContentType;
   byteSize: number;
   sha256: string;
   width: number | null;
@@ -45,18 +47,21 @@ export type MediaReadFacts = Readonly<{
   mediaType: MediaType;
   originalName: string | null;
   entityTypes: readonly MediaEntityType[];
+  contentReadable: boolean;
   audience: "public" | "authenticated" | "private";
 }>;
 
 export type MediaReadResult = Readonly<{
   object: NonNullable<Awaited<ReturnType<BlobStore["get"]>>>;
   audience: MediaReadFacts["audience"];
+  entityTypes: MediaReadFacts["entityTypes"];
   downloadName?: string;
 }>;
 
 export type MediaHeadResult = Readonly<{
   metadata: BlobMetadata;
   audience: MediaReadFacts["audience"];
+  entityTypes: MediaReadFacts["entityTypes"];
   downloadName?: string;
 }>;
 
@@ -81,10 +86,15 @@ export type ClaimedMediaDeletion = Readonly<{
 export type MediaGarbageCollectionAuditFactory = (mediaId: string) => AuditEventWrite;
 
 export interface MediaStore {
-  reserveUploads(inputs: readonly MediaReservation[]): Promise<void>;
+  reserveUploads(inputs: readonly MediaReservation[], requestId: string): Promise<void>;
   markStaged(mediaIds: readonly string[], stagedAt: string): Promise<void>;
   markDeleting(mediaIds: readonly string[], at: string): Promise<void>;
-  describeRead(mediaId: string, variant: MediaVariant, now: string): Promise<MediaReadFacts | null>;
+  describeRead(
+    mediaId: string,
+    variant: MediaVariant,
+    now: string,
+    scopes: ContentReadScopes,
+  ): Promise<MediaReadFacts | null>;
   claimGarbage(before: string, limit: number): Promise<readonly ClaimedMediaDeletion[]>;
   inspectGarbageBacklog(before: string): Promise<ScheduledJobBacklog>;
   finalizeDeletion(mediaId: string, claimToken: string, audit: AuditEventWrite): Promise<void>;
@@ -205,7 +215,7 @@ export class MediaService {
         createdAt: context.now,
         variants: [{
           variant: "full",
-          objectKey: `media/${mediaId}/full.${attachment.extension}`,
+          objectKey: `media/${mediaId}/full.${attachment.objectExtension}`,
           contentType: attachment.contentType,
           byteSize: upload.bytes.byteLength,
           sha256: await sha256(upload.bytes),
@@ -229,7 +239,7 @@ export class MediaService {
     variant: MediaVariant,
     requestedRange?: MediaRangeRequest,
   ): Promise<MediaReadResult> {
-    const facts = await this.store.describeRead(mediaId, variant, context.now);
+    const facts = await this.store.describeRead(mediaId, variant, context.now, contentReadScopes(context));
     if (!facts) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Media not found" });
     assertCanRead(context, facts);
     const range = requestedRange ? resolveRange(requestedRange, facts.byteSize) : undefined;
@@ -242,6 +252,7 @@ export class MediaService {
     return {
       object,
       audience: facts.audience,
+      entityTypes: facts.entityTypes,
       ...(facts.mediaType === "file" && facts.originalName ? { downloadName: facts.originalName } : {}),
     };
   }
@@ -251,7 +262,7 @@ export class MediaService {
     mediaId: string,
     variant: MediaVariant,
   ): Promise<MediaHeadResult> {
-    const facts = await this.store.describeRead(mediaId, variant, context.now);
+    const facts = await this.store.describeRead(mediaId, variant, context.now, contentReadScopes(context));
     if (!facts) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Media not found" });
     assertCanRead(context, facts);
     const metadata = await this.blobs.head(facts.objectKey);
@@ -260,6 +271,7 @@ export class MediaService {
     return {
       metadata,
       audience: facts.audience,
+      entityTypes: facts.entityTypes,
       ...(facts.mediaType === "file" && facts.originalName ? { downloadName: facts.originalName } : {}),
     };
   }
@@ -269,7 +281,7 @@ export class MediaService {
     before: string,
     createAudit: MediaGarbageCollectionAuditFactory,
   ): Promise<Readonly<{ deleted: number }>> {
-    const claims = await this.store.claimGarbage(before, MAX_GC_BATCH);
+    const claims = await this.store.claimGarbage(before, MEDIA_GARBAGE_COLLECTION_BATCH_SIZE);
     let deleted = 0;
     const failures: Array<Readonly<{ mediaId: string; error: unknown }>> = [];
     for (const claim of claims) {
@@ -303,7 +315,7 @@ export class MediaService {
     pending: readonly PendingUpload[],
   ): Promise<void> {
     const reservations = pending.map(({ reservation }) => reservation);
-    await this.store.reserveUploads(reservations);
+    await this.store.reserveUploads(reservations, context.requestId);
     try {
       for (const { reservation, data } of pending) {
         for (const variant of reservation.variants) {
@@ -376,23 +388,14 @@ function assertCanRead(context: RequestContext, facts: MediaReadFacts): void {
   const actor = context.authorization.actor;
   if (!actor) throw new AppError({ code: "UNAUTHORIZED", status: 401, message: "Authentication required" });
   if (facts.audience === "authenticated") return;
-  if (facts.ownerUserId === actor.userId) return;
 
   const hasTarget = (entityType: MediaEntityType) => facts.entityTypes.includes(entityType);
+  const hasContentTarget = hasTarget("announcement") || hasTarget("wiki_article");
+  if (facts.contentReadable) return;
+  if (facts.ownerUserId === actor.userId && !hasContentTarget) return;
   const allowed = (hasTarget("member_profile") && context.authorization.has(PERMISSION_ID.ADMIN_USERS_VIEW))
     || (hasTarget("event") && context.authorization.has(PERMISSION_ID.EVENTS_EDIT))
-    || (hasTarget("recurring_template") && context.authorization.has(PERMISSION_ID.EVENTS_TEMPLATES))
-    || (hasTarget("announcement") && [
-      PERMISSION_ID.ANNOUNCEMENTS_CREATE,
-      PERMISSION_ID.ANNOUNCEMENTS_EDIT,
-      PERMISSION_ID.ANNOUNCEMENTS_ARCHIVE,
-      PERMISSION_ID.ANNOUNCEMENTS_DELETE,
-    ].some((permission) => context.authorization.has(permission)))
-    || (hasTarget("wiki_article") && [
-      PERMISSION_ID.WIKI_ARTICLES_EDIT,
-      PERMISSION_ID.WIKI_ARTICLES_ARCHIVE,
-      PERMISSION_ID.WIKI_ARTICLES_DELETE,
-    ].some((permission) => context.authorization.has(permission)));
+    || (hasTarget("recurring_template") && context.authorization.has(PERMISSION_ID.EVENTS_TEMPLATES));
   if (!allowed) throw new AppError({ code: "FORBIDDEN", status: 403, message: "Media access denied" });
 }
 

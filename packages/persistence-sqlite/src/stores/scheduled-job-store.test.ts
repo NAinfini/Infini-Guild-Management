@@ -28,6 +28,10 @@ function database(): DatabaseSync {
       created_by TEXT NOT NULL DEFAULT 'admin-1', updated_at TEXT NOT NULL
     );
     CREATE INDEX idx_events_raffle_due ON events(type, archived_at, end_at, id);
+    CREATE INDEX idx_events_auto_archive_end_due
+      ON events(auto_archive, auto_archived, archived_at, end_at, id);
+    CREATE INDEX idx_events_auto_archive_start_due
+      ON events(auto_archive, auto_archived, archived_at, end_at, start_at, id);
     CREATE TABLE event_participants (
       id TEXT PRIMARY KEY, event_id TEXT NOT NULL, user_id TEXT NOT NULL, joined_at TEXT NOT NULL
     );
@@ -59,13 +63,16 @@ function database(): DatabaseSync {
       state_digest TEXT PRIMARY KEY, expires_at TEXT NOT NULL,
       consumed_at TEXT, created_at TEXT NOT NULL
     );
+    CREATE INDEX idx_oauth_challenges_cleanup_expiry ON oauth_challenges(expires_at, state_digest);
+    CREATE INDEX idx_oauth_challenges_cleanup_consumed ON oauth_challenges(consumed_at, state_digest)
+      WHERE consumed_at IS NOT NULL;
     CREATE TABLE email_verification_challenges (
       token_digest TEXT PRIMARY KEY, expires_at TEXT NOT NULL,
       consumed_at TEXT, created_at TEXT NOT NULL
     );
-    CREATE TABLE login_failures (
-      login_name TEXT PRIMARY KEY, last_failed_at TEXT NOT NULL, locked_until TEXT
-    );
+    CREATE INDEX idx_email_verification_cleanup_expiry ON email_verification_challenges(expires_at, token_digest);
+    CREATE INDEX idx_email_verification_cleanup_consumed ON email_verification_challenges(consumed_at, token_digest)
+      WHERE consumed_at IS NOT NULL;
   `);
   return db;
 }
@@ -203,6 +210,7 @@ describe("SQLite scheduled job stores", () => {
           title: "Draw",
           winnerCount: 1,
           drawnByUserId: "admin-1",
+          updatedAt: NOW,
           participantIds: ["user-1"],
         }],
         hasMore: false,
@@ -249,12 +257,15 @@ describe("SQLite scheduled job stores", () => {
         insert.run(`expired-${index}`, "2026-08-01T00:00:00.000Z", "2026-08-01T00:00:00.000Z");
       }
       insert.run("active", "2026-09-01T00:00:00.000Z", "2026-08-01T00:00:00.000Z");
-      const job = new SqliteSessionCleanupJob(new SqliteTestExecutor(db));
+      const executor = new SqliteTestExecutor(db);
+      const job = new SqliteSessionCleanupJob(executor);
       expect(await job.run({
         expiresBefore: NOW,
         createdBefore: "2026-05-11T00:00:00.000Z",
         limit: 500,
       })).toEqual({ processed: 500, hasMore: true });
+      expect(executor.statements).toHaveLength(0);
+      expect(executor.batches.map((batch) => batch.length)).toEqual([7, 4]);
       await expect(job.inspectBacklog({
         expiresBefore: NOW,
         createdBefore: "2026-05-11T00:00:00.000Z",
@@ -275,7 +286,7 @@ describe("SQLite scheduled job stores", () => {
     }
   });
 
-  it("cleans notifications older than three days while retaining the cutoff boundary and active locks", async () => {
+  it("cleans notifications older than three days while retaining the cutoff boundary", async () => {
     const db = database();
     try {
       db.prepare("INSERT INTO notification_inbox (id, occurred_at) VALUES (?, ?)")
@@ -286,22 +297,17 @@ describe("SQLite scheduled job stores", () => {
         .run("oauth-old", "2026-07-01T00:00:00.000Z", null, "2026-07-01T00:00:00.000Z");
       db.prepare("INSERT INTO email_verification_challenges (token_digest, expires_at, consumed_at, created_at) VALUES (?, ?, ?, ?)")
         .run("email-old", "2026-07-01T00:00:00.000Z", null, "2026-07-01T00:00:00.000Z");
-      db.prepare("INSERT INTO login_failures (login_name, last_failed_at, locked_until) VALUES (?, ?, ?)")
-        .run("stale-login", "2026-07-01T00:00:00.000Z", null);
-      db.prepare("INSERT INTO login_failures (login_name, last_failed_at, locked_until) VALUES (?, ?, ?)")
-        .run("active-lock", "2026-07-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z");
 
       const job = new SqliteSessionCleanupJob(new SqliteTestExecutor(db));
       await expect(job.run({
         expiresBefore: NOW,
         createdBefore: "2026-05-11T00:00:00.000Z",
         limit: 500,
-      })).resolves.toEqual({ processed: 4, hasMore: false });
+      })).resolves.toEqual({ processed: 3, hasMore: false });
 
       expect(db.prepare("SELECT id FROM notification_inbox").all()).toEqual([{ id: "notification-at-cutoff" }]);
       expect(db.prepare("SELECT state_digest FROM oauth_challenges").all()).toEqual([]);
       expect(db.prepare("SELECT token_digest FROM email_verification_challenges").all()).toEqual([]);
-      expect(db.prepare("SELECT login_name FROM login_failures").all()).toEqual([{ login_name: "active-lock" }]);
     } finally {
       db.close();
     }
@@ -318,8 +324,6 @@ describe("SQLite scheduled job stores", () => {
         .run("oauth-old", "2026-01-02T00:00:00.000Z", null, "2026-01-02T00:00:00.000Z");
       db.prepare("INSERT INTO email_verification_challenges (token_digest, expires_at, consumed_at, created_at) VALUES (?, ?, ?, ?)")
         .run("email-old", "2026-01-03T00:00:00.000Z", null, "2026-01-03T00:00:00.000Z");
-      db.prepare("INSERT INTO login_failures (login_name, last_failed_at, locked_until) VALUES (?, ?, ?)")
-        .run("stale-login", "2026-01-04T00:00:00.000Z", null);
 
       const job = new SqliteSessionCleanupJob(new SqliteTestExecutor(db));
       await expect(job.run({
@@ -334,12 +338,7 @@ describe("SQLite scheduled job stores", () => {
         expiresBefore: NOW,
         createdBefore: "2026-05-11T00:00:00.000Z",
         limit: 2,
-      })).resolves.toEqual({ processed: 2, hasMore: true });
-      await expect(job.run({
-        expiresBefore: NOW,
-        createdBefore: "2026-05-11T00:00:00.000Z",
-        limit: 2,
-      })).resolves.toEqual({ processed: 1, hasMore: false });
+      })).resolves.toEqual({ processed: 2, hasMore: false });
     } finally {
       db.close();
     }

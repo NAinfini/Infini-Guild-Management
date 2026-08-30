@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { PlusIcon, SettingsIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
+import { useBeforeUnloadPrompt } from "@portal/hooks/useBeforeUnloadPrompt";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../../api/query-keys";
@@ -23,6 +24,7 @@ import { useStorageItem, useStorageItems, useStorageTree } from "../../hooks/use
 import { useStorageMutations } from "../../hooks/useStorageMutations";
 import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
+import { viewerIdentity } from "../../session-storage";
 import { StorageInventoryPanel } from "../feature/storage/StorageInventoryPanel";
 import {
   StorageBatchPanel,
@@ -39,9 +41,9 @@ import "./StoragePage.css";
 
 type TransactionMode = CreateStorageTransactionPayload["type"];
 type ActiveModal =
-  | { type: "detail"; item: StorageItem }
-  | { type: "item-editor"; item: StorageItem | null }
-  | { type: "transaction"; item: StorageItem | null; mode: TransactionMode }
+  | { type: "detail"; storageId: string; item: StorageItem }
+  | { type: "item-editor"; storageId: string; item: StorageItem | null }
+  | { type: "transaction"; storageId: string; item: StorageItem | null; mode: TransactionMode }
   | null;
 
 function createBatchDraft(recipientUserId: string | null): StorageBatchDraft {
@@ -117,11 +119,10 @@ export function StoragePage() {
       viewTransition: false,
     });
   };
-  const inventoryProbeQuery = useStorageItems({
-    storageId: activeStorage?.id,
-    limit: 1,
-  });
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
+  const modalStorage = activeModal
+    ? storages.find((storage) => storage.id === activeModal.storageId) ?? null
+    : null;
   const [batchDrafts, setBatchDrafts] = useState<Record<string, StorageBatchDraft>>({});
   const {
     search: manualItemSearch,
@@ -129,6 +130,11 @@ export function StoragePage() {
     debouncedSearch: debouncedManualItemSearch,
   } = useDebouncedSearch();
   const activeBatchDraft = activeStorage ? batchDrafts[activeStorage.id] : undefined;
+  const hasUnsavedBatchDraft = Object.values(batchDrafts).some((draft) => (
+    draft.note.trim().length > 0
+    || Object.values(draft.quantities).some((quantity) => quantity > 0)
+  ));
+  useBeforeUnloadPrompt(hasUnsavedBatchDraft, { allowSamePathNavigation: true });
   const detailState = activeModal?.type === "detail" ? activeModal : null;
   const activeItemId = activeModal?.type === "detail"
     ? activeModal.item.id
@@ -138,7 +144,7 @@ export function StoragePage() {
   const activeItemQuery = useStorageItem(activeItemId);
   const mutations = useStorageMutations();
   const usersQuery = useQuery({
-    queryKey: queryKeys.users.all,
+    queryKey: queryKeys.users.directory(viewerIdentity(user?.id), "internal"),
     queryFn: () => fetchAllUsersListWithOptions(),
     enabled: canManageStock,
     staleTime: 10 * 60_000,
@@ -153,9 +159,9 @@ export function StoragePage() {
     && transactionState.item === null,
   );
   const manualItemsQuery = useStorageItems({
-    storageId: activeStorage?.id,
+    storageId: modalStorage?.id,
     search: debouncedManualItemSearch,
-    enabled: manualEntryOpen,
+    enabled: manualEntryOpen && Boolean(modalStorage),
   });
   const transactionItems = transactionState?.item
     ? [transactionState.item]
@@ -347,7 +353,6 @@ export function StoragePage() {
                   categoryId={activeCategoryId}
                   canManageItems={canManageItems}
                   canManageStock={canManageStock}
-                  hasAnyItems={inventoryProbeQuery.items.length > 0}
                   batchDraft={activeBatchDraft}
                   onStartBatch={() => {
                     if (activeBatchDraft) {
@@ -378,11 +383,20 @@ export function StoragePage() {
                       return refreshBatchKey(draft, { quantities, itemSnapshots });
                     });
                   }}
-                  onOpenItem={(item) => setActiveModal({ type: "detail", item })}
-                  onEditItem={(item) => setActiveModal({ type: "item-editor", item })}
+                  onOpenItem={(item) => setActiveModal({ type: "detail", storageId: item.storage_id, item })}
+                  onEditItem={(item) => setActiveModal({
+                    type: "item-editor",
+                    storageId: item?.storage_id ?? activeStorage.id,
+                    item,
+                  })}
                   onOpenTransaction={(item, mode) => {
                     if (!item) setManualItemSearch("");
-                    setActiveModal({ type: "transaction", item, mode });
+                    setActiveModal({
+                      type: "transaction",
+                      storageId: item?.storage_id ?? activeStorage.id,
+                      item,
+                      mode,
+                    });
                   }}
                 />
               </div>
@@ -397,14 +411,24 @@ export function StoragePage() {
         canEditItem={canManageItems}
         canManageStock={canManageStock}
         onClose={() => setActiveModal(null)}
-        onDeposit={(item) => setActiveModal({ type: "transaction", item, mode: "intake" })}
-        onWithdraw={(item) => setActiveModal({ type: "transaction", item, mode: "distribute" })}
-        onEdit={(item) => setActiveModal({ type: "item-editor", item })}
+        onDeposit={(item) => setActiveModal({
+          type: "transaction",
+          storageId: item.storage_id,
+          item,
+          mode: "intake",
+        })}
+        onWithdraw={(item) => setActiveModal({
+          type: "transaction",
+          storageId: item.storage_id,
+          item,
+          mode: "distribute",
+        })}
+        onEdit={(item) => setActiveModal({ type: "item-editor", storageId: item.storage_id, item })}
       />
       <StorageItemEditorModal
         opened={activeModal?.type === "item-editor"}
-        selectedStorage={activeStorage}
-        categories={activeStorage?.categories ?? []}
+        selectedStorage={modalStorage}
+        categories={modalStorage?.categories ?? []}
         item={editingItem}
         isSaving={mutations.createItemMutation.isPending || mutations.updateItemMutation.isPending}
         isDeleting={mutations.deleteItemMutation.isPending}
@@ -421,7 +445,7 @@ export function StoragePage() {
                */
               setActiveModal((current) => (
                 current?.type === "item-editor"
-                  ? { type: "item-editor", item: createdItem }
+                  ? { ...current, item: createdItem }
                   : current
               ));
             },
@@ -431,17 +455,24 @@ export function StoragePage() {
           { id, payload },
           { onSuccess },
         )}
-        onDeleteItem={(id) => {
+        onDeleteItem={(id, expectedUpdatedAt) => {
           void confirmDelete(t("confirm.deleteItem")).then((confirmed) => {
             if (confirmed) {
-              mutations.deleteItemMutation.mutate(id, { onSuccess: () => setActiveModal(null) });
+              mutations.deleteItemMutation.mutate(
+                { id, payload: { expected_updated_at: expectedUpdatedAt } },
+                { onSuccess: () => setActiveModal(null) },
+              );
             }
           });
         }}
-        onUploadImages={(itemId, files) => mutations.uploadImagesMutation.mutate({ itemId, files })}
-        onDeleteImage={async (itemId, imageId) => {
+        onUploadImages={(itemId, files, expectedUpdatedAt) => mutations.uploadImagesMutation.mutate({
+          itemId,
+          files,
+          expectedUpdatedAt,
+        })}
+        onDeleteImage={async (itemId, imageId, expectedUpdatedAt) => {
           if (!await confirmDelete(t("confirm.deleteImage"))) return false;
-          return mutations.deleteImageMutation.mutateAsync({ itemId, imageId }).then(
+          return mutations.deleteImageMutation.mutateAsync({ itemId, imageId, expectedUpdatedAt }).then(
             () => true,
             () => false,
           );

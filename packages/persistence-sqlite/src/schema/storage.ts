@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { STORAGE_RARITIES } from "@guild/shared/constants/storage";
 import {
   check,
   foreignKey,
@@ -18,9 +19,11 @@ export const storages = sqliteTable("storages", {
   name: text("name").notNull(),
   description: text("description"),
   createdAt: text("created_at").notNull().default(nowUtc),
+  structureRevision: integer("structure_revision").notNull().default(0),
 }, (table) => [
   check("storages_name_valid", sql`length(trim(${table.name})) BETWEEN 1 AND 50`),
   check("storages_description_valid", sql`${table.description} IS NULL OR length(${table.description}) <= 500`),
+  check("storages_structure_revision_nonnegative", sql`${table.structureRevision} >= 0`),
   index("idx_storages_name_id").on(table.name, table.id),
 ]);
 
@@ -45,6 +48,8 @@ export const storageItems = sqliteTable("storage_items", {
   allowMemberWithdraw: integer("allow_member_withdraw", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull().default(nowUtc),
   updatedAt: text("updated_at").notNull().default(nowUtc),
+  rarity: text("rarity", { enum: STORAGE_RARITIES }).notNull().default("common"),
+  unit: text("unit"),
 }, (table) => [
   foreignKey({
     name: "storage_items_category_same_storage_fk",
@@ -53,6 +58,8 @@ export const storageItems = sqliteTable("storage_items", {
   }).onDelete("restrict"),
   check("storage_items_name_valid", sql`length(trim(${table.name})) BETWEEN 1 AND 100`),
   check("storage_items_description_valid", sql`${table.description} IS NULL OR length(${table.description}) <= 2000`),
+  check("storage_items_rarity_valid", sql`${table.rarity} IN ('common', 'uncommon', 'rare', 'epic', 'legendary')`),
+  check("storage_items_unit_valid", sql`${table.unit} IS NULL OR length(trim(${table.unit})) BETWEEN 1 AND 30`),
   check(
     "storage_items_self_service_flags_valid",
     sql`${table.allowMemberDeposit} IN (0, 1) AND ${table.allowMemberWithdraw} IN (0, 1)`,
@@ -94,6 +101,7 @@ export const storageBatches = sqliteTable("storage_batches", {
   recipientUserId: text("recipient_user_id").references(() => users.id, { onDelete: "set null" }),
   note: text("note"),
   createdAt: text("created_at").notNull().default(nowUtc),
+  requestFingerprint: text("request_fingerprint"),
 }, (table) => [
   check("storage_batches_access_mode_valid", sql`${table.accessMode} IN ('stock_admin', 'member_self')`),
   check("storage_batches_transaction_type_valid", sql`${table.transactionType} IN ('intake', 'distribute', 'adjust')`),
@@ -113,6 +121,13 @@ export const storageBatches = sqliteTable("storage_batches", {
       length(${table.idempotencyKey}) BETWEEN 16 AND 64
       AND substr(${table.idempotencyKey}, 1, 1) GLOB '[A-Za-z0-9]'
       AND ${table.idempotencyKey} NOT GLOB '*[^-A-Za-z0-9._:]*'
+    )`,
+  ),
+  check(
+    "storage_batches_request_fingerprint_valid",
+    sql`${table.requestFingerprint} IS NULL OR (
+      length(${table.requestFingerprint}) = 64
+      AND ${table.requestFingerprint} NOT GLOB '*[^0-9a-f]*'
     )`,
   ),
   uniqueIndex("ux_storage_batches_actor_idempotency")

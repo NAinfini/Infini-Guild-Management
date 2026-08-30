@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import { isApiRequestError } from "../api/client";
 import {
   batchUpdateGuildWarMemberStats,
   concludeGuildWar,
@@ -33,6 +34,7 @@ export {
   fetchGuildWarHistory,
   fetchGuildWarHistoryBatch,
   fetchGuildWarHistoryDetail,
+  isApiRequestError,
   moveGuildWarMember,
   updateGuildWarHistory,
   updateGuildWarRoleTag,

@@ -83,7 +83,7 @@ export function AbsenceManagerCard({ userId }: AbsenceManagerCardProps) {
                   <Button
                     type="button"
                     size="icon-sm"
-                    variant="ghost"
+                    variant="destructive"
                     className="absence-manager-card__delete"
                     loading={deletePending}
                     onClick={() => deleteMutation.mutate(absence.id)}

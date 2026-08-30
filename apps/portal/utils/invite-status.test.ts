@@ -5,7 +5,7 @@ import { resolveInviteStatus } from "./invite-status";
 
 const baseInvite: InviteLink = {
   id: "invite-1",
-  code: "A1b2C3d4E5",
+  code: "A1B2C3D4E5",
   created_by: "admin-1",
   role_id: "member",
   role_name: "Member",

@@ -1,7 +1,9 @@
 import {
   isMaintenanceModeEnabled,
+  readMaintenanceDetails,
   readApplicationConfig,
   type ApplicationConfig,
+  type MaintenanceDetails,
 } from "@guild/application";
 import { isIP } from "node:net";
 import path from "node:path";
@@ -15,6 +17,7 @@ export type VpsRuntimeConfig = Readonly<{
   staticPath: string;
   trustedProxyAddresses: ReadonlySet<string>;
   maintenanceMode: boolean;
+  maintenance: MaintenanceDetails;
   cloudflareEmail: Readonly<{ accountId: string; apiToken: string }> | null;
 }>;
 
@@ -33,6 +36,7 @@ export function readVpsRuntimeConfig(
     commaSeparated(environment.IG_TRUSTED_PROXY_IPS).map((value) => normalizeIp(value, "IG_TRUSTED_PROXY_IPS")),
   );
   const cloudflareEmail = cloudflareEmailConfig(environment, application.emailFrom);
+  const maintenance = readMaintenanceDetails(environment);
   return Object.freeze({
     application,
     host,
@@ -42,6 +46,7 @@ export function readVpsRuntimeConfig(
     staticPath: resolvePath(environment.IG_STATIC_PATH, workingDirectory, "dist"),
     trustedProxyAddresses,
     maintenanceMode: isMaintenanceModeEnabled(environment.IG_MAINTENANCE_MODE),
+    maintenance,
     cloudflareEmail,
   });
 }

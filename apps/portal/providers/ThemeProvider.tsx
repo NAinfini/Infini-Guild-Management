@@ -3,7 +3,12 @@ import { MotionConfig } from "motion/react";
 
 import { ConfirmDialogHost } from "@portal/components/shared/ConfirmDialogHost";
 import { Toaster } from "@portal/components/ui/toast";
-import { TooltipProvider } from "@portal/components/ui/tooltip";
+import {
+  TOOLTIP_CLOSE_DELAY_MS,
+  TOOLTIP_GROUP_TIMEOUT_MS,
+  TOOLTIP_OPEN_DELAY_MS,
+  TooltipProvider,
+} from "@portal/components/ui/tooltip";
 
 import { usePreferencesStore } from "../stores/preferences";
 
@@ -90,7 +95,11 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
     <ThemeContext.Provider value={contextValue}>
       <MotionConfig reducedMotion="user">
         <Toaster timeout={5000} limit={4}>
-          <TooltipProvider delay={200}>
+          <TooltipProvider
+            delay={TOOLTIP_OPEN_DELAY_MS}
+            closeDelay={TOOLTIP_CLOSE_DELAY_MS}
+            timeout={TOOLTIP_GROUP_TIMEOUT_MS}
+          >
             <ConfirmDialogHost />
             {children}
           </TooltipProvider>

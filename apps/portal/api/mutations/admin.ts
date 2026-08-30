@@ -1,13 +1,12 @@
 import {
   type InviteLink,
-  type MemberProfile,
-  adminUpdateProfileSchema,
   batchDeactivateSchema,
   batchRoleChangeSchema,
   createAdminMemberSchema,
   createInviteLinkSchema,
   resetAdminPasswordResponseSchema,
-  resetLoginLockResponseSchema,
+  updateAdminMemberSchema,
+  updateAdminMemberResponseSchema,
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
@@ -16,13 +15,13 @@ export type CreateInviteLinkPayload = z.input<typeof createInviteLinkSchema>;
 export type CreateAdminMemberPayload = z.input<typeof createAdminMemberSchema>;
 export type BatchRoleChangePayload = z.input<typeof batchRoleChangeSchema>;
 export type BatchDeactivatePayload = z.input<typeof batchDeactivateSchema>;
-export type AdminUpdateProfilePayload = z.input<typeof adminUpdateProfileSchema>;
-export type ResetAdminUserLoginLockResponse = z.infer<typeof resetLoginLockResponseSchema>;
+export type UpdateAdminMemberPayload = z.input<typeof updateAdminMemberSchema>;
 export type ResetAdminUserPasswordResponse = z.infer<typeof resetAdminPasswordResponseSchema>;
+export type UpdateAdminMemberResponse = z.infer<typeof updateAdminMemberResponseSchema>;
 
-export function adminUpdateProfile(userId: string, payload: AdminUpdateProfilePayload): Promise<MemberProfile> {
-  const bodyJson = adminUpdateProfileSchema.parse(payload);
-  return apiRequest<MemberProfile>(`/api/users/${userId}/profile`, { method: "PATCH", bodyJson });
+export function updateAdminMember(userId: string, payload: UpdateAdminMemberPayload): Promise<UpdateAdminMemberResponse> {
+  const bodyJson = updateAdminMemberSchema.parse(payload);
+  return apiRequest<UpdateAdminMemberResponse>(`/api/admin/users/${userId}`, { method: "PATCH", bodyJson });
 }
 
 export function createAdminInviteLink(payload: CreateInviteLinkPayload): Promise<InviteLink> {
@@ -77,13 +76,6 @@ export function resetAdminUserPassword(
       bodyJson: { current_password: currentPassword },
     },
   );
-}
-
-export function resetAdminUserLoginLock(userId: string): Promise<ResetAdminUserLoginLockResponse> {
-  return apiRequest<ResetAdminUserLoginLockResponse>(`/api/admin/users/${userId}/reset-login-lock`, {
-    method: "POST",
-    bodyJson: {},
-  });
 }
 
 export function createAdminMember(

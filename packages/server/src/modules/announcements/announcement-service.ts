@@ -1,5 +1,5 @@
-import type { Announcement, AnnouncementAttachment, AnnouncementSummary, AuditChange, PaginatedResponse } from "@guild/shared";
-import type { AnnouncementStatus } from "@guild/shared/constants/announcements";
+import { announcementEtag, MAX_OFFSET_PAGE, type Announcement, type AnnouncementAttachment, type AnnouncementSummary, type AuditChange, type PaginatedResponse } from "@guild/shared";
+import type { AnnouncementCategory, AnnouncementStatus } from "@guild/shared/constants/announcements";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import type { DeferredTasks, NotificationPublisher, RequestContext } from "@guild/kernel";
 import { AppError } from "@guild/kernel";
@@ -13,32 +13,27 @@ import {
   type MediaService,
 } from "../media/public.js";
 import { assertPortableLikeSearch } from "../../portable-search.js";
+import { contentReadScopes, type ContentReadScope } from "../../content-read-scope.js";
 
-const MANAGE_PERMISSIONS = [
-  PERMISSION_ID.ANNOUNCEMENTS_CREATE,
-  PERMISSION_ID.ANNOUNCEMENTS_EDIT,
-  PERMISSION_ID.ANNOUNCEMENTS_ARCHIVE,
-  PERMISSION_ID.ANNOUNCEMENTS_DELETE,
-] as const;
-
-export type AnnouncementRecord = Omit<Announcement, "author" | "attachments"> & Readonly<{ revisionToken: string }>;
+export type AnnouncementRecord = Omit<Announcement, "author" | "attachments" | "excerpt" | "preview_media_id"> & Readonly<{ revisionToken: string }>;
 export type AnnouncementDetailRecord = Announcement & Readonly<{ revisionToken: string }>;
 
 export type AnnouncementListQuery = Readonly<{
   page: number;
   limit: number;
   status?: AnnouncementStatus;
+  category?: AnnouncementCategory;
   pinned?: boolean;
-  archived?: boolean;
   search?: string;
   sort: "updated_desc" | "updated_asc";
-  canReadAll: boolean;
+  readScope: ContentReadScope;
   now: string;
 }>;
 
 export interface AnnouncementStore {
   list(query: AnnouncementListQuery): Promise<PaginatedResponse<AnnouncementSummary>>;
-  get(id: string, canReadAll: boolean, now: string): Promise<AnnouncementDetailRecord | null>;
+  get(id: string, readScope: ContentReadScope, now: string): Promise<AnnouncementDetailRecord | null>;
+  incrementView(id: string, readScope: ContentReadScope, now: string): Promise<number | null>;
   create(input: Readonly<{
     record: AnnouncementRecord;
     mediaIds: readonly string[];
@@ -46,7 +41,7 @@ export interface AnnouncementStore {
     maxItems: number;
     maxAttachmentItems: number;
     audit: AuditEventWrite;
-  }>): Promise<void>;
+  }>): Promise<AnnouncementDetailRecord>;
   update(input: Readonly<{
     record: AnnouncementRecord;
     expectedRevisionToken: string;
@@ -55,7 +50,7 @@ export interface AnnouncementStore {
     maxItems: number;
     maxAttachmentItems: number;
     audit: AuditEventWrite;
-  }>): Promise<boolean>;
+  }>): Promise<AnnouncementDetailRecord | null>;
   archive(input: Readonly<{
     id: string;
     expectedRevisionToken: string;
@@ -65,23 +60,12 @@ export interface AnnouncementStore {
     audit: AuditEventWrite;
   }>): Promise<boolean>;
   delete(input: Readonly<{ id: string; expectedRevisionToken: string; mutationToken: string; audit: AuditEventWrite }>): Promise<boolean>;
-  appendImages(input: Readonly<{
-    id: string;
-    expectedRevisionToken: string;
-    revisionToken: string;
-    updatedAt: string;
-    ownerUserId: string;
-    purpose: "announcement_image";
-    mediaIds: readonly string[];
-    audience: "public" | "private";
-    maxItems: number;
-    audit: AuditEventWrite;
-  }>): Promise<boolean>;
 }
 
 export type CreateAnnouncementInput = Readonly<{
   title: string;
   body_json: string;
+  category: AnnouncementCategory;
   pinned: boolean;
   status: AnnouncementStatus;
   publish_at?: string | null;
@@ -98,18 +82,25 @@ export class AnnouncementService {
     private readonly deferred: DeferredTasks,
   ) {}
 
-  list(context: RequestContext, query: Omit<AnnouncementListQuery, "canReadAll" | "now">): Promise<PaginatedResponse<AnnouncementSummary>> {
-    if (!Number.isInteger(query.page) || query.page < 1 || !Number.isInteger(query.limit) || query.limit < 1 || query.limit > 100) {
+  list(context: RequestContext, query: Omit<AnnouncementListQuery, "readScope" | "now">): Promise<PaginatedResponse<AnnouncementSummary>> {
+    if (!Number.isInteger(query.page) || query.page < 1 || query.page > MAX_OFFSET_PAGE
+      || !Number.isInteger(query.limit) || query.limit < 1 || query.limit > 100) {
       throw validation("Invalid announcement pagination");
     }
     assertPortableLikeSearch(query.search, "Announcement search");
-    return this.store.list({ ...query, canReadAll: canManage(context), now: context.now });
+    return this.store.list({ ...query, readScope: contentReadScopes(context).announcement, now: context.now });
   }
 
   async get(context: RequestContext, id: string): Promise<Announcement> {
-    const row = await this.store.get(id, canManage(context), context.now);
+    const row = await this.store.get(id, contentReadScopes(context).announcement, context.now);
     if (!row) throw notFound();
     return withoutRevision(row);
+  }
+
+  async recordView(context: RequestContext, id: string): Promise<Readonly<{ view_count: number }>> {
+    const viewCount = await this.store.incrementView(id, contentReadScopes(context).announcement, context.now);
+    if (viewCount === null) throw notFound();
+    return { view_count: viewCount };
   }
 
   async create(
@@ -127,7 +118,9 @@ export class AnnouncementService {
       id: nanoid(),
       title: input.title.trim(),
       body_json: bodyJson,
+      category: input.category,
       pinned: input.pinned,
+      view_count: 0,
       status: state.status,
       publish_at: state.publishAt,
       expires_at: null,
@@ -145,6 +138,7 @@ export class AnnouncementService {
       action: "create",
       context: [
         { field: "status", value: { type: "code", value: record.status } },
+        { field: "category", value: { type: "code", value: record.category } },
         { field: "pinned", value: { type: "boolean", value: record.pinned } },
         { field: "publish_at", value: record.publish_at === null
           ? { type: "null", value: null }
@@ -154,7 +148,7 @@ export class AnnouncementService {
           : []),
       ],
     });
-    await this.store.create({
+    const created = await this.store.create({
       record,
       mediaIds,
       attachmentMediaIds: input.attachment_media_ids ?? [],
@@ -162,9 +156,9 @@ export class AnnouncementService {
       maxAttachmentItems: attachmentQuota,
       audit,
     });
-    this.publishChange(record, "announcement_created");
+    if (isMemberVisible(record)) this.publishChange(record, "announcement_created");
     if (record.status === "published") this.publishAnnouncement(record);
-    return this.readDetail(record.id, context.now);
+    return withoutRevision(created);
   }
 
   async update(
@@ -174,12 +168,12 @@ export class AnnouncementService {
     requestOrigin: string,
     imageQuota: number,
     attachmentQuota: number,
-    ifMatch?: string,
+    ifMatch: string,
   ): Promise<Announcement> {
     const actor = context.authorization.require(PERMISSION_ID.ANNOUNCEMENTS_EDIT);
-    const existing = await this.store.get(id, true, context.now);
+    const existing = await this.store.get(id, { kind: "all" }, context.now);
     if (!existing) throw notFound();
-    if (ifMatch && ifMatch !== announcementEtag(existing)) throw conflict();
+    if (ifMatch !== announcementEtag(existing)) throw conflict();
 
     const bodyJson = input.body_json === undefined
       ? existing.body_json
@@ -195,6 +189,7 @@ export class AnnouncementService {
       ...toRecord(existing),
       title: input.title?.trim() ?? existing.title,
       body_json: bodyJson,
+      category: input.category ?? existing.category,
       pinned: input.pinned ?? existing.pinned,
       status: state.status,
       publish_at: state.publishAt,
@@ -233,7 +228,7 @@ export class AnnouncementService {
         }] : []),
       ],
     });
-    const changed = await this.store.update({
+    const updated = await this.store.update({
       record,
       expectedRevisionToken: existing.revisionToken,
       mediaIds: input.body_json === undefined ? null : extractRichTextMediaIds(bodyJson),
@@ -242,16 +237,21 @@ export class AnnouncementService {
       maxAttachmentItems: attachmentQuota,
       audit,
     });
-    if (!changed) throw conflict();
-    this.publishChange(record, "announcement_updated");
+    if (!updated) throw conflict();
+    // A formerly public announcement still needs an invalidation when an editor
+    // moves it back to a private state. Purely private draft activity does not.
+    if (isMemberVisible(existing) || isMemberVisible(record)) {
+      this.publishChange(record, "announcement_updated");
+    }
     if (existing.status !== "published" && record.status === "published") this.publishAnnouncement(record);
-    return this.readDetail(record.id, context.now);
+    return withoutRevision(updated);
   }
 
-  async archive(context: RequestContext, id: string): Promise<Readonly<{ ok: true }>> {
+  async archive(context: RequestContext, id: string, ifMatch: string): Promise<Readonly<{ ok: true }>> {
     const actor = context.authorization.require(PERMISSION_ID.ANNOUNCEMENTS_ARCHIVE);
-    const existing = await this.store.get(id, true, context.now);
+    const existing = await this.store.get(id, { kind: "all" }, context.now);
     if (!existing) throw notFound();
+    if (ifMatch !== announcementEtag(existing)) throw conflict();
     const updatedAt = monotonicTimestamp(context.now, existing.updated_at);
     const audit = createAuditEvent(context, {
       subjectType: "announcement",
@@ -273,14 +273,17 @@ export class AnnouncementService {
       audit,
     });
     if (!changed) throw conflict();
-    this.publishChange({ id: existing.id, updated_at: updatedAt }, "announcement_archived");
+    if (isMemberVisible(existing)) {
+      this.publishChange({ id: existing.id, updated_at: updatedAt }, "announcement_archived");
+    }
     return { ok: true };
   }
 
-  async delete(context: RequestContext, id: string): Promise<Readonly<{ ok: true }>> {
+  async delete(context: RequestContext, id: string, ifMatch: string): Promise<Readonly<{ ok: true }>> {
     context.authorization.require(PERMISSION_ID.ANNOUNCEMENTS_DELETE);
-    const existing = await this.store.get(id, true, context.now);
+    const existing = await this.store.get(id, { kind: "all" }, context.now);
     if (!existing) throw notFound();
+    if (ifMatch !== announcementEtag(existing)) throw conflict();
     const audit = createAuditEvent(context, {
       subjectType: "announcement",
       subjectId: id,
@@ -288,6 +291,7 @@ export class AnnouncementService {
       action: "delete",
       context: [
         { field: "status", value: { type: "code", value: existing.status } },
+        { field: "category", value: { type: "code", value: existing.category } },
         { field: "pinned", value: { type: "boolean", value: existing.pinned } },
         { field: "publish_at", value: existing.publish_at === null
           ? { type: "null", value: null }
@@ -301,7 +305,7 @@ export class AnnouncementService {
       audit,
     });
     if (!changed) throw conflict();
-    this.publishChange(existing, "announcement_deleted");
+    if (isMemberVisible(existing)) this.publishChange(existing, "announcement_deleted");
     return { ok: true };
   }
 
@@ -311,7 +315,13 @@ export class AnnouncementService {
     maxBytes: number,
     quota: number,
   ): Promise<Readonly<{ expires_at: string; media_ids: readonly string[] }>> {
-    context.authorization.require(PERMISSION_ID.ANNOUNCEMENTS_CREATE);
+    context.authorization.requireAuthenticated();
+    if (
+      !context.authorization.has(PERMISSION_ID.ANNOUNCEMENTS_CREATE)
+      && !context.authorization.has(PERMISSION_ID.ANNOUNCEMENTS_EDIT)
+    ) {
+      throw new AppError({ code: "FORBIDDEN", status: 403, message: "Permission denied" });
+    }
     if (uploads.length > quota) throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: `Announcement image quota is ${quota}` });
     const mediaIds = await this.media.uploadImages(context, "announcement_image", uploads, maxBytes);
     return {
@@ -343,45 +353,6 @@ export class AnnouncementService {
     };
   }
 
-  async uploadImages(
-    context: RequestContext,
-    id: string,
-    uploads: readonly ImageUpload[],
-    maxBytes: number,
-    quota: number,
-  ): Promise<Readonly<{ media_ids: readonly string[] }>> {
-    const actor = context.authorization.require(PERMISSION_ID.ANNOUNCEMENTS_EDIT);
-    const existing = await this.store.get(id, true, context.now);
-    if (!existing) throw notFound();
-    if (uploads.length < 1 || uploads.length > quota) {
-      throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: `Announcement image quota is ${quota}` });
-    }
-    const mediaIds = await this.media.uploadImages(context, "announcement_image", uploads, maxBytes);
-    const audit = createAuditEvent(context, {
-      subjectType: "announcement",
-      subjectId: id,
-      subjectLabel: existing.title,
-      action: "upload_images",
-      context: [{ field: "media_count", value: { type: "number", value: mediaIds.length } }],
-    });
-    const updatedAt = monotonicTimestamp(context.now, existing.updated_at);
-    const changed = await this.store.appendImages({
-      id,
-      expectedRevisionToken: existing.revisionToken,
-      revisionToken: crypto.randomUUID(),
-      updatedAt,
-      ownerUserId: actor.userId,
-      purpose: "announcement_image",
-      mediaIds,
-      audience: announcementAudience(existing, context.now),
-      maxItems: quota,
-      audit,
-    });
-    if (!changed) throw conflict();
-    this.publishChange({ ...existing, updated_at: updatedAt }, "announcement_updated");
-    return { media_ids: mediaIds };
-  }
-
   private publishChange(record: Pick<Announcement, "id" | "updated_at">, hint: string): void {
     this.deferred.defer(() => this.notifications.publish({
       type: "entity_changed",
@@ -397,15 +368,10 @@ export class AnnouncementService {
     this.deferred.defer(() => this.notifications.publish({ type: "inbox_changed" }));
   }
 
-  private async readDetail(id: string, now: string): Promise<Announcement> {
-    const record = await this.store.get(id, true, now);
-    if (!record) throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Announcement was not readable after mutation" });
-    return withoutRevision(record);
-  }
 }
 
-function canManage(context: RequestContext): boolean {
-  return MANAGE_PERMISSIONS.some((permission) => context.authorization.has(permission));
+function isMemberVisible(record: Pick<Announcement, "status">): boolean {
+  return record.status === "published";
 }
 
 function normalizeState(
@@ -428,14 +394,6 @@ function normalizeState(
   return { status, publishAt };
 }
 
-function announcementAudience(record: Announcement, now: string): "public" | "private" {
-  return record.status === "published"
-    && (record.publish_at === null || record.publish_at <= now)
-    && (record.expires_at === null || record.expires_at > now)
-    ? "public"
-    : "private";
-}
-
 function announcementChanges(before: Announcement, after: AnnouncementRecord): AuditChange[] {
   const changes: AuditChange[] = [];
   if (before.title !== after.title) changes.push({
@@ -443,6 +401,9 @@ function announcementChanges(before: Announcement, after: AnnouncementRecord): A
   });
   if (before.pinned !== after.pinned) changes.push({
     field: "pinned", before: { type: "boolean", value: before.pinned }, after: { type: "boolean", value: after.pinned },
+  });
+  if (before.category !== after.category) changes.push({
+    field: "category", before: { type: "code", value: before.category }, after: { type: "code", value: after.category },
   });
   if (before.status !== after.status) changes.push({
     field: "status", before: { type: "code", value: before.status }, after: { type: "code", value: after.status },
@@ -455,17 +416,19 @@ function announcementChanges(before: Announcement, after: AnnouncementRecord): A
   return changes;
 }
 
-function announcementEtag(record: Pick<Announcement, "id" | "updated_at">): string {
-  return `"announcement-${record.id}-${record.updated_at}"`;
-}
-
 function withoutRevision(record: AnnouncementDetailRecord): Announcement {
   const { revisionToken: _revisionToken, ...announcement } = record;
   return announcement;
 }
 
 function toRecord(record: AnnouncementDetailRecord): AnnouncementRecord {
-  const { author: _author, attachments: _attachments, ...announcement } = record;
+  const {
+    author: _author,
+    attachments: _attachments,
+    excerpt: _excerpt,
+    preview_media_id: _previewMediaId,
+    ...announcement
+  } = record;
   return announcement;
 }
 

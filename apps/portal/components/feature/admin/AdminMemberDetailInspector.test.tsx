@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AdminUserRow } from "@portal/types/admin";
 import { AdminMemberDetailInspector } from "./AdminMemberDetailInspector";
 
 vi.mock("react-i18next", () => ({
@@ -42,6 +43,10 @@ vi.mock("../../shared/AbsenceManagerCard", () => ({
   AbsenceManagerCard: () => <div data-testid="absence-manager" />,
 }));
 
+vi.mock("../../shared/AvailabilityEditor", () => ({
+  AvailabilityEditor: () => <div data-testid="availability-editor" />,
+}));
+
 vi.mock("@portal/hooks/useConfirmDialog", () => ({
   useConfirmDialog: () => vi.fn(async () => true),
 }));
@@ -78,11 +83,13 @@ const member = {
 } as never;
 
 const form = {
+  displayName: "Aster",
   power: 10,
   classes: [],
   titleHtml: "",
   bio: "",
   notes: "",
+  availability: null,
   role: "member-role",
   isActive: true,
 };
@@ -103,6 +110,7 @@ type Overrides = {
   canAssignRole?: boolean;
   canActivate?: boolean;
   isDirty?: boolean;
+  onSaveProfile?: (member: AdminUserRow) => Promise<boolean>;
 };
 
 function renderModal(overrides: Overrides = {}) {
@@ -115,7 +123,7 @@ function renderModal(overrides: Overrides = {}) {
       onClose={vi.fn()}
       onFormChange={vi.fn()}
       onResetForm={vi.fn()}
-      onSaveProfile={vi.fn()}
+      onSaveProfile={overrides.onSaveProfile ?? vi.fn(async () => true)}
       saveProfilePending={false}
       mediaTab={<div data-testid="media-tab" />}
       roles={roles}
@@ -199,7 +207,7 @@ describe("AdminMemberDetailInspector edit mode", () => {
     expect(screen.queryByTestId("absence-manager")).not.toBeInTheDocument();
     expect(screen.queryByTestId("media-tab")).not.toBeInTheDocument();
     // 组标题照常显示：藏掉整组会让人以为这个成员没有这些字段。
-    expect(screen.getByText("detail.section.combat")).toBeInTheDocument();
+    expect(screen.getByText("detail.section.profile")).toBeInTheDocument();
     expect(screen.getByText("detail.section.notes")).toBeInTheDocument();
   });
 
@@ -208,6 +216,7 @@ describe("AdminMemberDetailInspector edit mode", () => {
     renderModal();
     await enterEditMode(user);
 
+    expect(screen.getByLabelText("detail.field.display_name")).toBeEnabled();
     expect(screen.getByRole("switch")).toBeEnabled();
     expect(screen.getByLabelText("detail.field.power")).toBeEnabled();
     expect(screen.getByTestId("title-field")).toBeInTheDocument();
@@ -215,16 +224,21 @@ describe("AdminMemberDetailInspector edit mode", () => {
     expect(screen.getByLabelText("detail.section.notes")).toBeEnabled();
   });
 
-  it("opens the instant-write blocks too, and says they do not wait for save", async () => {
+  it("separates draft availability from the instant-write absence and media tools", async () => {
     const user = userEvent.setup();
     renderModal();
     await enterEditMode(user);
 
-    // 一颗「编辑」放开全部。但请假与媒体各自写库，底下的「保存资料」管不到它们，
-    // 所以这两块必须自己说清楚，否则改完媒体的人会去点一个和它无关的按钮。
+    await user.click(screen.getByRole("tab", { name: "detail.editSection.schedule" }));
+    expect(screen.getByTestId("availability-editor")).toBeInTheDocument();
     expect(screen.getByTestId("absence-manager")).toBeInTheDocument();
-    expect(screen.getByTestId("media-tab")).toBeInTheDocument();
+    expect(screen.getByText("detail.hint.savedWithProfile")).toBeInTheDocument();
     expect(screen.getByText("detail.hint.instant")).toBeInTheDocument();
+
+    const mediaTab = screen.getByRole("tab", { name: "detail.editSection.media" });
+    await user.click(mediaTab);
+    expect(mediaTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("media-tab")).toBeInTheDocument();
   });
 
   it("returns to the read screen after saving", async () => {
@@ -236,6 +250,19 @@ describe("AdminMemberDetailInspector edit mode", () => {
 
     expect(screen.getByRole("button", { name: "detail.action.edit" })).toBeInTheDocument();
     expect(screen.queryAllByRole("textbox")).toHaveLength(0);
+  });
+
+  it("keeps the draft in edit mode when saving fails", async () => {
+    const user = userEvent.setup();
+    const onSaveProfile = vi.fn(async () => false);
+    renderModal({ onSaveProfile });
+    await enterEditMode(user);
+
+    await user.click(screen.getByRole("button", { name: "detail.saveProfile" }));
+
+    expect(onSaveProfile).toHaveBeenCalledWith(member);
+    expect(screen.getByLabelText("detail.field.bio")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "detail.action.edit" })).not.toBeInTheDocument();
   });
 
   it("only offers save while there is something to save", async () => {

@@ -229,12 +229,28 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
     rememberSearch(query);
     closeSearch();
     setQuery("");
-    if (item.category === "event" && item.entityId) {
-      void navigate({
-        to: "/events/$id",
-        params: { id: item.entityId },
-      });
-      return;
+    if (item.entityId) {
+      if (item.category === "event") {
+        void navigate({
+          to: "/events/$id",
+          params: { id: item.entityId },
+        });
+        return;
+      }
+      if (item.category === "announcement") {
+        void navigate({
+          to: "/announcements/$announcementId",
+          params: { announcementId: item.entityId },
+        });
+        return;
+      }
+      if (item.category === "wiki") {
+        void navigate({
+          to: "/wiki/$slug",
+          params: { slug: item.entityId },
+        });
+        return;
+      }
     }
     void navigate({ to: item.to });
   }, [closeSearch, navigate, query, rememberSearch]);
@@ -308,8 +324,14 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
           <CommandList id={resultsId} className={styles.resultList}>
             {loading || queryIsDebouncing ? (
               <p className={styles.statusMessage}>{t("message.loading")}</p>
-            ) : null}
-            {!loading && hasSearchQuery && visibleItems.length === 0 ? (
+            ) : searchDataQuery.isError && hasSearchQuery ? (
+              <div className={styles.errorState} role="alert">
+                <span>{t("loadError")}</span>
+                <Button type="button" size="xs" variant="outline" onClick={() => void searchDataQuery.refetch()}>
+                  {t("action.retry")}
+                </Button>
+              </div>
+            ) : hasSearchQuery && visibleItems.length === 0 ? (
               <p className={styles.statusMessage}>{t("cmdk.noResults")}</p>
             ) : null}
 
@@ -329,7 +351,7 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
               </CommandGroup>
             ) : null}
 
-            {hasSearchQuery ? Array.from(groupedItems.entries()).map(([category, group]) => (
+            {hasSearchQuery && !queryIsDebouncing && !searchDataQuery.isError ? Array.from(groupedItems.entries()).map(([category, group]) => (
               <CommandGroup key={category} heading={categoryLabel(category)} className={styles.resultGroup}>
                 {group.map((item) => (
                   <CommandItem

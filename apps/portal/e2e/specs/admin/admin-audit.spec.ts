@@ -3,7 +3,7 @@ import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import type { AuditEvent, CursorResponse } from "@guild/shared";
 import { readAssignableRole } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
-import { ensureFiltersOpen, field, selectRadioOption } from "../../support/ui";
+import { appSiderNavigationItem, ensureFiltersOpen, expectToast, field, selectRadioOption } from "../../support/ui";
 
 /* Filters are server-owned; each interaction checks the outgoing query before asserting the UI. */
 
@@ -78,25 +78,25 @@ async function expectAuditRequest(
   return await response.json() as AuditPage;
 }
 
-/** 进审计页签，并把首屏那次取数接住。 */
+/** 进入审计工作区，并把首屏那次取数接住。 */
 async function openAudit(page: Page): Promise<AuditPage> {
   const first = await expectAuditRequest(page, () => page.goto("/admin?tab=audit").then(() => undefined), {
     limit: String(PAGE_SIZE),
     start_at: startOf(utcDay(-7)),
     end_at: endOf(utcDay()),
   });
-  await expect(page.getByRole("tab", { name: /Audit Log/ })).toHaveAttribute("aria-selected", "true");
+  await expect(appSiderNavigationItem(page, "Audit Log")).toHaveAttribute("aria-current", "page");
   await page.waitForLoadState("networkidle");
   return first;
 }
 
-/** 做一件会被记账的事：建个邀请码，换回它在审计里的那行锚点。 */
-async function makeAuditedEvent(api: APIRequestContext): Promise<{ id: string; code: string; roleName: string }> {
+/** 做一件会被记账的事：建个邀请链接，换回它在审计里的那行锚点。 */
+async function makeAuditedEvent(api: APIRequestContext): Promise<{ id: string; roleName: string }> {
   const role = await readAssignableRole(api);
   const invite = await readJson(
     await api.post("/api/admin/invite-links", { data: { max_uses: 5, role_id: role.id } }),
-    "创建邀请码以产生一行审计",
-  ) as { id: string; code: string };
+    "创建邀请链接以产生一行审计",
+  ) as { id: string };
   return { ...invite, roleName: role.name };
 }
 
@@ -106,13 +106,6 @@ async function serverAudit(
 ): Promise<AuditPage> {
   const query = new URLSearchParams({ limit: String(PAGE_SIZE), ...params });
   return await readJson(await api.get(`${AUDIT_LOG_PATH}?${query.toString()}`), "读取审计日志") as AuditPage;
-}
-
-async function expectNotified(page: Page, text: string): Promise<void> {
-  await expect(
-    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
-    `没有弹出通知「${text}」`,
-  ).toBeVisible();
 }
 
 /** 盯着 /api/ 证明这段操作没发请求。 */
@@ -138,20 +131,20 @@ test("进页签：默认按最近七天取首批事件，不再重复渲染筛�
   await expect(auditRows(page), "界面上的行数必须等于这一页真的取回来多少行")
     .toHaveCount(Math.min(PAGE_SIZE, first.data.length));
   await expect(page.locator(".admin-filter-summary")).toHaveCount(0);
-  await expect(toolbar(page).getByRole("button", { name: "Filter & sort", exact: true })).toBeVisible();
+  await expect(toolbar(page).getByRole("button", { name: "Filters", exact: true })).toBeVisible();
 });
 
 test("搜索：词送到服务端，命中的就是刚才那次操作，展开能看到当时的入参", async ({ page, api }) => {
   const invite = await makeAuditedEvent(api);
   const before = await openAudit(page);
-  expect(before.data.length, "刚建完邀请码，审计里至少该有这一行").toBeGreaterThan(0);
+  expect(before.data.length, "刚建完邀请链接，审计里至少该有这一行").toBeGreaterThan(0);
 
   const searched = await expectAuditRequest(
     page,
     () => searchBox(page).fill(invite.id),
     { search: invite.id, cursor: null },
   );
-  expect(searched.data, "邀请码 id 是唯一的，只该命中它自己那一行").toHaveLength(1);
+  expect(searched.data, "邀请链接 id 是唯一的，只该命中它自己那一行").toHaveLength(1);
   expect(searched.data[0]?.subject.type).toBe("invite_link");
   expect(searched.data[0]?.action).toBe("create");
 
@@ -172,11 +165,8 @@ test("搜索：词送到服务端，命中的就是刚才那次操作，展开�
   await detail.locator(".audit-technical-disclosure summary").click();
   await expect(detail.getByText(invite.id, { exact: true })).toBeVisible();
 
-  await expectAuditRequest(
-    page,
-    () => searchBox(page).fill(""),
-    { search: null, cursor: null },
-  );
+  /* 空查询仍在 TanStack Query 缓存期内，恢复首批结果不应额外请求服务端。 */
+  await searchBox(page).fill("");
   await expect(searchBox(page)).toHaveValue("");
   await expect(auditRows(page)).toHaveCount(Math.min(PAGE_SIZE, before.data.length));
 });
@@ -211,7 +201,7 @@ test("时间范围：预设只改变一个有效范围，自定义时才露出�
     () => field(page, "Audit date from").fill(utcDay(-3)),
     { start_at: startOf(utcDay(-3)), end_at: endOf(utcDay()) },
   );
-  await expect(toolbar(page).getByRole("button", { name: "Filter & sort (1)" })).toBeVisible();
+  await expect(toolbar(page).getByRole("button", { name: "Filters (1)" })).toBeVisible();
 });
 
 test("加载更多：使用游标追加事件，随后搜索会开启新的首批结果", async ({ page, api }) => {
@@ -259,7 +249,7 @@ test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果�
   const csvDownload = page.waitForEvent("download");
   await clickExport(page, page.getByRole("menuitem", { name: "Export CSV", exact: true }), "text/csv");
   const csvFile = await csvDownload;
-  await expectNotified(page, "Audit CSV exported");
+  await expectToast(page, "Audit CSV exported");
 
   expect(csvFile.suggestedFilename(), "文件名要带上导出的时间范围，否则存下来分不清是哪一批")
     .toBe(`${filenameBase}.csv`);
@@ -274,7 +264,7 @@ test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果�
   const jsonDownload = page.waitForEvent("download");
   await clickExport(page, page.getByRole("menuitem", { name: "Export JSON", exact: true }), "application/json");
   const jsonFile = await jsonDownload;
-  await expectNotified(page, "Audit JSON exported");
+  await expectToast(page, "Audit JSON exported");
 
   expect(jsonFile.suggestedFilename()).toBe(`${filenameBase}.json`);
   const json = JSON.parse(readFileSync(await jsonFile.path(), "utf8")) as {
@@ -283,12 +273,12 @@ test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果�
     end_at: string;
     data: AuditEvent[];
   };
-  /* 导出留痕不会命中仍按邀请码 id 过滤的下一次导出。 */
+  /* 导出留痕不会命中仍按邀请链接 id 过滤的下一次导出。 */
   expect(json.total, "第二次导出仍然只包含当前筛选命中的那条记录").toBe(1);
   expect(json.start_at, "导出的时间范围要和界面上筛的一致").toBe(startOf(utcDay(-7)));
   expect(json.end_at).toBe(endOf(utcDay()));
   const exported = json.data.map((row) => row.subject.id);
-  expect(exported, "导出的就是屏幕上按邀请码 id 命中的那一条").toEqual([invite.id]);
+  expect(exported, "导出的就是屏幕上按邀请链接 id 命中的那一条").toEqual([invite.id]);
 
   /* 导出是把全站操作记录带出系统的动作，它自己必须留痕。 */
   const exportsAfter = await serverAudit(api, { entity_type: "audit_log_export" });

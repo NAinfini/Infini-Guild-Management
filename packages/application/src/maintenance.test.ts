@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isMaintenanceModeEnabled, maintenanceResponse } from "./maintenance.js";
+import {
+  isMaintenanceModeEnabled,
+  maintenanceResponse,
+  readMaintenanceDetails,
+} from "./maintenance.js";
 
 describe("maintenance boundary", () => {
   it("is off when absent or explicit and fails closed for every other non-empty value", () => {
@@ -28,6 +32,41 @@ describe("maintenance boundary", () => {
     expect(body).toContain("<svg viewBox=\"0 0 1600 900\"");
     expect(body).not.toContain("@keyframes");
     expect(body).not.toMatch(/<(?:script|link|img)\b/i);
+  });
+
+  it("renders validated public maintenance metadata without allowing HTML injection", async () => {
+    const details = readMaintenanceDetails({
+      IG_MAINTENANCE_REASON: "  <database> & media update  ",
+      IG_MAINTENANCE_UNTIL: "2026-08-30T12:00:00.000Z",
+    });
+    expect(details).toEqual({
+      reason: "<database> & media update",
+      until: "2026-08-30T12:00:00.000Z",
+    });
+
+    const response = maintenanceResponse(new Request("https://guild.example/"), details);
+    const body = await response.text();
+    expect(body).toContain("&lt;database&gt; &amp; media update");
+    expect(body).toContain("预计结束 · <span lang=\"en\">Estimated completion</span>");
+    expect(body).toContain('<time datetime="2026-08-30T12:00:00.000Z">2026-08-30T12:00:00.000Z</time>');
+    expect(body).not.toContain("<database>");
+
+    const health = maintenanceResponse(new Request("https://guild.example/api/health"), details);
+    await expect(health.json()).resolves.toEqual({
+      ok: true,
+      maintenance: true,
+      reason: "<database> & media update",
+      until: "2026-08-30T12:00:00.000Z",
+    });
+  });
+
+  it("rejects overlong reasons and non-canonical maintenance deadlines", () => {
+    expect(() => readMaintenanceDetails({ IG_MAINTENANCE_REASON: "x".repeat(501) }))
+      .toThrow(/IG_MAINTENANCE_REASON/);
+    for (const value of ["2026-08-30T12:00:00Z", "2026-08-30T12:00:00.000+00:00", "not-a-date"]) {
+      expect(() => readMaintenanceDetails({ IG_MAINTENANCE_UNTIL: value }))
+        .toThrow(/IG_MAINTENANCE_UNTIL/);
+    }
   });
 
   it("keeps health edge-only and returns the standard API error envelope", async () => {

@@ -43,6 +43,54 @@
   font-weight: var(--fw-strong);
 }
 
+.settings-field-description {
+  margin: calc(var(--space-xs) * -1) 0 var(--space-md);
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  line-height: var(--lh-normal);
+}
+
+.settings-notification-list {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.settings-notification-row {
+  display: flex;
+  min-height: var(--control-hit-area);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-base);
+  cursor: pointer;
+}
+
+.settings-notification-row > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.settings-notification-row strong {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.settings-notification-row small {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  line-height: var(--lh-normal);
+}
+
+.settings-notification-row:has([data-slot="switch"]:focus-visible) {
+  border-color: var(--brand-fill);
+  outline: 2px solid color-mix(in srgb, var(--brand-fill) 30%, transparent);
+}
+
+.settings-notification-skeleton { min-height: 4rem; }
+
 .settings-choice-grid {
   display: grid;
   container-name: settings-options;
@@ -83,7 +131,6 @@
 .settings-option-card:has([data-checked]) {
   border-color: var(--accent-on-surface);
   background: color-mix(in srgb, var(--accent-fill) 8%, var(--surface-base));
-  box-shadow: inset 3px 0 0 var(--accent-on-surface);
 }
 
 .settings-option-card:has([data-slot="radio-group-item"]:focus-visible) {
@@ -148,7 +195,7 @@
 .settings-surface-sample__rail,
 .settings-surface-sample__panel {
   border: 1px solid var(--border-subtle);
-  border-radius: calc(var(--radius-control) / 2);
+  border-radius: var(--radius-control);
 }
 
 .settings-surface-sample__rail {

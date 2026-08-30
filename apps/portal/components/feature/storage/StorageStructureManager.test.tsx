@@ -19,6 +19,7 @@ const storage: Storage = {
   name: "Main vault",
   description: "Guild supplies",
   created_at: "2026-07-28T00:00:00.000Z",
+  structure_revision: 0,
   categories: [{ id: "category-1", name: "Materials" }],
 };
 
@@ -27,6 +28,7 @@ const secondaryStorage: Storage = {
   name: "Raid vault",
   description: "Raid supplies",
   created_at: "2026-07-28T00:00:00.000Z",
+  structure_revision: 0,
   categories: [{ id: "category-2", name: "Consumables" }],
 };
 
@@ -66,7 +68,7 @@ const callbacks = {
 };
 
 function renderModal(storages: Storage[] = [storage]) {
-  render(
+  return render(
     <StorageStructureManager
       storages={storages}
       selectedStorage={storage}
@@ -81,6 +83,12 @@ describe("StorageStructureManager create drafts", () => {
     for (const callback of Object.values(callbacks)) {
       callback.mockReset();
     }
+    callbacks.onCreateStorage.mockResolvedValue(storage);
+    callbacks.onUpdateStorage.mockResolvedValue(storage);
+    callbacks.onDeleteStorage.mockResolvedValue(true);
+    callbacks.onCreateCategory.mockResolvedValue({ category: storage.categories[0], structure_revision: 1 });
+    callbacks.onUpdateCategory.mockResolvedValue({ category: storage.categories[0], structure_revision: 1 });
+    callbacks.onDeleteCategory.mockResolvedValue(true);
     responsive.mobile = false;
   });
 
@@ -129,13 +137,44 @@ describe("StorageStructureManager create drafts", () => {
     const categoryInput = screen.getByRole("textbox", { name: labels.categoryName });
     expect(categoryInput).toHaveValue("");
     await user.type(categoryInput, "Consumables");
-    await user.click(screen.getAllByRole("button", { name: labels.createCategory }).at(-1)!);
+    await user.click(within(categoryInput.closest("section") as HTMLElement)
+      .getByRole("button", { name: labels.createCategory }));
 
-    expect(callbacks.onCreateCategory).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(callbacks.onCreateCategory).toHaveBeenCalledTimes(1));
     expect(callbacks.onCreateCategory).toHaveBeenCalledWith(
       storage.id,
-      { name: "Consumables" },
+      { name: "Consumables", expected_structure_revision: storage.structure_revision },
     );
+  });
+
+  it("freezes a new category draft revision across refresh and keeps a failed draft retryable", async () => {
+    const user = userEvent.setup();
+    callbacks.onCreateCategory.mockResolvedValue(null);
+    const view = renderModal();
+
+    await user.click(screen.getByRole("button", { name: labels.createCategory }));
+    const categoryInput = screen.getByRole("textbox", { name: labels.categoryName });
+    await user.type(categoryInput, "Consumables");
+
+    const refreshed = { ...storage, structure_revision: 3 };
+    view.rerender(
+      <StorageStructureManager
+        storages={[refreshed]}
+        selectedStorage={refreshed}
+        selectedCategoryId={null}
+        {...callbacks}
+      />,
+    );
+
+    await user.click(within(categoryInput.closest("section") as HTMLElement)
+      .getByRole("button", { name: labels.createCategory }));
+
+    await waitFor(() => expect(callbacks.onCreateCategory).toHaveBeenCalledWith(storage.id, {
+      name: "Consumables",
+      expected_structure_revision: storage.structure_revision,
+    }));
+    expect(categoryInput).toHaveValue("Consumables");
+    expect(screen.getByText(labels.createCategoryTitle)).toBeInTheDocument();
   });
 
   it("keeps structure selection accessible from a left drawer on mobile", async () => {
@@ -154,6 +193,75 @@ describe("StorageStructureManager create drafts", () => {
     expect(callbacks.onSelectCategory).toHaveBeenCalledWith(storage.id, "category-1");
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("preserves a storage draft across refresh and submits its form-open baseline", async () => {
+    const user = userEvent.setup();
+    callbacks.onUpdateStorage.mockResolvedValue({ ...storage, name: "Local vault", structure_revision: 1 });
+    const view = renderModal();
+    const nameInput = screen.getByRole("textbox", { name: labels.name });
+    await user.clear(nameInput);
+    await user.type(nameInput, "Local vault");
+
+    const refreshed = { ...storage, name: "Server vault", description: "Server description" };
+    view.rerender(
+      <StorageStructureManager
+        storages={[refreshed]}
+        selectedStorage={refreshed}
+        selectedCategoryId={null}
+        {...callbacks}
+      />,
+    );
+
+    expect(nameInput).toHaveValue("Local vault");
+    await user.click(screen.getByRole("button", { name: labels.save }));
+    expect(callbacks.onUpdateStorage).toHaveBeenCalledWith(storage.id, {
+      name: "Local vault",
+      description: storage.description,
+      expected_name: storage.name,
+      expected_description: storage.description,
+      expected_structure_revision: storage.structure_revision,
+    });
+  });
+
+  it("preserves a category draft across refresh and submits its form-open baseline", async () => {
+    const user = userEvent.setup();
+    callbacks.onUpdateCategory.mockResolvedValue({
+      category: { id: "category-1", name: "Local materials" },
+      structure_revision: 1,
+    });
+    const view = render(
+      <StorageStructureManager
+        storages={[storage]}
+        selectedStorage={storage}
+        selectedCategoryId="category-1"
+        {...callbacks}
+      />,
+    );
+    const categoryInput = screen.getByRole("textbox", { name: labels.categoryName });
+    await user.clear(categoryInput);
+    await user.type(categoryInput, "Local materials");
+
+    const refreshed = {
+      ...storage,
+      categories: [{ id: "category-1", name: "Server materials" }],
+    };
+    view.rerender(
+      <StorageStructureManager
+        storages={[refreshed]}
+        selectedStorage={refreshed}
+        selectedCategoryId="category-1"
+        {...callbacks}
+      />,
+    );
+
+    expect(categoryInput).toHaveValue("Local materials");
+    await user.click(screen.getByRole("button", { name: labels.saveCategory }));
+    expect(callbacks.onUpdateCategory).toHaveBeenCalledWith(storage.id, "category-1", {
+      name: "Local materials",
+      expected_name: "Materials",
+      expected_structure_revision: storage.structure_revision,
     });
   });
 
@@ -176,6 +284,7 @@ describe("StorageStructureManager create drafts", () => {
     expect(raidDelete).not.toHaveAttribute("data-loading", "true");
     await user.click(mainDelete);
     expect(callbacks.onDeleteStorage).toHaveBeenCalledTimes(1);
+    expect(callbacks.onDeleteStorage).toHaveBeenCalledWith(storage.id, storage.structure_revision);
 
     finishDelete();
     await waitFor(() => expect(mainDelete).not.toHaveAttribute("data-loading", "true"));

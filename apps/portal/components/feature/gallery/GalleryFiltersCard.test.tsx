@@ -92,7 +92,7 @@ describe("GalleryFiltersCard responsive filters", () => {
     const user = userEvent.setup();
     const { props } = renderFilters();
 
-    fireEvent.change(screen.getByLabelText("aria.searchCaption"), {
+    fireEvent.change(screen.getByLabelText("aria.searchTitle"), {
       target: { value: "raid" },
     });
     await user.click(screen.getByRole("button", { name: /common:filter\.toggle/ }));
@@ -101,7 +101,7 @@ describe("GalleryFiltersCard responsive filters", () => {
       target: { value: "2026-08-02" },
     });
     fireEvent.click(within(filterDialog).getByRole("radio", { name: "sort.oldest" }));
-    fireEvent.click(within(filterDialog).getByRole("button", { name: "filter.clearDates" }));
+    fireEvent.click(within(filterDialog).getByRole("button", { name: "common:filter.reset" }));
     await user.click(within(filterDialog).getByRole("button", { name: "action.close" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /common:filter\.toggle/ })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Add media" }));
@@ -110,12 +110,14 @@ describe("GalleryFiltersCard responsive filters", () => {
     expect(props.onSearchChange).toHaveBeenCalledWith("raid");
     expect(props.onDateFromChange).toHaveBeenCalledWith("2026-08-02");
     expect(props.onSortOrderChange).toHaveBeenCalledWith("asc");
+    expect(props.onTypeFilterChange).toHaveBeenCalledWith(undefined);
+    expect(props.onSortOrderChange).toHaveBeenCalledWith("desc");
     expect(props.onClearDates).toHaveBeenCalledOnce();
     expect(props.onAddMedia).toHaveBeenCalledOnce();
     await waitFor(() => expect(props.onBulkDelete).toHaveBeenCalledOnce());
   });
 
-  it("uses a reset action instead of a legacy clear-all control", async () => {
+  it("resets all active filters", async () => {
     const user = userEvent.setup();
     renderFilters({
       search: "raid",

@@ -1,8 +1,9 @@
 import type {
   ClassCatalogItem,
   ClassVectorIconId,
-  CreateClassCatalogItemInput,
+  UpdateClassCatalogItemInput,
 } from "@guild/shared";
+import { catalogRevisionToken } from "@guild/shared";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -15,15 +16,18 @@ import {
   updateClassCatalogItem,
   uploadClassCatalogIcon,
 } from "../api/mutations/classes";
+import { isApiRequestError } from "../api/client";
 import { queryKeys } from "../api/query-keys";
 import { classCatalogQueryOptions } from "./data/useClassData";
-import { notifyError, notifySuccess } from "../utils/notifications";
+import { notifySuccess } from "../utils/notifications";
+import { presentAppError } from "./useAppError";
 
 /* sort_order 不在草稿里：顺序由左栏拖拽决定，走整表重排接口。留在草稿里的话
    同一份顺序有两个写入口——保存表单会把编辑器打开那一刻的旧数字写回去，把中间
    发生过的拖拽抹掉。 */
 export type ClassEditorDraft = {
   id: string | null;
+  updatedAt: string | null;
   label: string;
   color: string;
   vectorIcon: ClassVectorIconId;
@@ -33,6 +37,7 @@ export type ClassEditorDraft = {
 
 export const EMPTY_CLASS_EDITOR_DRAFT: ClassEditorDraft = {
   id: null,
+  updatedAt: null,
   label: "",
   color: "#61B8AA",
   vectorIcon: "sword",
@@ -43,6 +48,7 @@ export const EMPTY_CLASS_EDITOR_DRAFT: ClassEditorDraft = {
 function itemToDraft(item: ClassCatalogItem): ClassEditorDraft {
   return {
     id: item.id,
+    updatedAt: item.updated_at,
     label: item.label,
     color: item.color,
     vectorIcon: item.icon_type === "vector" ? item.vector_icon : "sword",
@@ -53,6 +59,7 @@ function itemToDraft(item: ClassCatalogItem): ClassEditorDraft {
 
 function sameDraft(left: ClassEditorDraft, right: ClassEditorDraft) {
   return left.id === right.id
+    && left.updatedAt === right.updatedAt
     && left.label === right.label
     && left.color === right.color
     && left.vectorIcon === right.vectorIcon
@@ -81,34 +88,52 @@ export function useAdminClassesController() {
 
   const saveMutation = useMutation({
     mutationFn: async (nextDraft: ClassEditorDraft) => {
-      const payload: CreateClassCatalogItemInput = {
+      const fields = {
         label: nextDraft.label.trim(),
         color: nextDraft.color.toUpperCase(),
-        vector_icon: nextDraft.vectorIcon,
       };
 
-      const createdNow = !nextDraft.id;
-      let item = nextDraft.id
-        ? await updateClassCatalogItem(nextDraft.id, payload)
-        : await createClassCatalogItem(payload);
-
-      // Creating the row and uploading its artwork are intentionally separate
-      // operations. Persist the generated id in the open draft immediately so
-      // an upload failure can be retried as an edit instead of attempting a
-      // duplicate create with the same label.
-      if (createdNow) {
-        setDraft((current) => current.id ? current : { ...current, id: item.id });
+      let item: ClassCatalogItem;
+      if (nextDraft.id) {
+        if (!nextDraft.updatedAt) throw new Error("Class editor revision is missing");
+        const update: UpdateClassCatalogItemInput = {
+          ...fields,
+          ...(nextDraft.iconMode === "vector" ? { vector_icon: nextDraft.vectorIcon } : {}),
+          expected_updated_at: nextDraft.updatedAt,
+        };
+        item = await updateClassCatalogItem(nextDraft.id, update);
+      } else {
+        item = await createClassCatalogItem({ ...fields, vector_icon: nextDraft.vectorIcon });
       }
+
+      /* Metadata and artwork are separate commands. Adopt the metadata response
+         before starting the upload so either a new row or an edited row retries
+         from the revision that actually persisted instead of reusing a stale token. */
+      const persistedBaseline = itemToDraft(item);
+      setBaseline((current) => current.id === nextDraft.id ? persistedBaseline : current);
+      setDraft((current) => current.id === nextDraft.id ? {
+        ...current,
+        id: item.id,
+        updatedAt: item.updated_at,
+      } : current);
 
       if (nextDraft.iconMode === "image" && nextDraft.imageFile) {
         setUploadProgress(1);
-        item = await uploadClassCatalogIcon(
-          item.id,
-          nextDraft.imageFile,
-          setUploadProgress,
-        );
+        try {
+          item = await uploadClassCatalogIcon(
+            item.id,
+            nextDraft.imageFile,
+            item.updated_at,
+            setUploadProgress,
+          );
+        } catch (cause) {
+          if (isApiRequestError(cause) && cause.status === 0) {
+            throw cause;
+          }
+          throw new Error(t("classes.message.imageFailedAfterDetailsSaved"), { cause });
+        }
       } else if (nextDraft.iconMode === "vector" && item.icon_type === "image") {
-        item = await removeClassCatalogIcon(item.id);
+        item = await removeClassCatalogIcon(item.id, item.updated_at);
       }
 
       return item;
@@ -124,12 +149,13 @@ export function useAdminClassesController() {
     onError: (error) => {
       setUploadProgress(0);
       void queryClient.invalidateQueries({ queryKey: queryKeys.classes.all });
-      notifyError(error instanceof Error ? error.message : t("classes.message.failed"));
+      presentAppError(error, t("classes.message.failed"));
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteClassCatalogItem,
+    mutationFn: ({ id, expectedUpdatedAt }: { id: string; expectedUpdatedAt: string }) =>
+      deleteClassCatalogItem(id, expectedUpdatedAt),
     onSuccess: async () => {
       await refresh();
       /* 删职业会把它从所有标签里一起摘掉（class_tag_members 级联），标签那份缓存里
@@ -143,7 +169,10 @@ export function useAdminClassesController() {
       setUploadProgress(0);
       notifySuccess(t("classes.message.deleted"));
     },
-    onError: () => notifyError(t("classes.message.failed")),
+    onError: (error) => {
+      void refresh();
+      presentAppError(error, t("classes.message.failed"));
+    },
   });
 
   /*
@@ -155,8 +184,9 @@ export function useAdminClassesController() {
    * 职业），这种时候「松手前那份」本身也是错的，只有重新拉才是真相。
    */
   const reorderMutation = useMutation({
-    mutationFn: (order: string[]) => reorderClassCatalog(order),
-    onMutate: async (order: string[]) => {
+    mutationFn: ({ order, expectedRevisionToken }: { order: string[]; expectedRevisionToken: string }) =>
+      reorderClassCatalog(order, expectedRevisionToken),
+    onMutate: async ({ order }: { order: string[]; expectedRevisionToken: string }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.classes.list() });
       const previous = queryClient.getQueryData<ClassCatalogItem[]>(queryKeys.classes.list());
       if (previous) {
@@ -168,11 +198,11 @@ export function useAdminClassesController() {
       }
       return { previous };
     },
-    onError: (error, _order, context) => {
+    onError: (error, _variables, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKeys.classes.list(), context.previous);
       }
-      notifyError(error instanceof Error ? error.message : t("classes.message.reorderFailed"));
+      presentAppError(error, t("classes.message.reorderFailed"));
       void refresh();
     },
     onSuccess: (items) => {
@@ -186,7 +216,10 @@ export function useAdminClassesController() {
     const from = current.findIndex((item) => item.id === activeId);
     const to = current.findIndex((item) => item.id === overId);
     if (from < 0 || to < 0 || from === to) return;
-    reorderMutation.mutate(arrayMove(current, from, to).map((item) => item.id));
+    reorderMutation.mutate({
+      order: arrayMove(current, from, to).map((item) => item.id),
+      expectedRevisionToken: catalogRevisionToken(current),
+    });
   };
 
   const openCreate = () => {
@@ -220,6 +253,19 @@ export function useAdminClassesController() {
     openEdit(first);
   }, [query.data]);
 
+  /* Fresh server data may advance this editor's baseline only while it is clean.
+     A dirty form retains the revision it opened with so its save correctly gets a
+     conflict instead of silently writing over somebody else's change. */
+  useEffect(() => {
+    if (!opened || !draft.id || !baseline.id || isDirty || saveMutation.isPending) return;
+    const latest = query.data?.find((item) => item.id === draft.id);
+    if (!latest) return;
+    const nextDraft = itemToDraft(latest);
+    if (sameDraft(baseline, nextDraft)) return;
+    setDraft(nextDraft);
+    setBaseline(nextDraft);
+  }, [baseline, draft.id, isDirty, opened, query.data, saveMutation.isPending]);
+
   return {
     query,
     opened,
@@ -229,7 +275,7 @@ export function useAdminClassesController() {
     openCreate,
     openEdit,
     save: () => saveMutation.mutate(draft),
-    remove: (id: string) => deleteMutation.mutateAsync(id),
+    remove: (id: string, expectedUpdatedAt: string) => deleteMutation.mutateAsync({ id, expectedUpdatedAt }),
     reorder,
     savePending: saveMutation.isPending,
     deletePending: deleteMutation.isPending,

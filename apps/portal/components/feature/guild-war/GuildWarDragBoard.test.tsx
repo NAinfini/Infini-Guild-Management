@@ -44,6 +44,7 @@ const baseProps = {
     },
   ],
   canDrag: true,
+  canRemoveParticipants: true,
   emptyText: "empty",
   activeSearch: "",
   activeDragItem: null,
@@ -68,6 +69,18 @@ describe("GuildWarDragBoard", () => {
       pointerCoordinates: { x: 1, y: 1 },
     } as Parameters<typeof guildWarCollisionDetection>[0])).toEqual([{ id: "pointer-target" }]);
     expect(collisionMocks.pointerWithin).toHaveBeenCalledOnce();
+
+    collisionMocks.pointerWithin.mockReturnValueOnce([
+      { id: "container:pool" },
+      { id: "trash-zone" },
+    ]);
+    expect(guildWarCollisionDetection({
+      ...baseArgs,
+      pointerCoordinates: { x: 1, y: 1 },
+    } as Parameters<typeof guildWarCollisionDetection>[0])).toEqual([
+      { id: "trash-zone" },
+      { id: "container:pool" },
+    ]);
 
     expect(guildWarCollisionDetection({
       ...baseArgs,

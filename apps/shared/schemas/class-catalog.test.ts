@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   classCatalogItemSchema,
   createClassCatalogItemSchema,
+  reorderClassCatalogSchema,
   updateClassCatalogItemSchema,
 } from "./class-catalog";
 
@@ -40,12 +41,19 @@ describe("class catalog schemas", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("rejects unknown vectors, malformed colors, and empty updates", () => {
+  it("requires a record revision for every update and a collection token for a full reorder", () => {
     expect(createClassCatalogItemSchema.safeParse({
       label: "Storm",
       color: "teal",
       vector_icon: "not-in-the-library",
     }).success).toBe(false);
     expect(updateClassCatalogItemSchema.safeParse({}).success).toBe(false);
+    expect(updateClassCatalogItemSchema.safeParse({ label: "Storm" }).success).toBe(false);
+    expect(updateClassCatalogItemSchema.parse({
+      label: "Storm", expected_updated_at: "2026-01-01T00:00:00.000Z",
+    })).toMatchObject({ expected_updated_at: "2026-01-01T00:00:00.000Z" });
+    expect(reorderClassCatalogSchema.safeParse({ order: ["storm"] }).success).toBe(false);
+    expect(reorderClassCatalogSchema.parse({ order: ["storm"], expected_revision_token: "[]" }))
+      .toMatchObject({ expected_revision_token: "[]" });
   });
 });

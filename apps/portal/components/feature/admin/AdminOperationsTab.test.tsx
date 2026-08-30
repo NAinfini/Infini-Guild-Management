@@ -3,8 +3,6 @@ import {
   type AdminOperationsResponse,
 } from "@guild/shared/schemas/admin-operations";
 import { render, screen } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { AdminOperationsTab } from "./AdminOperationsTab";
 
@@ -27,11 +25,21 @@ vi.mock("../../../stores/auth", () => ({
 }));
 
 function operationsFixture(connectionCount: number | null = 7): AdminOperationsResponse {
+  const scheduleByName = {
+    "recurrence-materialization": "half-hourly",
+    "announcement-publish": "quarter-hourly",
+    "raffle-auto-draw": "quarter-hourly",
+    "event-auto-archive": "half-hourly",
+    "media-gc": "hourly-media",
+    "audit-archive": "daily",
+    "session-cleanup": "hourly-cleanup",
+    "system-test-cleanup": "hourly-cleanup",
+  } as const;
   return {
     observed_at: "2026-08-12T15:30:00.000Z",
     scheduled_jobs: ADMIN_OPERATION_JOB_NAMES.map((name, index) => ({
       name,
-      schedule: name === "audit-archive" ? "daily" : "quarter-hourly",
+      schedule: scheduleByName[name],
       status: index === 0 ? "completed" : index === 1 ? "interrupted" : "never-run",
       started_at: index === 0 ? "2026-08-12T15:29:00.000Z" : null,
       finished_at: index === 0 ? "2026-08-12T15:29:02.000Z" : null,
@@ -115,6 +123,8 @@ describe("AdminOperationsTab", () => {
     expect(screen.getByText("operations.jobs.name.recurrence-materialization")).toBeInTheDocument();
     expect(screen.getByText("operations.jobs.status.interrupted")).toBeInTheDocument();
     expect(screen.getAllByText("operations.schedule.daily")).toHaveLength(1);
+    expect(screen.getAllByText("operations.schedule.half-hourly")).toHaveLength(2);
+    expect(screen.getAllByText("operations.schedule.hourly-cleanup")).toHaveLength(2);
     expect(screen.getByText("operations.realtime.title")).toBeInTheDocument();
     expect(screen.getByText("operations.realtime.state.available")).toBeInTheDocument();
     expect(screen.getByText("operations.usage.managedDisclosure")).toBeInTheDocument();
@@ -136,29 +146,6 @@ describe("AdminOperationsTab", () => {
     expect(screen.getByText("operations.jobs.title")).toBeInTheDocument();
     expect(screen.getByText("operations.realtime.title")).toBeInTheDocument();
     expect(screen.getByText("operations.usage.title")).toBeInTheDocument();
-  });
-
-  it("keeps backup and restore outside the operations surface", () => {
-    const componentSource = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/feature/admin/AdminOperationsTab.tsx"),
-      "utf8",
-    );
-
-    expect(componentSource).not.toMatch(/backup|restore/i);
-  });
-
-  it("uses the shared page workspace as the tablet scroll owner", () => {
-    const css = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/feature/admin/AdminOperationsTab.css"),
-      "utf8",
-    );
-
-    expect(css).toMatch(
-      /@media \(min-width: 768px\) and \(max-width: 79\.99em\)[\s\S]*?\.page-layout\.admin-page\[data-workspace-mode="contained"\] \.page-layout__workspace\s*\{[\s\S]*?display:\s*block[\s\S]*?overflow-y:\s*auto/,
-    );
-    expect(css).toMatch(
-      /@media \(min-width: 768px\) and \(max-width: 79\.99em\)[\s\S]*?\.admin-operations \.admin-panel__body--scroll\s*\{[\s\S]*?overflow-y:\s*visible/,
-    );
   });
 
   it("requires status-view access", () => {

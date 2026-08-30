@@ -9,6 +9,7 @@ import { SqliteMembersStore } from "./members-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const REORDERED_AT = "2026-08-09T13:00:00.000Z";
+const RACED_AT = "2026-08-09T14:00:00.000Z";
 const BASE_SCHEMA = `
   PRAGMA foreign_keys = ON;
   CREATE TABLE roles (
@@ -40,6 +41,18 @@ const BASE_SCHEMA = `
   CREATE TABLE class_tag_members (
     tag_id TEXT NOT NULL REFERENCES class_tags(id) ON DELETE CASCADE,
     class_id TEXT NOT NULL REFERENCES class_catalog(id), PRIMARY KEY(tag_id, class_id)
+  );
+  CREATE TABLE event_class_quotas (
+    event_id TEXT NOT NULL,
+    tag_id TEXT NOT NULL REFERENCES class_tags(id) ON DELETE CASCADE,
+    required INTEGER NOT NULL,
+    PRIMARY KEY(event_id, tag_id)
+  );
+  CREATE TABLE recurring_template_class_quotas (
+    template_id TEXT NOT NULL,
+    tag_id TEXT NOT NULL REFERENCES class_tags(id) ON DELETE CASCADE,
+    required INTEGER NOT NULL,
+    PRIMARY KEY(template_id, tag_id)
   );
   CREATE TABLE member_profile_classes (
     user_id TEXT NOT NULL REFERENCES member_profiles(user_id) ON DELETE CASCADE,
@@ -156,6 +169,29 @@ function audit(
   });
 }
 
+type CatalogEntry = Readonly<{ id: string; sort_order: number; updated_at: string }>;
+
+function catalogReorder(
+  expected: readonly CatalogEntry[],
+  order: readonly string[],
+  updatedAt = REORDERED_AT,
+) {
+  return {
+    order,
+    expected,
+    next: order.map((id, index) => {
+      const current = expected.find((entry) => entry.id === id);
+      if (!current) throw new Error(`Missing catalog entry: ${id}`);
+      const sort_order = index * 10;
+      return {
+        id,
+        sort_order,
+        updated_at: current.sort_order === sort_order ? current.updated_at : updatedAt,
+      };
+    }),
+  };
+}
+
 function scalar(database: DatabaseSync, sql: string): number {
   const row = database.prepare(sql).get() as Record<string, number>;
   return Number(Object.values(row)[0]);
@@ -268,6 +304,71 @@ describe("SqliteMembersStore atomic profile writes", () => {
     expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
   });
 
+  it("does not advance the profile revision or write an audit row for a no-op aggregate save", async () => {
+    const value = harness();
+    value.database.prepare(`INSERT INTO class_catalog (
+      id, label, color, icon_type, vector_icon, sort_order, created_at, updated_at
+    ) VALUES ('class-1', 'Class One', '#fff', 'vector', 'sword', 0, ?, ?)`)
+      .run(NOW, NOW);
+    value.database.prepare("INSERT INTO member_profile_classes (user_id, class_id, sort_order) VALUES ('target-1', 'class-1', 0)").run();
+    value.database.prepare("INSERT INTO member_profile_videos (user_id, url, sort_order) VALUES ('target-1', 'https://example.com/video', 0)").run();
+    value.database.prepare("UPDATE member_profiles SET availability_timezone = 'UTC' WHERE user_id = 'target-1'").run();
+    value.database.prepare(`INSERT INTO member_availability_windows (user_id, weekday, start_minute, end_minute)
+      VALUES ('target-1', 1, 1200, 1320)`).run();
+    const target = await value.store.getMemberTarget("target-1");
+    if (!target) throw new Error("Expected target");
+
+    const updated = await value.store.updateProfile("target-1", {
+      power: 0,
+      classes: ["class-1"],
+      titleHtml: null,
+      bio: null,
+      videoUrls: ["https://example.com/video"],
+      availability: {
+        timezone: "UTC",
+        days: {
+          sunday: [],
+          monday: [{ start_utc: "20:00", end_utc: "22:00" }],
+          tuesday: [],
+          wednesday: [],
+          thursday: [],
+          friday: [],
+          saturday: [],
+        },
+      },
+      images: ["media-a", "media-b"],
+      updatedAt: "2026-08-09T13:00:00.000Z",
+    }, target, ["media-a", "media-b"], audit("member_profile", "target-1", "update"));
+
+    expect(updated).not.toBeNull();
+    expect(updated).not.toBe("display_name_taken");
+    expect(text(value.database, "SELECT revision_token FROM member_profiles WHERE user_id = 'target-1'"))
+      .toBe(target.profileRevisionToken);
+    expect(text(value.database, "SELECT updated_at FROM member_profiles WHERE user_id = 'target-1'"))
+      .toBe(NOW);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
+  });
+
+  it("returns conflict with no user, profile, media, or audit change after a stale profile revision", async () => {
+    const value = harness();
+    const target = await value.store.getMemberTarget("target-1");
+    if (!target) throw new Error("Expected target");
+    value.database.prepare("UPDATE member_profiles SET revision_token = 'profile-raced' WHERE user_id = 'target-1'").run();
+
+    const updated = await value.store.updateProfile("target-1", {
+      displayName: "Stale Rename",
+      bio: "blocked",
+      images: ["media-b"],
+      updatedAt: NOW,
+    }, target, ["media-a", "media-b"], audit("member_profile", "target-1", "update"));
+
+    expect(updated).toBeNull();
+    expect(text(value.database, "SELECT display_name FROM users WHERE id = 'target-1'")).toBe("Target");
+    expect(text(value.database, "SELECT bio FROM member_profiles WHERE user_id = 'target-1'")).toBeNull();
+    expect(text(value.database, "SELECT group_concat(media_id, ',') FROM (SELECT media_id FROM media_links WHERE entity_id = 'target-1' ORDER BY sort_order)")).toBe("media-a,media-b");
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
+  });
+
   it("returns conflict with no profile, media, or audit change after a target-role race", async () => {
     const value = harness();
     const target = await value.store.getMemberTarget("target-1");
@@ -321,9 +422,18 @@ describe("SqliteMembersStore system-test reorder snapshots", () => {
     insertBadge.run("badge-a", "Badge A", 500, NOW, NOW);
     insertBadge.run("badge-b", "Badge B", 600, NOW, NOW);
 
-    await value.store.reorderClasses(["class-b", "class-a"], REORDERED_AT, audit("class_catalog", "catalog", "update", requestId));
-    await value.store.reorderClassTags(["tag-b", "tag-a"], REORDERED_AT, audit("class_tag", "catalog", "update", requestId));
-    await value.store.reorderBadges(["badge-b", "badge-a"], REORDERED_AT, audit("member_badge", "catalog", "update", requestId));
+    await value.store.reorderClasses(catalogReorder([
+      { id: "class-a", sort_order: 100, updated_at: NOW },
+      { id: "class-b", sort_order: 200, updated_at: NOW },
+    ], ["class-b", "class-a"]), audit("class_catalog", "catalog", "update", requestId));
+    await value.store.reorderClassTags(catalogReorder([
+      { id: "tag-a", sort_order: 300, updated_at: NOW },
+      { id: "tag-b", sort_order: 400, updated_at: NOW },
+    ], ["tag-b", "tag-a"]), audit("class_tag", "catalog", "update", requestId));
+    await value.store.reorderBadges(catalogReorder([
+      { id: "badge-a", sort_order: 500, updated_at: NOW },
+      { id: "badge-b", sort_order: 600, updated_at: NOW },
+    ], ["badge-b", "badge-a"]), audit("member_badge", "catalog", "update", requestId));
 
     expect(value.database.prepare(`SELECT target_type, target_id, before_sort_order, expected_sort_order,
       before_updated_at, expected_updated_at FROM system_test_before_images
@@ -357,7 +467,10 @@ describe("SqliteMembersStore system-test reorder snapshots", () => {
         mutation.subjectType, mutation.subjectId, mutation.subjectLabel, mutation.action,
         JSON.stringify(mutation.payload), mutation.occurredAt);
 
-    await expect(value.store.reorderClasses(["class-b", "class-a"], REORDERED_AT, mutation)).rejects.toThrow(/UNIQUE/);
+    await expect(value.store.reorderClasses(catalogReorder([
+      { id: "class-a", sort_order: 100, updated_at: NOW },
+      { id: "class-b", sort_order: 200, updated_at: NOW },
+    ], ["class-b", "class-a"]), mutation)).rejects.toThrow(/UNIQUE/);
     expect(value.database.prepare("SELECT id, sort_order, updated_at FROM class_catalog ORDER BY id").all()).toEqual([
       { id: "class-a", sort_order: 100, updated_at: NOW },
       { id: "class-b", sort_order: 200, updated_at: NOW },
@@ -367,7 +480,7 @@ describe("SqliteMembersStore system-test reorder snapshots", () => {
 });
 
 describe("SqliteMembersStore no-op catalog mutations", () => {
-  it("keeps class-tag and badge timestamps stable and audits only real field changes", async () => {
+  it("keeps class, class-tag, and badge timestamps stable and audits only real field changes", async () => {
     const value = harness();
     value.database.prepare(`INSERT INTO class_catalog (
       id, label, color, icon_type, vector_icon, sort_order, created_at, updated_at
@@ -384,23 +497,28 @@ describe("SqliteMembersStore no-op catalog mutations", () => {
       id, name, label_html, color, description, sort_order, created_at, updated_at
     ) VALUES ('badge-1', 'Veteran', '<b>Veteran</b>', '#fff', NULL, 0, ?, ?)`).run(NOW, NOW);
 
+    await value.store.updateClass("class-a", {
+      label: "Class A", expectedUpdatedAt: NOW, now: REORDERED_AT,
+    }, audit("class_catalog", "class-a", "update", "class-no-op"));
+
     await value.store.updateClassTag("tag-1", {
-      label: "Support", classIds: ["class-b", "class-a"], sortOrder: 0, now: REORDERED_AT,
+      label: "Support", classIds: ["class-b", "class-a"], sortOrder: 0, expectedUpdatedAt: NOW, now: REORDERED_AT,
     }, audit("class_tag", "tag-1", "update", "tag-no-op"));
     await value.store.updateBadge("badge-1", {
       name: "Veteran", labelHtml: "<b>Veteran</b>", color: "#fff", description: null,
-      sortOrder: 0, now: REORDERED_AT,
+      sortOrder: 0, expectedUpdatedAt: NOW, now: REORDERED_AT,
     }, audit("member_badge", "badge-1", "update", "badge-no-op"));
 
     expect(text(value.database, "SELECT updated_at FROM class_tags WHERE id = 'tag-1'")).toBe(NOW);
+    expect(text(value.database, "SELECT updated_at FROM class_catalog WHERE id = 'class-a'")).toBe(NOW);
     expect(text(value.database, "SELECT updated_at FROM member_badges WHERE id = 'badge-1'")).toBe(NOW);
     expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
 
     await value.store.updateClassTag("tag-1", {
-      label: "Frontline", now: REORDERED_AT,
+      label: "Frontline", expectedUpdatedAt: NOW, now: REORDERED_AT,
     }, audit("class_tag", "tag-1", "update", "tag-change"));
     await value.store.updateBadge("badge-1", {
-      color: "#000", now: REORDERED_AT,
+      color: "#000", expectedUpdatedAt: NOW, now: REORDERED_AT,
     }, audit("member_badge", "badge-1", "update", "badge-change"));
 
     expect(text(value.database, "SELECT updated_at FROM class_tags WHERE id = 'tag-1'")).toBe(REORDERED_AT);
@@ -421,19 +539,212 @@ describe("SqliteMembersStore no-op catalog mutations", () => {
       insertBadge.run(`badge-${id}`, `Badge ${id}`, index * 10, NOW, NOW);
     }
 
-    await value.store.reorderClassTags(["tag-a", "tag-b", "tag-c"], REORDERED_AT, audit("class_tag", "catalog", "update", "tag-order-no-op"));
-    await value.store.reorderBadges(["badge-a", "badge-b", "badge-c"], REORDERED_AT, audit("member_badge", "catalog", "update", "badge-order-no-op"));
+    await value.store.reorderClassTags(catalogReorder([
+      { id: "tag-a", sort_order: 0, updated_at: NOW },
+      { id: "tag-b", sort_order: 10, updated_at: NOW },
+      { id: "tag-c", sort_order: 20, updated_at: NOW },
+    ], ["tag-a", "tag-b", "tag-c"]), audit("class_tag", "catalog", "update", "tag-order-no-op"));
+    await value.store.reorderBadges(catalogReorder([
+      { id: "badge-a", sort_order: 0, updated_at: NOW },
+      { id: "badge-b", sort_order: 10, updated_at: NOW },
+      { id: "badge-c", sort_order: 20, updated_at: NOW },
+    ], ["badge-a", "badge-b", "badge-c"]), audit("member_badge", "catalog", "update", "badge-order-no-op"));
     expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
     expect(scalar(value.database, `SELECT count(*) FROM class_tags WHERE updated_at = '${NOW}'`)).toBe(3);
     expect(scalar(value.database, `SELECT count(*) FROM member_badges WHERE updated_at = '${NOW}'`)).toBe(3);
 
-    await value.store.reorderClassTags(["tag-b", "tag-a", "tag-c"], REORDERED_AT, audit("class_tag", "catalog", "update", "tag-order-change"));
-    await value.store.reorderBadges(["badge-b", "badge-a", "badge-c"], REORDERED_AT, audit("member_badge", "catalog", "update", "badge-order-change"));
+    await value.store.reorderClassTags(catalogReorder([
+      { id: "tag-a", sort_order: 0, updated_at: NOW },
+      { id: "tag-b", sort_order: 10, updated_at: NOW },
+      { id: "tag-c", sort_order: 20, updated_at: NOW },
+    ], ["tag-b", "tag-a", "tag-c"]), audit("class_tag", "catalog", "update", "tag-order-change"));
+    await value.store.reorderBadges(catalogReorder([
+      { id: "badge-a", sort_order: 0, updated_at: NOW },
+      { id: "badge-b", sort_order: 10, updated_at: NOW },
+      { id: "badge-c", sort_order: 20, updated_at: NOW },
+    ], ["badge-b", "badge-a", "badge-c"]), audit("member_badge", "catalog", "update", "badge-order-change"));
     expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(2);
     expect(text(value.database, "SELECT updated_at FROM class_tags WHERE id = 'tag-c'")).toBe(NOW);
     expect(text(value.database, "SELECT updated_at FROM member_badges WHERE id = 'badge-c'")).toBe(NOW);
     expect(scalar(value.database, `SELECT count(*) FROM class_tags WHERE updated_at = '${REORDERED_AT}'`)).toBe(2);
     expect(scalar(value.database, `SELECT count(*) FROM member_badges WHERE updated_at = '${REORDERED_AT}'`)).toBe(2);
+  });
+});
+
+describe("SqliteMembersStore committed catalog mutation snapshots", () => {
+  it("returns created catalog records and badge revisions from the same write batches", async () => {
+    const value = harness();
+    const createdClass = await value.store.createClass({
+      id: "class-created", label: "Created Class", color: "#fff", vectorIcon: "sword", now: NOW,
+    }, audit("class_catalog", "class-created", "create", "class-create-snapshot"));
+    const createdTag = await value.store.createClassTag({
+      id: "tag-created", label: "Created Tag", classIds: ["class-created"], now: NOW,
+    }, audit("class_tag", "tag-created", "create", "tag-create-snapshot"));
+    const createdBadge = await value.store.createBadge({
+      id: "badge-created", name: "Created Badge", labelHtml: "Created Badge", color: "#fff", description: null, now: NOW,
+    }, audit("member_badge", "badge-created", "create", "badge-create-snapshot"));
+    const assignment = await value.store.assignBadge(
+      "badge-created", ["target-1"], "admin-1", REORDERED_AT,
+      audit("member_badge", "badge-created", "assign", "badge-assignment-snapshot"),
+    );
+
+    expect(createdClass).toMatchObject({ outcome: "created", record: {
+      id: "class-created", icon_type: "vector", vector_icon: "sword", updated_at: NOW,
+    } });
+    expect(createdTag).toMatchObject({ outcome: "created", record: {
+      id: "tag-created", class_ids: ["class-created"], updated_at: NOW,
+    } });
+    expect(createdBadge).toMatchObject({ outcome: "created", record: {
+      id: "badge-created", updated_at: NOW,
+    } });
+    expect(assignment).toMatchObject({ changed: 1, updatedAt: expect.any(String) });
+    for (const batch of value.executor.batches) {
+      expect(batch.at(-1)?.method).toBe("all");
+    }
+    expect(value.executor.batches[3]?.at(-1)).toMatchObject({
+      method: "all",
+      columns: ["id", "name", "label_html", "color", "description", "sort_order", "created_at", "updated_at"],
+    });
+  });
+});
+
+describe("SqliteMembersStore catalog compare-and-swap", () => {
+  it("rejects a detail write that loses the final record revision race without an audit", async () => {
+    const value = harness();
+    value.database.exec(`
+      INSERT INTO class_catalog (id, label, color, icon_type, vector_icon, sort_order, created_at, updated_at)
+      VALUES ('class-1', 'Class', '#fff', 'vector', 'sword', 0, '${NOW}', '${NOW}');
+      INSERT INTO class_tags (id, label, sort_order, owner_kind, owner_id, created_at, updated_at)
+      VALUES ('tag-1', 'Tag', 0, NULL, NULL, '${NOW}', '${NOW}');
+      INSERT INTO member_badges (id, name, label_html, color, description, sort_order, created_at, updated_at)
+      VALUES ('badge-1', 'Badge', 'Badge', '#fff', NULL, 0, '${NOW}', '${NOW}');
+    `);
+
+    value.executor.beforeNextBatch = () => {
+      value.database.prepare("UPDATE class_catalog SET label = 'Raced', updated_at = ? WHERE id = 'class-1'").run(RACED_AT);
+    };
+    await expect(value.store.updateClass("class-1", {
+      label: "Requested", expectedUpdatedAt: NOW, now: REORDERED_AT,
+    }, audit("class_catalog", "class-1", "update", "class-race"))).resolves.toBe("stale");
+
+    value.executor.beforeNextBatch = () => {
+      value.database.prepare("UPDATE class_tags SET label = 'Raced', updated_at = ? WHERE id = 'tag-1'").run(RACED_AT);
+    };
+    await expect(value.store.updateClassTag("tag-1", {
+      label: "Requested", expectedUpdatedAt: NOW, now: REORDERED_AT,
+    }, audit("class_tag", "tag-1", "update", "tag-race"))).resolves.toBe("stale");
+
+    value.executor.beforeNextBatch = () => {
+      value.database.prepare("UPDATE member_badges SET name = 'Raced', updated_at = ? WHERE id = 'badge-1'").run(RACED_AT);
+    };
+    await expect(value.store.updateBadge("badge-1", {
+      name: "Requested", expectedUpdatedAt: NOW, now: REORDERED_AT,
+    }, audit("member_badge", "badge-1", "update", "badge-race"))).resolves.toBe("stale");
+
+    expect(text(value.database, "SELECT label FROM class_catalog WHERE id = 'class-1'")).toBe("Raced");
+    expect(text(value.database, "SELECT label FROM class_tags WHERE id = 'tag-1'")).toBe("Raced");
+    expect(text(value.database, "SELECT name FROM member_badges WHERE id = 'badge-1'")).toBe("Raced");
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
+  });
+
+  it("rejects a full same-ID reorder when a competing order changes before the atomic batch", async () => {
+    const value = harness();
+    value.database.exec(`
+      INSERT INTO class_catalog (id, label, color, icon_type, vector_icon, sort_order, created_at, updated_at) VALUES
+        ('class-a', 'Class A', '#fff', 'vector', 'sword', 0, '${NOW}', '${NOW}'),
+        ('class-b', 'Class B', '#fff', 'vector', 'sword', 10, '${NOW}', '${NOW}');
+      INSERT INTO class_tags (id, label, sort_order, owner_kind, owner_id, created_at, updated_at) VALUES
+        ('tag-a', 'Tag A', 0, NULL, NULL, '${NOW}', '${NOW}'),
+        ('tag-b', 'Tag B', 10, NULL, NULL, '${NOW}', '${NOW}');
+      INSERT INTO member_badges (id, name, label_html, color, description, sort_order, created_at, updated_at) VALUES
+        ('badge-a', 'Badge A', 'Badge A', '#fff', NULL, 0, '${NOW}', '${NOW}'),
+        ('badge-b', 'Badge B', 'Badge B', '#fff', NULL, 10, '${NOW}', '${NOW}');
+    `);
+
+    const classOrder = catalogReorder([
+      { id: "class-a", sort_order: 0, updated_at: NOW },
+      { id: "class-b", sort_order: 10, updated_at: NOW },
+    ], ["class-b", "class-a"]);
+    value.executor.beforeNextBatch = () => {
+      value.database.prepare("UPDATE class_catalog SET sort_order = 20, updated_at = ? WHERE id = 'class-a'").run(RACED_AT);
+    };
+    await expect(value.store.reorderClasses(classOrder, audit("class_catalog", "catalog", "update", "class-order-race")))
+      .resolves.toBe("stale_order");
+
+    const tagOrder = catalogReorder([
+      { id: "tag-a", sort_order: 0, updated_at: NOW },
+      { id: "tag-b", sort_order: 10, updated_at: NOW },
+    ], ["tag-b", "tag-a"]);
+    value.executor.beforeNextBatch = () => {
+      value.database.prepare("UPDATE class_tags SET sort_order = 20, updated_at = ? WHERE id = 'tag-a'").run(RACED_AT);
+    };
+    await expect(value.store.reorderClassTags(tagOrder, audit("class_tag", "catalog", "update", "tag-order-race")))
+      .resolves.toBe("stale_order");
+
+    const badgeOrder = catalogReorder([
+      { id: "badge-a", sort_order: 0, updated_at: NOW },
+      { id: "badge-b", sort_order: 10, updated_at: NOW },
+    ], ["badge-b", "badge-a"]);
+    value.executor.beforeNextBatch = () => {
+      value.database.prepare("UPDATE member_badges SET sort_order = 20, updated_at = ? WHERE id = 'badge-a'").run(RACED_AT);
+    };
+    await expect(value.store.reorderBadges(badgeOrder, audit("member_badge", "catalog", "update", "badge-order-race")))
+      .resolves.toBe("stale_order");
+
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
+    expect(value.database.prepare("SELECT id, sort_order FROM class_catalog ORDER BY id").all()).toEqual([
+      { id: "class-a", sort_order: 20 }, { id: "class-b", sort_order: 10 },
+    ]);
+    expect(value.database.prepare("SELECT id, sort_order FROM class_tags ORDER BY id").all()).toEqual([
+      { id: "tag-a", sort_order: 20 }, { id: "tag-b", sort_order: 10 },
+    ]);
+    expect(value.database.prepare("SELECT id, sort_order FROM member_badges ORDER BY id").all()).toEqual([
+      { id: "badge-a", sort_order: 20 }, { id: "badge-b", sort_order: 10 },
+    ]);
+  });
+
+  it("does not delete a stale class, tag, or badge aggregate or audit its abandoned confirmation", async () => {
+    const value = harness();
+    value.database.exec(`
+      INSERT INTO class_catalog (id, label, color, icon_type, vector_icon, sort_order, created_at, updated_at)
+      VALUES ('class-1', 'Class', '#fff', 'vector', 'sword', 0, '${NOW}', '${NOW}');
+      INSERT INTO class_tags (id, label, sort_order, owner_kind, owner_id, created_at, updated_at)
+      VALUES ('tag-1', 'Tag', 0, NULL, NULL, '${NOW}', '${NOW}');
+      INSERT INTO member_badges (id, name, label_html, color, description, sort_order, created_at, updated_at)
+      VALUES ('badge-1', 'Badge', 'Badge', '#fff', NULL, 0, '${NOW}', '${NOW}');
+      INSERT INTO member_badge_assignments (badge_id, user_id, assigned_by, assigned_at)
+      VALUES ('badge-1', 'target-1', 'admin-1', '${NOW}');
+    `);
+
+    value.executor.beforeNextBatch = () => {
+      value.database.prepare("UPDATE class_catalog SET updated_at = ? WHERE id = 'class-1'").run(RACED_AT);
+    };
+    await expect(value.store.deleteClass(
+      "class-1", NOW, audit("class_catalog", "class-1", "update", "class-delete-race"),
+    )).resolves.toBe("stale");
+
+    value.executor.beforeNextBatch = () => {
+      value.database.prepare(
+        "INSERT INTO event_class_quotas (event_id, tag_id, required) VALUES ('new-event', 'tag-1', 1)",
+      ).run();
+    };
+    await expect(value.store.deleteClassTag(
+      "tag-1", NOW, 0, audit("class_tag", "tag-1", "update", "tag-delete-race"),
+    )).resolves.toBe("stale");
+
+    value.executor.beforeNextBatch = () => {
+      value.database.prepare("UPDATE member_badges SET updated_at = ? WHERE id = 'badge-1'").run(RACED_AT);
+    };
+    await expect(value.store.deleteBadge(
+      "badge-1", NOW, audit("member_badge", "badge-1", "update", "badge-delete-race"),
+    )).resolves.toBe("stale");
+
+    expect(scalar(value.database, "SELECT count(*) FROM class_catalog WHERE id = 'class-1'")).toBe(1);
+    expect(scalar(value.database, "SELECT count(*) FROM class_tags WHERE id = 'tag-1'")).toBe(1);
+    expect(scalar(value.database, "SELECT count(*) FROM event_class_quotas WHERE tag_id = 'tag-1'")).toBe(1);
+    expect(scalar(value.database, "SELECT count(*) FROM member_badges WHERE id = 'badge-1'")).toBe(1);
+    expect(scalar(value.database, "SELECT count(*) FROM member_badge_assignments WHERE badge_id = 'badge-1'")).toBe(1);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
   });
 });
 
@@ -489,7 +800,7 @@ describe("SqliteMembersStore visibility and hard limits", () => {
     ) VALUES ('class-media', 'class_catalog', 'class-1', 'icon', 'public', 0)`).run();
 
     await expect(value.store.updateClass(
-      "class-1", { vectorIcon: "sword", now: NOW }, audit("class_catalog", "class-1", "update"),
+      "class-1", { vectorIcon: "sword", expectedUpdatedAt: NOW, now: NOW }, audit("class_catalog", "class-1", "update"),
     )).resolves.toBe("updated");
     expect(text(value.database, "SELECT icon_type FROM class_catalog WHERE id = 'class-1'")).toBe("vector");
     expect(text(value.database, "SELECT vector_icon FROM class_catalog WHERE id = 'class-1'")).toBe("sword");
@@ -507,8 +818,8 @@ describe("SqliteMembersStore visibility and hard limits", () => {
       insertUser(value.database, id, `Bulk ${index}`, "member", true, null);
       insertAssignment.run(id, NOW);
     }
-    const removed = await value.store.unassignBadge("badge", ids, audit("member_badge", "badge", "unassign"));
-    expect(removed).toBe(100);
+    const removed = await value.store.unassignBadge("badge", ids, REORDERED_AT, audit("member_badge", "badge", "unassign"));
+    expect(removed).toMatchObject({ changed: 100, updatedAt: expect.any(String) });
     expect(scalar(value.database, "SELECT count(*) FROM member_badge_assignments")).toBe(0);
     expect(value.executor.batches).toHaveLength(1);
     expect(Math.max(...value.executor.batches[0]!.map(({ params }) => params?.length ?? 0))).toBeLessThanOrEqual(100);
@@ -524,29 +835,33 @@ describe("SqliteMembersStore visibility and hard limits", () => {
       "badge-no-op",
       ["target-1"],
       "admin-1",
-      NOW,
+      REORDERED_AT,
       audit("member_badge", "badge-no-op", "assign", "assign-first"),
-    )).resolves.toBe(1);
+    )).resolves.toMatchObject({ changed: 1, updatedAt: expect.any(String) });
     await expect(value.store.assignBadge(
       "badge-no-op",
       ["target-1"],
       "admin-1",
-      NOW,
+      REORDERED_AT,
       audit("member_badge", "badge-no-op", "assign", "assign-duplicate"),
-    )).resolves.toBe(0);
+    )).resolves.toMatchObject({ changed: 0, updatedAt: expect.any(String) });
     expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE action = 'assign'")).toBe(1);
+    expect(text(value.database, "SELECT updated_at FROM member_badges WHERE id = 'badge-no-op'")).toBe(REORDERED_AT);
 
     await expect(value.store.unassignBadge(
       "badge-no-op",
       ["target-1"],
+      REORDERED_AT,
       audit("member_badge", "badge-no-op", "unassign", "unassign-first"),
-    )).resolves.toBe(1);
+    )).resolves.toMatchObject({ changed: 1, updatedAt: expect.any(String) });
     await expect(value.store.unassignBadge(
       "badge-no-op",
       ["target-1"],
+      REORDERED_AT,
       audit("member_badge", "badge-no-op", "unassign", "unassign-repeat"),
-    )).resolves.toBe(0);
+    )).resolves.toMatchObject({ changed: 0, updatedAt: expect.any(String) });
     expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE action = 'unassign'")).toBe(1);
+    expect(text(value.database, "SELECT updated_at FROM member_badges WHERE id = 'badge-no-op'")).toBe("2026-08-09T13:00:01.000Z");
   });
 
   it("audits only the user ids actually changed by mixed badge requests", async () => {
@@ -559,9 +874,9 @@ describe("SqliteMembersStore visibility and hard limits", () => {
     ) VALUES ('badge-mixed', 'target-1', 'admin-1', ?)`).run(NOW);
 
     await expect(value.store.assignBadge(
-      "badge-mixed", ["target-1", "inactive-1"], "admin-1", NOW,
+      "badge-mixed", ["target-1", "inactive-1"], "admin-1", REORDERED_AT,
       audit("member_badge", "badge-mixed", "assign", "assign-mixed"),
-    )).resolves.toBe(1);
+    )).resolves.toMatchObject({ changed: 1, updatedAt: expect.any(String) });
     expect(auditUserIds(value.database, "assign-mixed")).toEqual(["inactive-1"]);
     expect(auditUserReferences(value.database, "assign-mixed")).toEqual([
       { id: "inactive-1", label: "Inactive" },
@@ -569,8 +884,9 @@ describe("SqliteMembersStore visibility and hard limits", () => {
 
     await expect(value.store.unassignBadge(
       "badge-mixed", ["target-1", "deleted-1"],
+      REORDERED_AT,
       audit("member_badge", "badge-mixed", "unassign", "unassign-mixed"),
-    )).resolves.toBe(1);
+    )).resolves.toMatchObject({ changed: 1, updatedAt: expect.any(String) });
     expect(auditUserIds(value.database, "unassign-mixed")).toEqual(["target-1"]);
     expect(auditUserReferences(value.database, "unassign-mixed")).toEqual([
       { id: "target-1", label: "Target" },
@@ -610,7 +926,7 @@ describe("SqliteMembersStore visibility and hard limits", () => {
     const outcome = await value.store.createBadge({
       id: "overflow", name: "Overflow", labelHtml: "x", color: "#fff", description: null, now: NOW,
     }, audit("member_badge", "overflow", "create"));
-    expect(outcome).toBe("limit_reached");
+    expect(outcome).toEqual({ outcome: "limit_reached" });
     expect(scalar(value.database, "SELECT count(*) FROM member_badges")).toBe(200);
     expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
   });

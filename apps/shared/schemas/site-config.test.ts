@@ -109,10 +109,13 @@ describe("site media policy", () => {
   });
 
   it("trims and bounds the public site description", () => {
-    expect(updateSiteConfigSchema.parse({ site_description: "  A guild for everyone.  " }))
-      .toEqual({ site_description: "A guild for everyone." });
-    expect(updateSiteConfigSchema.safeParse({ site_description: "   " }).success).toBe(false);
-    expect(updateSiteConfigSchema.safeParse({ site_description: "x".repeat(301) }).success).toBe(false);
+    expect(updateSiteConfigSchema.parse({
+      expected_revision_token: "site-config-v1",
+      site_description: "  A guild for everyone.  ",
+    })).toEqual({ expected_revision_token: "site-config-v1", site_description: "A guild for everyone." });
+    expect(updateSiteConfigSchema.safeParse({ expected_revision_token: "site-config-v1", site_description: "   " }).success).toBe(false);
+    expect(updateSiteConfigSchema.safeParse({ expected_revision_token: "site-config-v1", site_description: "x".repeat(301) }).success).toBe(false);
+    expect(updateSiteConfigSchema.safeParse({ site_name: "Guild" }).success).toBe(false);
   });
 
   it("requires canonical persisted timestamps", () => {

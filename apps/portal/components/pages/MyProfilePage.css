@@ -2,6 +2,7 @@
 .my-profile-shell {
   inline-size: 100%;
   display: grid;
+  align-content: start;
   gap: var(--space-md);
   min-width: 0;
 }
@@ -125,12 +126,6 @@
   font-size: var(--text-meta);
 }
 
-.profile-account__password-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-md);
-}
-
 .profile-account__action-row {
   display: flex;
   justify-content: flex-end;
@@ -194,7 +189,7 @@
   padding: var(--space-md);
   border: 1px solid color-mix(in srgb, var(--status-danger) 30%, transparent);
   border-radius: var(--radius-surface);
-  background: color-mix(in srgb, var(--status-danger) 6%, transparent);
+  background: color-mix(in srgb, var(--status-danger) 6%, var(--plate-fill));
 }
 
 .profile-account__confirm-actions {
@@ -208,10 +203,6 @@
 }
 
 @media (max-width: 767px) {
-  .profile-account__password-fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .profile-account__action-row {
     justify-content: stretch;
   }
@@ -298,7 +289,7 @@
   padding: var(--space-xs) var(--space-sm);
   border: 1px solid color-mix(in srgb, var(--status-warning) 35%, transparent);
   border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--status-warning) 7%, transparent);
+  background: color-mix(in srgb, var(--status-warning) 7%, var(--plate-fill));
 }
 
 .profile-gaps__icon {

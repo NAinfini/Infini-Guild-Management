@@ -1,5 +1,6 @@
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
 import type { ClassCatalogItem, ClassTag, MemberBadge } from "@guild/shared";
+import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { createHttpErrorHandler } from "../../core/error-handler.js";
@@ -54,8 +55,8 @@ function buildApp() {
       }],
       next_cursor: "next",
     }),
-    assignBadge: vi.fn().mockResolvedValue({ assigned: 1 }),
-    unassignBadge: vi.fn().mockResolvedValue({ removed: 1 }),
+    assignBadge: vi.fn().mockResolvedValue({ assigned: 1, updated_at: NOW }),
+    unassignBadge: vi.fn().mockResolvedValue({ removed: 1, updated_at: NOW }),
   };
   const app = new Hono<HttpEnv>();
   app.onError(createHttpErrorHandler());
@@ -63,7 +64,8 @@ function buildApp() {
     context.set("requestContext", createRequestContext({
       requestId: "request-1", now: NOW,
       authorization: createAuthorizationContext({
-        userId: "admin-1", sessionId: "session-1", roleId: "admin", roleLevel: 900, permissions: [],
+        userId: "admin-1", sessionId: "session-1", roleId: "admin", roleLevel: 900,
+        permissions: [PERMISSION_ID.ADMIN_CLASSES_MANAGE],
       }),
     }));
     await next();
@@ -81,26 +83,26 @@ describe("member catalog Portal HTTP contract", () => {
       ["GET", "/api/classes", undefined, 200],
       ["POST", "/api/classes", json({ label: "Sword", color: "#123456", vector_icon: "sword" }), 201],
       ["GET", "/api/classes/class-1", undefined, 200],
-      ["PATCH", "/api/classes/class-1", json({ label: "Sword" }), 200],
-      ["PATCH", "/api/classes/reorder", json({ order: ["class-1"] }), 200],
+      ["PATCH", "/api/classes/class-1", json({ label: "Sword", expected_updated_at: NOW }), 200],
+      ["PATCH", "/api/classes/reorder", json({ order: ["class-1"], expected_revision_token: "[]" }), 200],
       ["POST", "/api/classes/class-1/icon", imageForm(), 201],
-      ["DELETE", "/api/classes/class-1/icon", undefined, 200],
-      ["DELETE", "/api/classes/class-1", undefined, 200],
+      ["DELETE", "/api/classes/class-1/icon", json({ expected_updated_at: NOW }), 200],
+      ["DELETE", "/api/classes/class-1", json({ expected_updated_at: NOW }), 200],
       ["GET", "/api/class-tags", undefined, 200],
       ["POST", "/api/class-tags", json({ label: "Damage", class_ids: ["class-1"] }), 201],
       ["GET", "/api/class-tags/tag-1", undefined, 200],
-      ["PATCH", "/api/class-tags/tag-1", json({ label: "Damage" }), 200],
-      ["PATCH", "/api/class-tags/reorder", json({ order: ["tag-1"] }), 200],
-      ["DELETE", "/api/class-tags/tag-1", undefined, 200],
+      ["PATCH", "/api/class-tags/tag-1", json({ label: "Damage", expected_updated_at: NOW }), 200],
+      ["PATCH", "/api/class-tags/reorder", json({ order: ["tag-1"], expected_revision_token: "[]" }), 200],
+      ["DELETE", "/api/class-tags/tag-1", json({ expected_updated_at: NOW, expected_usage_count: 1 }), 200],
       ["GET", "/api/badges", undefined, 200],
       ["POST", "/api/badges", json({ name: "Founder", label_html: "Founder" }), 201],
       ["GET", "/api/badges/badge-1", undefined, 200],
-      ["PATCH", "/api/badges/badge-1", json({ name: "Founder" }), 200],
-      ["PATCH", "/api/badges/reorder", json({ order: ["badge-1"] }), 200],
+      ["PATCH", "/api/badges/badge-1", json({ name: "Founder", expected_updated_at: NOW }), 200],
+      ["PATCH", "/api/badges/reorder", json({ order: ["badge-1"], expected_revision_token: "[]" }), 200],
       ["GET", "/api/badges/badge-1/assignments", undefined, 200],
       ["POST", "/api/badges/badge-1/assign", json({ user_ids: ["user-1"] }), 200],
       ["POST", "/api/badges/badge-1/unassign", json({ user_ids: ["user-1"] }), 200],
-      ["DELETE", "/api/badges/badge-1", undefined, 200],
+      ["DELETE", "/api/badges/badge-1", json({ expected_updated_at: NOW }), 200],
     ];
     for (const [method, path, body, status] of requests) {
       const response = await app.request(path, {
@@ -139,5 +141,6 @@ function imageForm(): FormData {
   const form = new FormData();
   form.append("full", new File(["full"], "full.webp", { type: "image/webp" }));
   form.append("view", new File(["view"], "view.webp", { type: "image/webp" }));
+  form.append("expected_updated_at", NOW);
   return form;
 }

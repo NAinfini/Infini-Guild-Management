@@ -71,6 +71,26 @@ BEGIN
   END;
 END;
 
+-- A storage item revision covers its mutable metadata, linked images, and
+-- ledger-backed quantity.  Keep it strictly monotonic even when two writes
+-- share the same request timestamp.
+CREATE TRIGGER storage_ledger_advance_item_revision
+AFTER INSERT ON storage_ledger_entries
+BEGIN
+  UPDATE storage_items
+  SET updated_at = CASE
+    WHEN julianday(updated_at) IS NOT NULL
+      AND julianday(updated_at) >= julianday(NEW.created_at)
+      THEN strftime('%Y-%m-%dT%H:%M:%fZ', julianday(updated_at) + 0.001 / 86400.0)
+    ELSE NEW.created_at
+  END
+  WHERE id = NEW.item_id;
+
+  SELECT CASE WHEN changes() <> 1
+    THEN RAISE(ABORT, 'storage_item_revision_update_failed')
+  END;
+END;
+
 CREATE TRIGGER storage_ledger_immutable_update
 BEFORE UPDATE ON storage_ledger_entries
 BEGIN

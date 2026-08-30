@@ -1,64 +1,27 @@
-import type { AdminRole } from "@guild/shared";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@portal/components/ui/dialog";
-import {
   DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@portal/components/ui/dropdown-menu";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@portal/components/ui/input-group";
-import { Label } from "@portal/components/ui/label";
-import { PasswordInput } from "@portal/components/ui/password-input";
-import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
 import { Skeleton } from "@portal/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
-import {
-  CopyIcon,
-  EyeIcon,
-  KeyIcon,
-  LockOpenIcon,
-  PlayIcon,
-  PlayerPauseIcon,
-  SearchIcon,
-  TrashIcon,
-  UserPlusIcon,
-} from "@portal/components/icons";
 import { IconDotsVertical } from "@tabler/icons-react";
 import {
-  type ColumnDef,
   type PaginationState,
   type SortingState,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
+  useTable,
 } from "@tanstack/react-table";
-import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
+import {
+  dataTableFeatures,
+  type DataTableColumnDef,
+} from "@portal/components/shared/data-table-features";
 import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
-  type ComponentProps,
   type CSSProperties,
-  type ReactNode,
 } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
@@ -66,58 +29,28 @@ import type {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { DataTablePagination } from "../../shared/DataTablePagination";
-import type { UsersListResponse } from "../../../services/UserService";
 import { useClassCatalog } from "../../../hooks/data/useClassData";
-import { formatDateTime } from "../../../utils/datetime";
 import { resolveClassCatalogItem } from "../../../utils/class-catalog";
-import type { AdminUserPendingAction } from "../../../hooks/useAdminMutations";
 import { useAuthStore } from "../../../stores/auth";
 import { canManageUserByRoleLevel, userCanAccessAdmin } from "../../../utils/permissions";
-import type { AdminLoginLockState } from "../../../services/AdminService";
-import { useAdminUserLoginLock } from "../../../hooks/useAdminUserLoginLock";
+import { AdminUserActionMenu } from "./AdminUserActionMenu";
+import { AdminUserPasswordResetDialog } from "./AdminUserPasswordResetDialog";
 import { AdminLoadError } from "./AdminLoadError";
+import { AdminUsersToolbar, type MemberStatusFilter } from "./AdminUsersToolbar";
+import type { AdminUsersSectionProps, AdminUserRow } from "./admin-users.types";
 import "./AdminUsersSection.css";
 
-export type AdminUserRow = UsersListResponse["data"][number];
+export type { AdminUserRow } from "./admin-users.types";
 
 type ActionMenuContext = {
   userIds: string[];
-  triggerId: string;
+  triggerId: string | null;
+  anchor: PointAnchor | undefined;
   returnFocusTo: HTMLElement | null;
 };
 
-type AdminUsersSectionProps = {
-  usersLoading: boolean;
-  usersError: boolean;
-  onRetryUsers: () => void;
-  canEditUsers: boolean;
-  canAssignUserRoles: boolean;
-  canActivateUsers: boolean;
-  canDeleteUsers: boolean;
-  canResetUserPasswords: boolean;
-  onOpenCreateMember: () => void;
-  selectedUserIds: string[];
-  onBatchRole: (userIds: string[], role: string, roleName: string) => void;
-  onBatchActivate: (userIds: string[]) => void;
-  onBatchDeactivate: (userIds: string[]) => void;
-  onBatchDelete: (userIds: string[]) => void;
-  onSingleRoleChange: (userId: string, role: string) => void;
-  onSingleActivate: (userId: string) => void;
-  onSingleDeactivate: (userId: string) => void;
-  onSingleResetPassword: (userId: string, currentPassword: string) => void | Promise<void>;
-  onSingleResetLoginLock: (userId: string, lockState: AdminLoginLockState) => void | Promise<void>;
-  batchRolePending: boolean;
-  batchActivatePending: boolean;
-  batchDeactivatePending: boolean;
-  batchDeletePending: boolean;
-  isSingleActionPending: (userId: string, action: AdminUserPendingAction) => boolean;
-  userRows: AdminUserRow[];
-  userColumns: ColumnDef<AdminUserRow, unknown>[];
-  onOpenMemberDetail: (userId: string) => void;
-  onSelectionChange: (keys: string[]) => void;
-  roles: AdminRole[];
-  memberSearch: string;
-  onMemberSearchChange: (value: string) => void;
+type PointAnchor = {
+  getBoundingClientRect: () => DOMRect;
 };
 
 export function AdminUsersSection({
@@ -139,7 +72,6 @@ export function AdminUsersSection({
   onSingleActivate,
   onSingleDeactivate,
   onSingleResetPassword,
-  onSingleResetLoginLock,
   batchRolePending,
   batchActivatePending,
   batchDeactivatePending,
@@ -160,10 +92,9 @@ export function AdminUsersSection({
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
   const [actionMenu, setActionMenu] = useState<ActionMenuContext | null>(null);
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [passwordResetUserId, setPasswordResetUserId] = useState<string | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
-  const firstActionItemRef = useRef<HTMLDivElement>(null);
+  const [statusFilter, setStatusFilter] = useState<MemberStatusFilter>("all");
 
   const selectedIdSet = useMemo(() => new Set(selectedUserIds), [selectedUserIds]);
   const usersById = useMemo(() => new Map(userRows.map((row) => [row.user.id, row])), [userRows]);
@@ -186,16 +117,14 @@ export function AdminUsersSection({
 
   useEffect(() => {
     setPagination((previous) => (previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 }));
-  }, [statusFilter]);
+  }, [memberSearch, statusFilter]);
 
   const openActionMenu = useCallback((
     userId: string,
-    triggerId: string,
-    event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
+    triggerId: string | null,
+    returnFocusTo: HTMLElement,
+    anchor?: PointAnchor,
   ) => {
-    if (event.type === "contextmenu") event.preventDefault();
-    event.stopPropagation();
-
     const userIds = selectedIdSet.has(userId) && selectedUserIds.length > 0
       ? selectedUserIds
       : [userId];
@@ -205,11 +134,34 @@ export function AdminUsersSection({
       setSelectionAnchorId(userId);
     }
 
-    setActionMenu({ userIds, triggerId, returnFocusTo: event.currentTarget });
+    setActionMenu({ userIds, triggerId, anchor, returnFocusTo });
   }, [onSelectionChange, selectedIdSet, selectedUserIds]);
 
+  const openTriggerActionMenu = useCallback((
+    userId: string,
+    triggerId: string,
+    event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
+  ) => {
+    event.stopPropagation();
+    openActionMenu(userId, triggerId, event.currentTarget);
+  }, [openActionMenu]);
+
+  const openPointerActionMenu = useCallback((
+    userId: string,
+    event: ReactMouseEvent<HTMLElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openActionMenu(
+      userId,
+      null,
+      event.currentTarget,
+      createPointAnchor(event.clientX, event.clientY),
+    );
+  }, [openActionMenu]);
+
   const allColumns = useMemo(() => {
-    const actionColumn: ColumnDef<AdminUserRow, unknown> = {
+    const actionColumn: DataTableColumnDef<AdminUserRow> = {
       header: () => <span className="sr-only">{t("member.action.menu")}</span>,
       id: "actions",
       size: 48,
@@ -227,7 +179,7 @@ export function AdminUsersSection({
                 size="icon-sm"
                 className="admin-users__action-trigger"
                 aria-label={t("member.action.menu")}
-                onClick={(event) => openActionMenu(userId, menuId, event)}
+                onClick={(event) => openTriggerActionMenu(userId, menuId, event)}
               />
             )}
           >
@@ -237,18 +189,16 @@ export function AdminUsersSection({
       },
     };
     return [...userColumns, actionColumn];
-  }, [openActionMenu, t, userColumns]);
+  }, [openTriggerActionMenu, t, userColumns]);
 
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     data: visibleRows,
     columns: allColumns,
     state: { sorting, pagination },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
     autoResetPageIndex: false,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     getRowId: (row) => row.user.id,
   });
 
@@ -323,7 +273,7 @@ export function AdminUsersSection({
 
     if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
       event.preventDefault();
-      openActionMenu(userId, desktopMenuId(userId), event);
+      openTriggerActionMenu(userId, desktopMenuId(userId), event);
     }
   };
 
@@ -339,57 +289,21 @@ export function AdminUsersSection({
   );
   const anyActiveInContext = contextRows.some((row) => row.user.is_active);
   const anyInactiveInContext = contextRows.some((row) => !row.user.is_active);
-  const contextActionPending = (action: AdminUserPendingAction) =>
-    contextSingleUserId ? isSingleActionPending(contextSingleUserId, action) : false;
-  const roleActionPending = isBatchContext ? batchRolePending : contextActionPending("change-role");
-  const activateActionPending = isBatchContext ? batchActivatePending : contextActionPending("activate");
-  const deactivateActionPending = isBatchContext ? batchDeactivatePending : contextActionPending("deactivate");
-  const canReadContextLoginLock = Boolean(
-    actionMenu && contextSingleUserId && canResetUserPasswords && !contextHasProtectedTarget,
-  );
-  const loginLockQuery = useAdminUserLoginLock(contextSingleUserId, canReadContextLoginLock);
-  const loginLockStatus = loginLockQuery.data
-    ? loginLockQuery.data.is_locked
-      ? t("member.loginLock.locked", { seconds: loginLockQuery.data.retry_after_seconds })
-      : t("member.loginLock.unlocked", { count: loginLockQuery.data.fail_count })
-    : loginLockQuery.isError
-      ? t("member.loginLock.unavailable")
-      : t("member.loginLock.checking");
-
-  const copyContextRows = () => {
-    const lines = contextRows.map((row) =>
-      [
-        row.user.display_name,
-        row.profile.classes
-          .map((id) => resolveClassCatalogItem(id, classCatalog).label)
-          .join(", "),
-        String(row.profile.power),
-        row.user.role_name,
-        row.user.is_active ? t("member.status.active") : t("member.status.inactive"),
-      ].join(", "),
-    );
-    void navigator.clipboard.writeText(`${lines.join("\n")}\n`);
-  };
 
   const closeActionMenu = useCallback(() => {
     const returnFocusTo = actionMenu?.returnFocusTo;
     setActionMenu(null);
     if (returnFocusTo) window.requestAnimationFrame(() => returnFocusTo.focus());
   }, [actionMenu]);
-
-  useEffect(() => {
-    if (!actionMenu) return;
-
-    const frame = window.requestAnimationFrame(() => firstActionItemRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [actionMenu, isBatchContext]);
-
-  const closePasswordReset = () => {
+  const closePasswordReset = useCallback(() => {
     setPasswordResetUserId(null);
     setCurrentPassword("");
-  };
-
-  const submitPasswordReset = async () => {
+  }, []);
+  const requestPasswordReset = useCallback((userId: string) => {
+    setPasswordResetUserId(userId);
+    closeActionMenu();
+  }, [closeActionMenu]);
+  const submitPasswordReset = useCallback(async () => {
     if (!passwordResetUserId || !currentPassword) return;
     try {
       await onSingleResetPassword(passwordResetUserId, currentPassword);
@@ -397,7 +311,7 @@ export function AdminUsersSection({
     } catch {
       // The mutation boundary displays the server error and keeps this confirmation open.
     }
-  };
+  }, [closePasswordReset, currentPassword, onSingleResetPassword, passwordResetUserId]);
 
   return (
     <DropdownMenu
@@ -414,50 +328,13 @@ export function AdminUsersSection({
         {usersError ? <AdminLoadError onRetry={onRetryUsers} /> : null}
         {!usersLoading && !usersError ? (
           <>
-            <ContentFilterToolbar
-              search={(
-                <InputGroup>
-                  <InputGroupAddon>
-                    <SearchIcon size={14} aria-hidden="true" />
-                  </InputGroupAddon>
-                  <InputGroupInput
-                    value={memberSearch}
-                    onChange={(event) => onMemberSearchChange(event.currentTarget.value)}
-                    placeholder={t("member.search.placeholder")}
-                    aria-label={t("member.search.aria")}
-                  />
-                </InputGroup>
-              )}
-              filterControls={(
-                <ContentFilterGroup label={t("member.filter.status")}>
-                  <RadioGroup
-                    className="admin-users__status-filter"
-                    value={statusFilter}
-                    onValueChange={(value) => setStatusFilter(value as "all" | "active" | "inactive")}
-                  >
-                    {[
-                      { value: "all", label: t("member.filter.all") },
-                      { value: "active", label: t("member.status.active") },
-                      { value: "inactive", label: t("member.status.inactive") },
-                    ].map((option) => (
-                      <Label key={option.value} className="admin-users__status-option">
-                        <RadioGroupItem value={option.value} />
-                        <span>{option.label}</span>
-                      </Label>
-                    ))}
-                  </RadioGroup>
-                </ContentFilterGroup>
-              )}
-              actions={canEditUsers ? (
-                <Button size="sm" onClick={onOpenCreateMember}>
-                  <UserPlusIcon size={14} data-icon="inline-start" />
-                  {t("member.create.button")}
-                </Button>
-              ) : null}
-              filterLabel={t("common:filter.toggle")}
-              activeFilterCount={statusFilter === "all" ? 0 : 1}
-              resetLabel={t("common:filter.reset")}
-              onReset={() => setStatusFilter("all")}
+            <AdminUsersToolbar
+              memberSearch={memberSearch}
+              statusFilter={statusFilter}
+              canCreateMember={canEditUsers}
+              onMemberSearchChange={onMemberSearchChange}
+              onStatusFilterChange={setStatusFilter}
+              onOpenCreateMember={onOpenCreateMember}
             />
 
             <p className="admin-users__account-status">{t("member.accountStatusDescription")}</p>
@@ -494,7 +371,7 @@ export function AdminUsersSection({
                 maxHeight="none"
                 onRowDoubleClick={(row) => onOpenMemberDetail(row.original.user.id)}
                 onRowClick={(row, event) => handleRowClick(row.original.user.id, event)}
-                onRowContextMenu={(row, event) => openActionMenu(row.original.user.id, desktopMenuId(row.original.user.id), event)}
+                onRowContextMenu={(row, event) => openPointerActionMenu(row.original.user.id, event)}
                 onRowKeyDown={(row, event) => handleRowKeyDown(row.original.user.id, event)}
                 rowAriaLabel={(row) => t("member.aria.row", { display_name: row.original.user.display_name })}
                 rowAriaSelected={(row) => selectedIdSet.has(row.original.user.id)}
@@ -553,7 +430,7 @@ export function AdminUsersSection({
                             size="icon-sm"
                             className="admin-users__action-trigger"
                             aria-label={t("member.action.menu")}
-                            onClick={(event) => openActionMenu(user.id, menuId, event)}
+                            onClick={(event) => openTriggerActionMenu(user.id, menuId, event)}
                           />
                         )}
                       >
@@ -568,242 +445,74 @@ export function AdminUsersSection({
           </>
         ) : null}
 
-        <Dialog open={passwordResetUserId !== null} onOpenChange={(open) => { if (!open) closePasswordReset(); }}>
-          <DialogContent closeLabel={t("common:action.close")}>
-            <DialogHeader>
-              <DialogTitle>{t("member.resetPassword.confirmTitle")}</DialogTitle>
-              <DialogDescription>{t("member.resetPassword.confirmDescription")}</DialogDescription>
-            </DialogHeader>
-            <form
-              className="admin-users__password-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submitPasswordReset();
-              }}
-            >
-              <div className="admin-users__password-field">
-                <Label htmlFor="admin-user-current-password">{t("member.resetPassword.currentPasswordLabel")}</Label>
-                <PasswordInput
-                  id="admin-user-current-password"
-                  value={currentPassword}
-                  onChange={(event) => setCurrentPassword(event.currentTarget.value)}
-                  autoComplete="current-password"
-                  autoFocus
-                  required
-                  showPasswordLabel={t("auth:aria.showPassword")}
-                  hidePasswordLabel={t("auth:aria.hidePassword")}
-                />
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={closePasswordReset}>
-                  {t("member.resetPassword.cancel")}
-                </Button>
-                <Button
-                  type="submit"
-                  loading={passwordResetUserId !== null && isSingleActionPending(passwordResetUserId, "reset-password")}
-                  disabled={!currentPassword || (passwordResetUserId !== null && isSingleActionPending(passwordResetUserId, "reset-password"))}
-                >
-                  {t("member.resetPassword.confirm")}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
       </div>
 
-      <DropdownMenuContent data-admin-user-action-menu className="admin-users__action-menu">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>
-            {isBatchContext
-              ? t("member.context.batchSelected", { count: contextUserIds.length })
-              : contextRows[0]?.user.display_name ?? "-"}
-          </DropdownMenuLabel>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <AdminUserMenuItem
-          ref={isBatchContext ? undefined : firstActionItemRef}
-          disabled={!contextSingleUserId}
-          onClick={() => {
-            if (contextSingleUserId) onOpenMemberDetail(contextSingleUserId);
-          }}
-        >
-          <EyeIcon size={14} />
-          {t("member.action.detail")}
-        </AdminUserMenuItem>
-        <AdminUserMenuItem
-          ref={isBatchContext ? firstActionItemRef : undefined}
-          onClick={copyContextRows}
-        >
-          <CopyIcon size={14} />
-          {isBatchContext ? t("member.context.copyRows") : t("member.context.copyRow")}
-        </AdminUserMenuItem>
-        <DropdownMenuSub>
-          {(!canAssignUserRoles || contextHasProtectedTarget) ? (
-            <Tooltip>
-              <TooltipTrigger render={<span data-disabled-tooltip-target />}>
-                <DropdownMenuSubTrigger
-                  disabled
-                  aria-description={t("roles.tooltip.admin.users.role")}
-                >
-                  {t("member.context.changeRole")}
-                </DropdownMenuSubTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="left">{t("roles.tooltip.admin.users.role")}</TooltipContent>
-            </Tooltip>
-          ) : (
-            <DropdownMenuSubTrigger disabled={roleActionPending}>
-              {t("member.context.changeRole")}
-            </DropdownMenuSubTrigger>
-          )}
-          <DropdownMenuSubContent>
-            {roles
-              .slice()
-              .sort((a, b) => a.level - b.level)
-              .map((role) => (
-                <DropdownMenuItem
-                  key={role.id}
-                  disabled={!canAssignUserRoles || contextHasProtectedTarget || roleActionPending}
-                  onClick={() => {
-                    if (isBatchContext) onBatchRole(contextUserIds, role.id, role.name);
-                    else if (contextSingleUserId) onSingleRoleChange(contextSingleUserId, role.id);
-                  }}
-                >
-                  {role.name}
-                </DropdownMenuItem>
-              ))}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-        {anyInactiveInContext ? (
-          <AdminUserMenuItem
-            disabled={!canActivateUsers || activateActionPending || contextHasProtectedTarget}
-            disabledReason={(!canActivateUsers || contextHasProtectedTarget)
-              ? t("roles.tooltip.admin.users.activate")
-              : undefined}
-            onClick={() => {
-              if (isBatchContext) onBatchActivate(contextUserIds);
-              else if (contextSingleUserId) onSingleActivate(contextSingleUserId);
-            }}
-          >
-            <PlayIcon size={14} />
-            {isBatchContext ? t("member.context.batchActivate") : t("member.reactivate")}
-          </AdminUserMenuItem>
-        ) : null}
-        {anyActiveInContext ? (
-          <AdminUserMenuItem
-            disabled={!canActivateUsers || deactivateActionPending || contextHasProtectedTarget}
-            disabledReason={(!canActivateUsers || contextHasProtectedTarget)
-              ? t("roles.tooltip.admin.users.activate")
-              : undefined}
-            onClick={() => {
-              if (isBatchContext) onBatchDeactivate(contextUserIds);
-              else if (contextSingleUserId) onSingleDeactivate(contextSingleUserId);
-            }}
-          >
-            <PlayerPauseIcon size={14} />
-            {isBatchContext ? t("member.context.batchDeactivate") : t("member.deactivate")}
-          </AdminUserMenuItem>
-        ) : null}
-        {!isBatchContext && contextSingleUserId ? (
-          <>
-            <AdminUserMenuItem
-              disabled={!canResetUserPasswords || contextActionPending("reset-password") || contextHasProtectedTarget}
-              disabledReason={(!canResetUserPasswords || contextHasProtectedTarget)
-                ? t("roles.tooltip.admin.users.password")
-                : undefined}
-              onClick={() => {
-                setPasswordResetUserId(contextSingleUserId);
-                closeActionMenu();
-              }}
-            >
-              <KeyIcon size={14} />
-              {t("member.resetPassword")}
-            </AdminUserMenuItem>
-            {canResetUserPasswords && !contextHasProtectedTarget ? (
-              <Tooltip disabled={!loginLockQuery.data?.locked_until}>
-                <TooltipTrigger render={<span className="admin-users__login-lock" aria-live="polite" role="status" />}>
-                  {loginLockStatus}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {t("member.loginLock.until", {
-                    at: formatDateTime(loginLockQuery.data?.locked_until ?? null),
-                  })}
-                </TooltipContent>
-              </Tooltip>
-            ) : null}
-            <AdminUserMenuItem
-              disabled={
-                !canResetUserPasswords
-                || contextActionPending("reset-login-lock")
-                || contextHasProtectedTarget
-                || loginLockQuery.isError
-              }
-              disabledReason={(!canResetUserPasswords || contextHasProtectedTarget)
-                ? t("roles.tooltip.admin.users.password")
-                : undefined}
-              onClick={() => {
-                void (async () => {
-                  const lockState = loginLockQuery.data ?? (await loginLockQuery.refetch()).data;
-                  if (lockState) await onSingleResetLoginLock(contextSingleUserId, lockState);
-                })();
-              }}
-            >
-              <LockOpenIcon size={14} />
-              {t("member.resetLoginLock")}
-            </AdminUserMenuItem>
-          </>
-        ) : null}
-        <DropdownMenuSeparator />
-        {canEditUsers ? (
-          <AdminUserMenuItem onClick={onOpenCreateMember}>
-            <UserPlusIcon size={14} />
-            {t("member.context.createMember")}
-          </AdminUserMenuItem>
-        ) : null}
-        <AdminUserMenuItem
-          variant="destructive"
-          disabled={!canDeleteUsers || batchDeletePending || contextHasProtectedTarget}
-          disabledReason={(!canDeleteUsers || contextHasProtectedTarget)
-            ? t("roles.tooltip.admin.users.delete")
-            : undefined}
-          onClick={() => onBatchDelete(contextUserIds)}
-        >
-          <TrashIcon size={14} />
-          {isBatchContext ? t("member.context.batchDelete") : t("member.context.delete")}
-        </AdminUserMenuItem>
-      </DropdownMenuContent>
+      {actionMenu ? (
+        <AdminUserActionMenu
+          open
+          anchor={actionMenu.anchor}
+          isBatchContext={isBatchContext}
+          contextUserIds={contextUserIds}
+          contextRows={contextRows}
+          contextSingleUserId={contextSingleUserId}
+          contextHasProtectedTarget={contextHasProtectedTarget}
+          anyActiveInContext={anyActiveInContext}
+          anyInactiveInContext={anyInactiveInContext}
+          canEditUsers={canEditUsers}
+          canAssignUserRoles={canAssignUserRoles}
+          canActivateUsers={canActivateUsers}
+          canDeleteUsers={canDeleteUsers}
+          canResetUserPasswords={canResetUserPasswords}
+          roles={roles}
+          batchRolePending={batchRolePending}
+          batchActivatePending={batchActivatePending}
+          batchDeactivatePending={batchDeactivatePending}
+          batchDeletePending={batchDeletePending}
+          isSingleActionPending={isSingleActionPending}
+          classCatalog={classCatalog}
+          onRequestPasswordReset={requestPasswordReset}
+          onOpenMemberDetail={onOpenMemberDetail}
+          onOpenCreateMember={onOpenCreateMember}
+          onBatchRole={onBatchRole}
+          onSingleRoleChange={onSingleRoleChange}
+          onBatchActivate={onBatchActivate}
+          onSingleActivate={onSingleActivate}
+          onBatchDeactivate={onBatchDeactivate}
+          onSingleDeactivate={onSingleDeactivate}
+          onBatchDelete={onBatchDelete}
+        />
+      ) : null}
+      <AdminUserPasswordResetDialog
+        open={passwordResetUserId !== null}
+        currentPassword={currentPassword}
+        pending={passwordResetUserId !== null && isSingleActionPending(passwordResetUserId, "reset-password")}
+        onCurrentPasswordChange={setCurrentPassword}
+        onSubmit={submitPasswordReset}
+        onClose={closePasswordReset}
+      />
     </DropdownMenu>
   );
 }
-
-type AdminUserMenuItemProps = ComponentProps<typeof DropdownMenuItem> & {
-  disabledReason?: ReactNode;
-};
-
-function AdminUserMenuItem({ disabled, disabledReason, children, ...props }: AdminUserMenuItemProps) {
-  const item = (
-    <DropdownMenuItem
-      disabled={disabled}
-      aria-description={disabled && disabledReason ? String(disabledReason) : undefined}
-      {...props}
-    >
-      {children}
-    </DropdownMenuItem>
-  );
-
-  if (!disabled || !disabledReason) return item;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<span data-disabled-tooltip-target />}>{item}</TooltipTrigger>
-      <TooltipContent side="left">{disabledReason}</TooltipContent>
-    </Tooltip>
-  );
-}
-
 function desktopMenuId(userId: string) {
   return `admin-user-desktop-${userId}`;
 }
 
 function mobileMenuId(userId: string) {
   return `admin-user-mobile-${userId}`;
+}
+
+function createPointAnchor(x: number, y: number): PointAnchor {
+  return {
+    getBoundingClientRect: () => ({
+      x,
+      y,
+      top: y,
+      right: x,
+      bottom: y,
+      left: x,
+      width: 0,
+      height: 0,
+      toJSON: () => ({ x, y, width: 0, height: 0 }),
+    }) as DOMRect,
+  };
 }

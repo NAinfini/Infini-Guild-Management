@@ -1,7 +1,7 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { uniqueTag } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
-import { confirmDialog, dialogTitled, expectNoDialog, field } from "../../support/ui";
+import { appSiderNavigationItem, confirmDialog, dialogTitled, expectNoDialog, expectToast, field } from "../../support/ui";
 
 /*
  * 后台「角色」页签：左边角色清单 + 右边权限面板。
@@ -68,17 +68,10 @@ async function createServerRole(api: APIRequestContext, name: string): Promise<S
 
 async function openRoles(page: Page): Promise<void> {
   await page.goto("/admin?tab=roles");
-  /* 页签在界面上叫「Permissions」，tab 参数才叫 roles。 */
-  await expect(page.getByRole("tab", { name: /Permissions/ })).toHaveAttribute("aria-selected", "true");
+  /* 侧栏显示名叫「Permissions」，URL 参数仍叫 roles。 */
+  await expect(appSiderNavigationItem(page, "Permissions")).toHaveAttribute("aria-current", "page");
   await expect(sidebar(page)).toBeVisible();
   await page.waitForLoadState("networkidle");
-}
-
-async function expectNotified(page: Page, text: string): Promise<void> {
-  await expect(
-    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
-    `没有弹出通知「${text}」`,
-  ).toBeVisible();
 }
 
 /** 盯着 /api/ 证明这段操作没发请求。 */
@@ -117,7 +110,7 @@ test("新建角色：名字为空提交不了，建成之后是一个级别 100�
   await field(dialog, "Display Name").fill(name);
   await expect(submit).toBeEnabled();
   const created = await flow.click(submit, CREATE_ROLE) as ServerRole;
-  await expectNotified(page, "Role created");
+  await expectToast(page, "Role created");
   await expectNoDialog(page);
 
   await expect(roleItem(page, name), "建完必须直接出现在清单里，不用手动刷新").toBeVisible();
@@ -142,7 +135,8 @@ test("编辑角色：没改动时保存是禁用的；改完名字、级别和�
   await expect(saveButton(page), "什么都没改的时候保存必须是禁用的").toBeDisabled();
 
   const granted = "View member list";
-  const untouched = "Deactivate members";
+  /* 这颗控件对应 admin.users.delete；停用权限是相邻的另一颗开关。 */
+  const untouched = "Remove members";
   await expect(permission(page, granted)).toHaveAttribute("aria-pressed", "false");
 
   await field(detail(page), "Display Name").fill(renamed);
@@ -167,7 +161,7 @@ test("编辑角色：没改动时保存是禁用的；改完名字、级别和�
   expect(beforeSave.permissions["admin.users.view"], "草稿里的勾选同样不该提前落库").toBe(false);
 
   await flow.click(saveButton(page), UPDATE_ROLE);
-  await expectNotified(page, "Role configuration saved");
+  await expectToast(page, "Role configuration saved");
 
   const saved = await serverRole(api, role.id);
   expect(saved.name).toBe(renamed);
@@ -212,7 +206,7 @@ test("删除角色：确认框取消什么都不做；确认之后清单和服�
   await detail(page).getByRole("button", { name: "Delete", exact: true }).click();
   const again = await confirmDialog(page, "Delete role?");
   await flow.click(again.getByRole("button", { name: "Delete", exact: true }), DELETE_ROLE);
-  await expectNotified(page, "Role deleted");
+  await expectToast(page, "Role deleted");
 
   await expect(roleItem(page, role.name), "删完这一行就该从清单里消失").toHaveCount(0);
   expect(

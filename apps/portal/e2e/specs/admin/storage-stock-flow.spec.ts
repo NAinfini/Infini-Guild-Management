@@ -55,7 +55,7 @@ test("库存全流程：存入加库存、取出减库存，UI 与服务端必�
     { method: "POST", path: /^\/api\/storage\/items\/[^/]+\/transactions$/ },
   );
 
-  await expect(stock).toHaveText("10");
+  await expect.poll(() => readInteger(stock, "存入后的库存")).toBe(10);
   expect(
     (await readJson(await api.get(`/api/storage/items/${created.id}`), "存入后回读物品") as { quantity: number }).quantity,
     "存入 10 之后服务端库存必须是 10",
@@ -71,7 +71,7 @@ test("库存全流程：存入加库存、取出减库存，UI 与服务端必�
     { method: "POST", path: /^\/api\/storage\/items\/[^/]+\/transactions$/ },
   );
 
-  await expect(stock).toHaveText("7");
+  await expect.poll(() => readInteger(stock, "取出后的库存")).toBe(7);
   expect(
     (await readJson(await api.get(`/api/storage/items/${created.id}`), "取出后回读物品") as { quantity: number }).quantity,
     "取出 3 之后服务端库存必须是 7",

@@ -1,11 +1,14 @@
 import { z } from "zod";
-import { LIMITS } from "../config/limits";
+import { LIMITS, MAX_OFFSET_PAGE } from "../config/limits";
 import { mediaIdSchema } from "./media";
 import { isPortableLowercaseLikeSearch } from "../utils/portable-search";
+import { STORAGE_RARITIES } from "../constants/storage";
 
 const L = LIMITS.content;
 
 const trimmed = (max: number) => z.string().trim().min(1).max(max);
+const structureRevisionSchema = z.number().int().min(0);
+const itemRevisionSchema = z.string().trim().min(1).max(64);
 
 // --- Read schemas (loose: no trim/min on strings) ---
 
@@ -16,6 +19,7 @@ export const storageSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   created_at: z.string(),
+  structure_revision: structureRevisionSchema,
   categories: z.array(storageCategorySchema),
 });
 
@@ -25,6 +29,8 @@ export const storageItemSchema = z.object({
   category_id: z.string().nullable(),
   name: z.string(),
   description: z.string().nullable(),
+  rarity: z.enum(STORAGE_RARITIES),
+  unit: z.string().nullable(),
   quantity: z.number().finite().min(0),
   allow_member_deposit: z.boolean(),
   allow_member_withdraw: z.boolean(),
@@ -73,6 +79,28 @@ export const createStorageSchema = z.object({
 
 export const createStorageCategorySchema = z.object({
   name: trimmed(L.storageCategoryName.max),
+  expected_structure_revision: structureRevisionSchema,
+});
+
+export const updateStorageSchema = createStorageSchema.partial().extend({
+  expected_name: trimmed(L.storageName.max),
+  expected_description: z.string().max(L.storageDescription.max).nullable(),
+  expected_structure_revision: structureRevisionSchema,
+}).refine(
+  ({ name, description }) => name !== undefined || description !== undefined,
+  { message: "At least one storage field must be updated" },
+);
+
+export const updateStorageCategorySchema = createStorageCategorySchema.extend({
+  expected_name: trimmed(L.storageCategoryName.max),
+});
+
+export const deleteStorageSchema = z.object({
+  expected_structure_revision: structureRevisionSchema,
+});
+
+export const deleteStorageCategorySchema = z.object({
+  expected_structure_revision: structureRevisionSchema,
 });
 
 // Base WITHOUT defaults so updateStorageItemSchema.partial() emits only the keys sent
@@ -81,23 +109,42 @@ const storageItemWriteBaseSchema = z.object({
   category_id: z.string().optional().nullable(),
   name: trimmed(L.storageItemName.max),
   description: z.string().trim().max(L.storageItemDescription.max).optional().nullable(),
+  rarity: z.enum(STORAGE_RARITIES),
+  unit: z.string().trim().min(1).max(L.storageItemUnit.max).optional().nullable(),
   allow_member_deposit: z.boolean(),
   allow_member_withdraw: z.boolean(),
 });
 
 export const createStorageItemSchema = storageItemWriteBaseSchema.extend({
   storage_id: z.string(),
+  rarity: z.enum(STORAGE_RARITIES).default("common"),
   allow_member_deposit: z.boolean().default(false),
   allow_member_withdraw: z.boolean().default(false),
 });
 
-export const updateStorageItemSchema = storageItemWriteBaseSchema.partial();
+export const updateStorageItemSchema = storageItemWriteBaseSchema.partial().extend({
+  expected_updated_at: itemRevisionSchema,
+}).refine(
+  ({ expected_updated_at: _expectedUpdatedAt, ...patch }) => Object.values(patch).some((value) => value !== undefined),
+  { message: "At least one item field must be updated" },
+);
+
+export const deleteStorageItemSchema = z.object({
+  expected_updated_at: itemRevisionSchema,
+});
+
+/** The multipart image endpoint receives this same payload as a text form field. */
+export const storageItemImageMutationSchema = z.object({
+  expected_updated_at: itemRevisionSchema,
+});
 
 const txQuantity = z.number().finite().positive().max(L.storageTransactionQuantity.max);
 const txTargetQuantity = z.number().finite().min(0).max(L.storageTransactionQuantity.max);
+const stockIdempotencyKey = z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{15,63}$/, "Invalid idempotency key");
 
 export const createStorageTransactionSchema = z
   .object({
+    idempotency_key: stockIdempotencyKey,
     type: z.enum(STORAGE_TRANSACTION_TYPES),
     quantity: txQuantity.optional(), // intake/distribute only; always positive on the wire
     target_quantity: txTargetQuantity.optional(), // adjust only; service derives the delta
@@ -114,11 +161,9 @@ export const createStorageTransactionSchema = z
     message: "target_quantity required for adjust",
   });
 
-const batchIdempotencyKey = z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{15,63}$/, "Invalid idempotency key");
-
 export const createStorageBatchTransactionSchema = z
   .object({
-    idempotency_key: batchIdempotencyKey,
+    idempotency_key: stockIdempotencyKey,
     type: z.enum(["intake", "distribute"]),
     entries: z.array(z.object({
       item_id: z.string().trim().min(1).max(128),
@@ -142,10 +187,33 @@ export const storageBatchTransactionResultSchema = z.object({
   replayed: z.boolean(),
 });
 
+const storageImageReferenceSchema = z.object({ media_id: mediaIdSchema });
+
+export const storageCategoryMutationResponseSchema = z.object({
+  category: storageCategorySchema,
+  structure_revision: structureRevisionSchema,
+});
+
+export const storageCategoryDeleteResponseSchema = z.object({
+  ok: z.literal(true),
+  structure_revision: structureRevisionSchema,
+});
+
+export const storageItemImageUploadResponseSchema = z.object({
+  data: z.array(storageImageReferenceSchema),
+  updated_at: itemRevisionSchema,
+});
+
+export const storageItemImageDeleteResponseSchema = z.object({
+  ok: z.literal(true),
+  updated_at: itemRevisionSchema,
+});
+
 export const storageTransactionsListQuerySchema = z.object({
+  storage_id: z.string().trim().min(1).max(128).optional(),
   item_id: z.string().trim().min(1).max(128).optional(),
   recipient_user_id: z.string().trim().min(1).max(128).optional(),
-  page: z.coerce.number().int().min(1).max(10_000).default(1),
+  page: z.coerce.number().int().min(1).max(MAX_OFFSET_PAGE).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
@@ -170,13 +238,23 @@ export type Storage = z.infer<typeof storageSchema>;
 export type StorageCategory = z.infer<typeof storageCategorySchema>;
 export type StorageItem = z.infer<typeof storageItemSchema>;
 export type StorageTransaction = z.infer<typeof storageTransactionSchema>;
+export type StorageCategoryMutationResponse = z.infer<typeof storageCategoryMutationResponseSchema>;
+export type StorageCategoryDeleteResponse = z.infer<typeof storageCategoryDeleteResponseSchema>;
+export type StorageItemImageUploadResponse = z.infer<typeof storageItemImageUploadResponseSchema>;
+export type StorageItemImageDeleteResponse = z.infer<typeof storageItemImageDeleteResponseSchema>;
 export type StorageStockFilter = z.infer<typeof storageStockFilterSchema>;
 export type StorageItemsListQuery = z.infer<typeof storageItemsListQuerySchema>;
 export type StorageTransactionsListQuery = z.infer<typeof storageTransactionsListQuerySchema>;
 export type CreateStoragePayload = z.input<typeof createStorageSchema>;
 export type CreateStorageCategoryPayload = z.input<typeof createStorageCategorySchema>;
+export type UpdateStoragePayload = z.input<typeof updateStorageSchema>;
+export type UpdateStorageCategoryPayload = z.input<typeof updateStorageCategorySchema>;
 export type CreateStorageItemPayload = z.input<typeof createStorageItemSchema>;
 export type UpdateStorageItemPayload = z.input<typeof updateStorageItemSchema>;
+export type DeleteStoragePayload = z.input<typeof deleteStorageSchema>;
+export type DeleteStorageCategoryPayload = z.input<typeof deleteStorageCategorySchema>;
+export type DeleteStorageItemPayload = z.input<typeof deleteStorageItemSchema>;
+export type StorageItemImageMutationPayload = z.input<typeof storageItemImageMutationSchema>;
 export type CreateStorageTransactionPayload = z.input<typeof createStorageTransactionSchema>;
 export type CreateStorageBatchTransactionPayload = z.input<typeof createStorageBatchTransactionSchema>;
 export type StorageBatchTransactionResult = z.infer<typeof storageBatchTransactionResultSchema>;

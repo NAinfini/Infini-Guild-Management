@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { queryKeys } from "../../api/query-keys";
 import { SettingsPage } from "./SettingsPage";
 
 const mocks = vi.hoisted(() => ({
@@ -12,6 +12,16 @@ const mocks = vi.hoisted(() => ({
   setLocale: vi.fn(),
   setTheme: vi.fn(),
   setAccent: vi.fn(),
+}));
+const authState = vi.hoisted(() => ({
+  user: null as { id: string } | null,
+}));
+const externalViewState = vi.hoisted(() => ({
+  enabled: false,
+}));
+const notificationServiceMocks = vi.hoisted(() => ({
+  fetchNotificationPreferences: vi.fn(),
+  updateNotificationPreferences: vi.fn(),
 }));
 
 vi.mock("react-i18next", async (importOriginal) => {
@@ -40,8 +50,38 @@ vi.mock("../../providers/ThemeProvider", () => ({
   }),
 }));
 
+vi.mock("../../stores/auth", () => ({
+  useAuthStore: (selector: (state: typeof authState) => unknown) => selector(authState),
+}));
+
+vi.mock("../../services/NotificationService", () => ({
+  fetchNotificationPreferences: notificationServiceMocks.fetchNotificationPreferences,
+  updateNotificationPreferences: notificationServiceMocks.updateNotificationPreferences,
+}));
+
+vi.mock("../../hooks/useAppError", () => ({
+  useAppError: () => ({ showError: vi.fn() }),
+}));
+
+vi.mock("../../hooks/useExternalView", () => ({
+  useExternalView: () => externalViewState.enabled,
+}));
+
 function renderSettingsPage() {
-  return render(<SettingsPage />);
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  return {
+    queryClient,
+    ...render(
+    <QueryClientProvider client={queryClient}>
+      <SettingsPage />
+    </QueryClientProvider>,
+    ),
+  };
 }
 
 describe("SettingsPage", () => {
@@ -52,15 +92,32 @@ describe("SettingsPage", () => {
     mocks.setLocale.mockReset();
     mocks.setTheme.mockReset();
     mocks.setAccent.mockReset();
+    authState.user = null;
+    externalViewState.enabled = false;
+    notificationServiceMocks.fetchNotificationPreferences.mockReset();
+    notificationServiceMocks.updateNotificationPreferences.mockReset();
+    notificationServiceMocks.fetchNotificationPreferences.mockResolvedValue({
+      member_joined: true,
+      announcement_published: true,
+      event_created: true,
+      wiki_article_created: true,
+      updated_at: "2026-01-01T00:00:00.000Z",
+    });
+    notificationServiceMocks.updateNotificationPreferences.mockResolvedValue({
+      member_joined: false,
+      announcement_published: true,
+      event_created: true,
+      wiki_article_created: true,
+      updated_at: "2026-01-01T00:00:01.000Z",
+    });
   });
 
   it("uses native radio semantics and immediately updates preferences", async () => {
     const user = userEvent.setup();
-    const { container } = renderSettingsPage();
+    renderSettingsPage();
 
     expect(screen.queryByRole("heading", { name: "settings.title" })).not.toBeInTheDocument();
     expect(screen.queryByText("settings.description")).not.toBeInTheDocument();
-    expect(container.querySelector(".settings-page__artwork")).toBeNull();
 
     const appearance = screen.getByRole("group", { name: "section.appearance" });
     const preferences = screen.getByRole("group", { name: "section.preferences" });
@@ -94,46 +151,58 @@ describe("SettingsPage", () => {
     expect(mocks.setTheme).toHaveBeenCalledWith("dark");
   });
 
-  it("reflows from container capacity without squeezing option copy", () => {
-    const { container } = renderSettingsPage();
+  it("loads server-synced notification preferences and saves a toggle", async () => {
+    const user = userEvent.setup();
+    authState.user = { id: "user-1" };
+    renderSettingsPage();
 
-    expect(container.querySelector(".settings-page")).not.toBeNull();
-    expect(container.querySelectorAll(".settings-choice-grid--binary")).toHaveLength(2);
-    expect(container.querySelector(".settings-choice-grid--accent")).not.toBeNull();
-    expect(container.querySelectorAll(".settings-option-card__description")).toHaveLength(8);
-    expect(container.querySelectorAll(".settings-surface-sample")).toHaveLength(6);
-    expect(container.querySelector('.settings-surface-sample[data-theme="light"]')).not.toBeNull();
-    expect(container.querySelector('.settings-surface-sample[data-theme="dark"]')).not.toBeNull();
-    for (const accent of ["teal", "indigo", "violet", "orange"]) {
-      expect(
-        container.querySelector(`.settings-surface-sample[data-accent-preview="${accent}"]`),
-      ).not.toBeNull();
-    }
+    const memberJoined = await screen.findByRole("switch", {
+      name: /notification\.member_joined\.label/,
+    });
+    expect(notificationServiceMocks.fetchNotificationPreferences).toHaveBeenCalledOnce();
+    expect(memberJoined).toHaveAttribute("aria-checked", "true");
 
-    const styles = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/SettingsPage.css"),
-      "utf8",
+    await user.click(memberJoined);
+    await waitFor(() =>
+      expect(notificationServiceMocks.updateNotificationPreferences).toHaveBeenCalledWith({
+        member_joined: false,
+      }),
     );
-    expect(styles).toMatch(
-      /\.settings-page\s*\{[^}]*width:\s*100%[^}]*min-height:\s*100%[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*34rem\),\s*1fr\)\)/s,
-    );
-    expect(styles).toMatch(
-      /\.settings-choice-grid\s*\{[^}]*container-name:\s*settings-options[^}]*container-type:\s*inline-size[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*23rem\),\s*1fr\)\)/s,
-    );
-    expect(styles).toMatch(
-      /\.settings-option-card\s*\{[^}]*grid-template-columns:\s*auto\s+minmax\(12rem,\s*1fr\)\s+auto/s,
-    );
-    expect(styles).toMatch(
-      /@container\s+settings-options\s*\(max-width:\s*24rem\)[^{]*\{[\s\S]*?\.settings-option-card\s*\{[^}]*grid-template-columns:\s*auto\s+minmax\(0,\s*1fr\)\s+auto/,
-    );
-    expect(styles).not.toContain("1.35fr");
-    expect(styles).not.toContain("minmax(18rem, 0.65fr)");
-    expect(styles).toContain(":has([data-checked])");
-
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/SettingsPage.tsx"),
-      "utf8",
-    );
-    expect(source.toLowerCase()).not.toContain(["man", "tine"].join(""));
+    await waitFor(() => expect(memberJoined).toHaveAttribute("aria-checked", "false"));
   });
+
+  it("keeps cached notification preferences visible after a failed refresh", async () => {
+    authState.user = { id: "user-1" };
+    notificationServiceMocks.fetchNotificationPreferences
+      .mockReset()
+      .mockResolvedValueOnce({
+        member_joined: true,
+        announcement_published: true,
+        event_created: true,
+        wiki_article_created: true,
+        updated_at: "2026-01-01T00:00:00.000Z",
+      })
+      .mockRejectedValueOnce(new Error("refresh unavailable"));
+    const { queryClient } = renderSettingsPage();
+
+    expect(await screen.findByRole("switch", { name: /notification\.member_joined\.label/ })).toBeInTheDocument();
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.notifications.preferences("user-1") });
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("common:loadError");
+    expect(screen.getByRole("switch", { name: /notification\.member_joined\.label/ })).toBeInTheDocument();
+  });
+
+  it("does not load or expose private notification preferences in external preview", () => {
+    authState.user = { id: "user-1" };
+    externalViewState.enabled = true;
+
+    renderSettingsPage();
+
+    expect(notificationServiceMocks.fetchNotificationPreferences).not.toHaveBeenCalled();
+    expect(screen.queryByText("field.notifications")).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
 });

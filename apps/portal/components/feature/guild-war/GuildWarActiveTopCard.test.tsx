@@ -43,6 +43,23 @@ describe("GuildWarActiveTopCard", () => {
     expect(filters?.querySelector(".guild-war-active-top-card__event")).not.toBeNull();
   });
 
+  it("keeps the no-match result visible and disables match navigation", () => {
+    render(
+      <GuildWarActiveTopCard
+        {...baseProps}
+        activeSearch="missing"
+        matchLabel="active.noMatches"
+        hasMatches={false}
+        onPrevMatch={vi.fn()}
+        onNextMatch={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("active.noMatches")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "active.aria.prevMatch" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "active.aria.nextMatch" })).toBeDisabled();
+  });
+
   it("does not expose the end-war action without an eligible active selection", () => {
     render(<GuildWarActiveTopCard {...baseProps} selectedEventId={undefined} eventOptions={[]} />);
 

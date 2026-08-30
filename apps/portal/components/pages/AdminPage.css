@@ -110,7 +110,7 @@
 
 /* ── 面板 ────────────────────────────────────────────────────
  *
- * 管理台唯一的受管面板配方，就是 DESIGN.md 的 M2 Plate：台面色 + 一道发丝描边 +
+ * 管理台唯一的受管面板配方，就是 docs/DESIGN.md 的 M2 Plate：台面色 + 一道发丝描边 +
  * 顶棱。管理内容区里所有带边框的内容块都从这里取材质。
  *
  * 边界很硬：admin 目录下的其它样式文件不得再自行声明 border / border-radius /
@@ -217,72 +217,12 @@
   margin-block-start: var(--space-md);
 }
 
-.admin-audit-toolbar__dates {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  width: min(19rem, 100%);
-}
-
-.content-filter-toolbar__panel-controls .admin-audit-toolbar__dates {
-  width: 100%;
-}
-
 .admin-audit-section {
   gap: 12px;
 }
 
 .admin-audit-toolbar__search {
   min-width: min(18rem, 100%);
-}
-
-.admin-audit-range {
-  display: inline-flex;
-  width: auto;
-  max-width: 100%;
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-  background: var(--surface-sunken);
-}
-
-.admin-audit-range__option {
-  position: relative;
-  display: inline-flex;
-  min-height: 28px;
-  align-items: center;
-  justify-content: center;
-  padding: 5px 10px;
-  border-radius: calc(var(--radius-control) - 3px);
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: var(--text-micro);
-  font-weight: var(--fw-strong);
-  line-height: 1;
-}
-
-.admin-audit-range__option:has([data-checked]) {
-  color: var(--brand-text);
-  background: var(--surface-raised);
-  box-shadow: inset 0 0 0 1px var(--border-strong), var(--edge-top);
-}
-
-.admin-audit-range__option:not(:has([data-checked])):hover {
-  color: var(--text-primary);
-  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
-}
-
-.admin-audit-range__radio {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  border: 0;
-  opacity: 0;
-}
-
-.admin-audit-range__option:has(.admin-audit-range__radio:focus-visible) {
-  outline: 2px solid var(--brand-fill);
-  outline-offset: 2px;
 }
 
 .admin-audit-export-menu {
@@ -573,20 +513,6 @@
 .admin-invite-card-list {
   display: grid;
   gap: var(--space-md);
-}
-
-.admin-invite-card__code-block {
-  min-width: 0;
-}
-
-.admin-invite-card__code {
-  display: block;
-  margin-top: var(--space-xs);
-  overflow-wrap: anywhere;
-  font-family: var(--font-code);
-  font-size: var(--text-body);
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--fw-strong);
 }
 
 .admin-invite-card__details {
@@ -973,6 +899,17 @@
     border-block-end: 1px solid var(--border-subtle);
   }
 
+  /* The desktop detail body uses flex-basis: 0 inside a height-constrained workbench.
+     Once the panes stack and return to content height, that basis would collapse the
+     form viewport to zero. Let the detail and its body contribute their natural height. */
+  .admin-md__detail {
+    overflow: visible;
+  }
+
+  .admin-md__detail-body {
+    flex: 0 0 auto;
+  }
+
   .admin-md__detail-head,
   .admin-md__detail-pad {
     padding: var(--space-md);
@@ -1045,9 +982,10 @@
 }
 
 .admin-roles-perm-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
-  gap: var(--space-sm);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-xs);
 }
 
 .admin-roles-perm {
@@ -1125,15 +1063,6 @@
   font-weight: var(--fw-strong);
 }
 
-.admin-roles__row-delete {
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--status-danger) 12%, transparent);
-}
-
-.admin-roles__row-delete:hover {
-  background: color-mix(in srgb, var(--status-danger) 20%, transparent);
-}
-
 @media (max-width: 47.99em) {
   .admin-roles__detail-head {
     align-items: stretch;
@@ -1153,10 +1082,6 @@
     margin-inline-start: 0;
   }
 
-  .admin-roles-perm-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-xs);
-  }
 }
 
 /* ── 站点配置：全宽 12 列分区画布 ─────────────────────────────── */
@@ -1340,13 +1265,6 @@
 
 .site-config-number-input {
   min-block-size: var(--control-height-regular);
-  appearance: textfield;
-}
-
-.site-config-number-input::-webkit-inner-spin-button,
-.site-config-number-input::-webkit-outer-spin-button {
-  margin: 0;
-  appearance: none;
 }
 
 .site-config-number-suffix {

@@ -4,6 +4,7 @@
   "field.theme": "主题",
   "field.accent": "主色",
   "field.locale": "语言",
+  "field.notifications": "通知",
   "theme.aria.useTheme": "使用主题 {{themeId}}",
   "theme.light": "浅色",
   "theme.light.desc": "明亮、清爽的界面",
@@ -29,5 +30,16 @@
   "locale.zh.desc": "简体中文界面",
   "subtitle": "偏好设置",
   "section.appearance": "外观",
-  "section.preferences": "偏好"
+  "section.preferences": "偏好",
+  "notification.description": "选择哪些动态会进入服务端同步的通知收件箱。",
+  "notification.retry": "重新加载通知偏好",
+  "notification.saveFailed": "保存通知偏好失败",
+  "notification.member_joined.label": "新成员加入",
+  "notification.member_joined.description": "有成员加入公会时通知我。",
+  "notification.announcement_published.label": "公告发布",
+  "notification.announcement_published.description": "有新公告发布时通知我。",
+  "notification.event_created.label": "新活动",
+  "notification.event_created.description": "有新活动创建时通知我。",
+  "notification.wiki_article_created.label": "新百科文章",
+  "notification.wiki_article_created.description": "有新百科文章创建时通知我。"
 }

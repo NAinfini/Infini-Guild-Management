@@ -1,22 +1,20 @@
 import type { BlobMetadata, BlobRange } from "@guild/kernel";
-import type { AuditArchiveDownloadTokens, AuditArchiveService } from "@guild/server/modules/audit";
+import type { AuditArchiveService } from "@guild/server/modules/audit";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { HttpEnv } from "../../core/http-env.js";
 import { requestContext } from "../../core/http-env.js";
 import { HttpRangeError } from "../../core/http-range-error.js";
-import { parseQuery } from "../../core/parsing.js";
+import { parseQuery, parseValue } from "../../core/parsing.js";
 import { parseRange, type RequestedByteRange } from "../../core/range.js";
 
-const DOWNLOAD_TTL_SECONDS = 5 * 60;
 const monthQuerySchema = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) });
-const tokenQuerySchema = z.object({ token: z.string().min(16).max(2_048) });
+const archiveIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 
 type AuditArchiveHttpService = Pick<AuditArchiveService, "listMonths" | "listFiles" | "head" | "read">;
-type AuditArchiveHttpTokens = Pick<AuditArchiveDownloadTokens, "issue" | "verify">;
 
 export function createAuditArchiveRoutes(
-  dependencies: Readonly<{ service: AuditArchiveHttpService; tokens: AuditArchiveHttpTokens }>,
+  dependencies: Readonly<{ service: AuditArchiveHttpService }>,
 ): Hono<HttpEnv> {
   const routes = new Hono<HttpEnv>();
 
@@ -24,31 +22,31 @@ export function createAuditArchiveRoutes(
     months: await dependencies.service.listMonths(requestContext(context)),
   }));
 
-  routes.get("/audit-archive/download", async (context) => {
+  routes.get("/audit-archive/files", async (context) => {
     const request = requestContext(context);
     const { month } = parseQuery(context.req.raw, monthQuerySchema, "Invalid audit archive month");
     const files = await dependencies.service.listFiles(request, month);
-    const downloads = await Promise.all(files.map(async (file) => ({
-      file,
-      download: await dependencies.tokens.issue(request, file.id, DOWNLOAD_TTL_SECONDS),
-    })));
     return context.json({
       month,
-      expires_in_seconds: DOWNLOAD_TTL_SECONDS,
-      files: downloads.map(({ file, download }) => ({
-        key: file.objectKey,
+      files: files.map((file) => ({
+        id: file.id,
+        filename: `guild-audit-${file.id}.ndjson`,
         row_count: file.rowCount,
         size_bytes: file.sizeBytes,
-        expires_at: download.expiresAt,
-        url: `/api/admin/audit-archive/download/file?token=${encodeURIComponent(download.token)}`,
+        starts_at: file.startsAt,
+        ends_at: file.endsAt,
+        completed_at: file.completedAt,
       })),
     });
   });
 
-  routes.on(["GET", "HEAD"], "/audit-archive/download/file", async (context) => {
+  routes.on(["GET", "HEAD"], "/audit-archive/files/:archiveId", async (context) => {
     const request = requestContext(context);
-    const { token } = parseQuery(context.req.raw, tokenQuerySchema, "Invalid audit archive download token");
-    const archiveId = await dependencies.tokens.verify(request, token);
+    const archiveId = parseValue(
+      context.req.param("archiveId"),
+      archiveIdSchema,
+      "Invalid audit archive id",
+    );
     const rangeHeader = context.req.header("Range");
 
     if (context.req.method === "HEAD" || rangeHeader) {

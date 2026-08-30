@@ -65,9 +65,11 @@ export function updateGuildWarRoleTags(payload: UpdateGuildWarRoleTagsPayload): 
 export function batchUpdateGuildWarMemberStats(
   historyId: string,
   updates: Array<{ user_id: string; stats: UpdateGuildWarMemberStatsPayload }>,
+  etag: string,
 ): Promise<{ data: WarTeamMember[] }> {
   return apiRequest<{ data: WarTeamMember[] }>(`/api/guild-war/history/${historyId}/member-stats/batch`, {
     method: "PATCH",
+    ifMatch: etag,
     bodyJson: {
       updates: updates.map((u) => ({
         user_id: u.user_id,

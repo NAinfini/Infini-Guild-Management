@@ -76,6 +76,26 @@ describe("audit export route", () => {
     expect(response.status).toBe(500);
     expect(exportRows).not.toHaveBeenCalled();
   });
+
+  it("rejects a one-sided date range before reading or exporting audit data", async () => {
+    const list = vi.fn();
+    const recordExport = vi.fn();
+    const exportRows = vi.fn(() => emptyRows());
+    const app = buildApp({ list, recordExport, export: exportRows });
+
+    for (const path of [
+      `/api/admin/audit-log?start_at=${NOW}`,
+      `/api/admin/audit-log/export?format=csv&end_at=${NOW}`,
+    ]) {
+      const response = await app.request(path);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual(expect.objectContaining({ error_code: "VALIDATION_ERROR" }));
+    }
+
+    expect(list).not.toHaveBeenCalled();
+    expect(recordExport).not.toHaveBeenCalled();
+    expect(exportRows).not.toHaveBeenCalled();
+  });
 });
 
 function buildApp(service: Readonly<{

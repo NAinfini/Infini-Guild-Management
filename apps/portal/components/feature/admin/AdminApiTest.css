@@ -34,6 +34,7 @@
 
 .api-console__hint {
   flex-basis: 100%;
+  font-size: var(--text-meta);
   line-height: 1.4;
 }
 
@@ -339,7 +340,7 @@
  *
  * 原来这里把 --control-hit-area 直接当可见尺寸用，于是每行右边都立着一个 44px
  * 的方块，里面装一个 11px 的三角——十几行排下来，一列方块比数据本身还抢眼。
- * 按 DESIGN.md 的控件表，regular 档可见图标控件是 28px，44×44 是靶面；靶面由
+ * 按 docs/DESIGN.md 的控件表，regular 档可见图标控件是 28px，44×44 是靶面；靶面由
  * 按钮本身维持 28px 的可见尺寸，所在的 44px 网格单元提供完整触控靶面。
  */
 .api-cat__actions .api-cat__run-button {
@@ -414,7 +415,8 @@
 /* --status-warning 本身分模式取深/亮两档（浅色 deep、深色 bright），
    PATCH 的文字色不再需要 .dark 分支单独抬亮。 */
 .api-ep__method--GET { background: color-mix(in srgb, var(--brand-fill) 10%, transparent); color: var(--brand-text); }
-.api-ep__method--POST { background: color-mix(in srgb, var(--status-success) 10%, transparent); color: var(--status-success); }
+.api-ep__method--POST,
+.api-ep__method--PUT { background: color-mix(in srgb, var(--status-success) 10%, transparent); color: var(--status-success); }
 .api-ep__method--PATCH { background: color-mix(in srgb, var(--status-warning) 12%, transparent); color: var(--status-warning); }
 .api-ep__method--DELETE { background: color-mix(in srgb, var(--status-danger) 10%, transparent); color: var(--status-danger); }
 

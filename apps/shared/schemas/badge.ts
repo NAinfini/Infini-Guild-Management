@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
+import { catalogRevisionTokenSchema, catalogUpdatedAtSchema } from "./catalog-revision";
 
 const badgeColorSchema = z.string().regex(/^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/);
 
@@ -41,7 +42,10 @@ export const updateMemberBadgeSchema = z.object({
   color: badgeColorSchema,
   description: z.string().max(500).nullable(),
   sort_order: badgeSortOrderSchema,
-}).partial().strict().refine((value) => Object.keys(value).length > 0, {
+}).partial().extend({ expected_updated_at: catalogUpdatedAtSchema }).strict().refine(({
+  expected_updated_at: _expectedUpdatedAt,
+  ...patch
+}) => Object.keys(patch).length > 0, {
   message: "At least one badge field is required",
 });
 
@@ -51,6 +55,7 @@ export const updateMemberBadgeSchema = z.object({
  * class-catalog.ts 那份 schema 上面，两处不重复一遍。
  */
 export const reorderMemberBadgesSchema = z.object({
+  expected_revision_token: catalogRevisionTokenSchema,
   order: z.array(z.string().min(1))
     .min(1)
     .max(LIMITS.content.badgeCatalogSize.max)
@@ -89,10 +94,12 @@ export const unassignBadgeSchema = z.object({
 
 export const assignBadgeResponseSchema = z.object({
   assigned: z.number().int().min(0).max(100),
+  updated_at: catalogUpdatedAtSchema,
 }).strict();
 
 export const unassignBadgeResponseSchema = z.object({
   removed: z.number().int().min(0).max(100),
+  updated_at: catalogUpdatedAtSchema,
 }).strict();
 
 export const userBadgeSchema = z.object({
@@ -101,3 +108,7 @@ export const userBadgeSchema = z.object({
   label_html: z.string(),
   color: badgeColorSchema,
 });
+
+export type CreateMemberBadgeInput = z.infer<typeof createMemberBadgeSchema>;
+export type UpdateMemberBadgeInput = z.infer<typeof updateMemberBadgeSchema>;
+export type ReorderMemberBadgeCatalogInput = z.infer<typeof reorderMemberBadgesSchema>;

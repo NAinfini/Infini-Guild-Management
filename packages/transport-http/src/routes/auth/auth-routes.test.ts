@@ -246,21 +246,25 @@ describe("auth Portal HTTP contract", () => {
     expect(consume).not.toHaveBeenCalled();
 
     const allowed = buildApp();
-    await allowed.app.request("/api/auth/verify-invite/A1b2C3d4E5");
-    await allowed.app.request("/api/auth/register/A1b2C3d4E5", {
+    await allowed.app.request("/api/auth/verify-invite/A1B2C3D4E5");
+    await allowed.app.request("/api/auth/register/A1B2C3D4E5", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         login_name: "new_member",
         display_name: "New_Member",
-        password: "password123456789",
-        confirmPassword: "password123456789",
+        password: "Password123456789!",
+        confirmPassword: "Password123456789!",
       }),
     });
     expect(allowed.consume.mock.calls.map(([key]) => key)).toEqual([
       "auth:invite-verify:client-1",
       "auth:register:client-1",
     ]);
+    expect(allowed.service.verifyInvite).toHaveBeenCalledWith("A1B2C3D4E5", NOW);
+    expect(allowed.service.register).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      inviteCode: "A1B2C3D4E5",
+    }));
   });
 
   it("rate-limits current-password verification by both account and trusted source", async () => {
@@ -272,8 +276,8 @@ describe("auth Portal HTTP contract", () => {
     const operations = [
       ["PATCH", "/api/auth/security/password", {
         currentPassword: "password",
-        newPassword: "new-password",
-        confirmNewPassword: "new-password",
+        newPassword: "New-password",
+        confirmNewPassword: "New-password",
       }],
       ["PATCH", "/api/auth/security/login-name", {
         currentPassword: "password",
@@ -313,16 +317,13 @@ describe("auth Portal HTTP contract", () => {
     ]);
   });
 
-  it("keeps the persistent login lock duration readable in the canonical error envelope", async () => {
+  it("returns only caller-scoped rate-limit metadata for a throttled login", async () => {
     const { app, service } = buildApp();
     service.login.mockRejectedValueOnce(new AppError({
       code: "RATE_LIMITED",
       status: 429,
-      message: "Too many failed login attempts",
-      details: {
-        retry_after_seconds: 30,
-        locked_until: "2026-08-09T12:00:30.000Z",
-      },
+      message: "Too many authentication requests",
+      details: { retry_after_seconds: 12 },
     }));
     const response = await app.request("/api/auth/login", {
       method: "POST",
@@ -330,20 +331,21 @@ describe("auth Portal HTTP contract", () => {
       body: JSON.stringify({ login_name: "Member", password: "wrong" }),
     });
     expect(response.status).toBe(429);
-    expect(await response.json()).toEqual({
+    expect(response.headers.get("Retry-After")).toBe("12");
+    const payload = await response.json();
+    expect(payload).toEqual({
       error_code: "RATE_LIMITED",
-      message: "Too many failed login attempts",
+      message: "Too many authentication requests",
       request_id: "request-1",
-      details: {
-        retry_after_seconds: 30,
-        locked_until: "2026-08-09T12:00:30.000Z",
-      },
+      details: { retry_after_seconds: 12 },
     });
+    expect(JSON.stringify(payload)).not.toMatch(/locked_until|login_name/i);
+    expect(service.login).toHaveBeenCalledOnce();
   });
 
   it("presents invite and current-session fields in the Portal snake_case shape", async () => {
     const { app } = buildApp();
-    const invite = await app.request("/api/auth/verify-invite/A1b2C3d4E5");
+    const invite = await app.request("/api/auth/verify-invite/A1B2C3D4E5");
     expect(await invite.json()).toEqual({
       valid: true,
       role_id: "member",

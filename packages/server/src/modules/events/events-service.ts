@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { AppError, secureRandom, type AuthorizationContext, type RequestContext } from "@guild/kernel";
-import type { AuditChange, AuditContext, AuditValue, RecurrenceRule } from "@guild/shared";
+import { MAX_OFFSET_PAGE, type AuditChange, type AuditContext, type AuditValue, type RecurrenceRule } from "@guild/shared";
 import type { PushHint } from "@guild/shared/constants/push-hints";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { recurrenceCursorBefore } from "@guild/shared/utils/recurrence";
@@ -25,6 +25,7 @@ import type {
   TemplateUpdateInput,
   TemplateUpdateWrite,
 } from "./model.js";
+import { monotonicTimestamp } from "./model.js";
 import { assertPortableLikeSearch } from "../../portable-search.js";
 
 const MAX_EVENT_PAGE = 100;
@@ -130,7 +131,7 @@ export function projectEventForViewer(
 }
 
 function assertPage(query: EventListQuery): void {
-  if (!Number.isInteger(query.page) || query.page < 1) {
+  if (!Number.isInteger(query.page) || query.page < 1 || query.page > MAX_OFFSET_PAGE) {
     throw appError("VALIDATION_ERROR", 400, "Invalid page");
   }
   if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > MAX_EVENT_PAGE) {
@@ -315,7 +316,7 @@ export class EventsService {
     const write = this.prepareCreate(context, actor.userId, eventId, input);
     const created = await this.dependencies.store.create(write);
     this.publish(eventId, "event_created", context.now);
-    return this.projectOne(context, created);
+    return projectEventForViewer({ ...created, attachments: write.mediaIds }, eventViewer(context));
   }
 
   async update(
@@ -325,10 +326,16 @@ export class EventsService {
   ): Promise<EventViewerAggregate> {
     const actor = context.authorization.require(PERMISSION_ID.EVENTS_EDIT);
     const existing = await this.requireEvent(eventId, true);
+    if (input.expected_updated_at !== existing.event.updatedAt) {
+      throw appError("CONFLICT", 409, "Event changed");
+    }
     const write = this.prepareUpdate(context, actor.userId, existing, input);
     const updated = await this.dependencies.store.update(write);
     this.publish(eventId, "event_updated", context.now);
-    return this.projectOne(context, updated);
+    return projectEventForViewer({
+      ...updated,
+      attachments: write.mediaIds ?? existing.attachments,
+    }, eventViewer(context));
   }
 
   async archive(context: RequestContext, eventId: string): Promise<void> {
@@ -346,7 +353,14 @@ export class EventsService {
         after: { type: "boolean", value: true },
       }],
     });
-    await this.dependencies.store.setArchived(eventId, context.now, actor.userId, audit);
+    await this.dependencies.store.setArchived({
+      eventId,
+      archivedAt: context.now,
+      actorUserId: actor.userId,
+      expectedUpdatedAt: existing.event.updatedAt,
+      updatedAt: monotonicTimestamp(context.now, existing.event.updatedAt),
+      audit,
+    });
     this.publish(eventId, "event_archived", context.now);
   }
 
@@ -388,9 +402,13 @@ export class EventsService {
     context: RequestContext,
     eventId: string,
     mediaIds: readonly string[],
-  ): Promise<readonly string[]> {
+    expectedUpdatedAt: string,
+  ): Promise<Readonly<{ mediaIds: readonly string[]; updatedAt: string }>> {
     const actor = context.authorization.require(PERMISSION_ID.EVENTS_EDIT);
     const existing = await this.requireEvent(eventId, true);
+    if (expectedUpdatedAt !== existing.event.updatedAt) {
+      throw appError("CONFLICT", 409, "Event changed");
+    }
     const next = normalizeMediaIds([...existing.attachments, ...mediaIds]);
     const audit = createAuditEvent(context, {
       subjectType: "event",
@@ -399,15 +417,17 @@ export class EventsService {
       action: "upload_images",
       context: [{ field: "media_count", value: { type: "number", value: mediaIds.length } }],
     });
-    await this.dependencies.store.touch(
+    const updatedAt = monotonicTimestamp(context.now, existing.event.updatedAt);
+    await this.dependencies.store.touch({
       eventId,
-      actor.userId,
-      context.now,
-      next,
+      actorUserId: actor.userId,
+      expectedUpdatedAt,
+      updatedAt,
+      mediaIds: next,
       audit,
-    );
+    });
     this.publish(eventId, "images_uploaded", context.now);
-    return next;
+    return { mediaIds: next, updatedAt };
   }
 
   async join(context: RequestContext, eventId: string) {
@@ -426,17 +446,21 @@ export class EventsService {
         value: { type: "reference", value: { id: eventId, label: event.event.title } },
       }],
     });
-    const participants = await this.dependencies.store.addParticipants(
+    const updatedAt = monotonicTimestamp(context.now, event.event.updatedAt);
+    const result = await this.dependencies.store.addParticipants({
       eventId,
-      [actor.userId],
-      [this.createId()],
-      context.now,
-      "self",
+      userIds: [actor.userId],
+      participantIds: [this.createId()],
+      now: context.now,
+      mode: "self",
+      actorUserId: actor.userId,
+      expectedUpdatedAt: event.event.updatedAt,
+      updatedAt,
       audit,
-    );
-    const participant = participants.find((row) => row.user_id === actor.userId);
+    });
+    const participant = result.participants.find((row) => row.user_id === actor.userId);
     if (!participant) throw appError("SERVER_ERROR", 500, "Failed to load event signup");
-    this.publish(eventId, "participant_joined", context.now);
+    if (result.changed) this.publish(eventId, "participant_joined", updatedAt);
     return participant;
   }
 
@@ -454,9 +478,17 @@ export class EventsService {
         value: { type: "reference", value: { id: eventId, label: event.event.title } },
       }],
     });
-    const removed = await this.dependencies.store.removeParticipants(eventId, [actor.userId], audit);
+    const updatedAt = monotonicTimestamp(context.now, event.event.updatedAt);
+    const removed = await this.dependencies.store.removeParticipants({
+      eventId,
+      userIds: [actor.userId],
+      actorUserId: actor.userId,
+      expectedUpdatedAt: event.event.updatedAt,
+      updatedAt,
+      audit,
+    });
     if (removed === 0) throw appError("NOT_FOUND", 404, "Event signup not found");
-    this.publish(eventId, "participant_left", context.now);
+    this.publish(eventId, "participant_left", updatedAt);
   }
 
   async addParticipants(
@@ -464,7 +496,7 @@ export class EventsService {
     eventId: string,
     userIds: readonly string[],
   ) {
-    context.authorization.require(PERMISSION_ID.EVENTS_EDIT);
+    const actor = context.authorization.require(PERMISSION_ID.EVENTS_EDIT);
     const event = await this.requireEvent(eventId);
     assertActiveEvent(event.event);
     if (event.event.type === "poll") throw appError("CONFLICT", 409, "Poll events do not use signups");
@@ -479,16 +511,20 @@ export class EventsService {
         value: { type: "reference", value: { id: eventId, label: event.event.title } },
       }],
     });
-    const participants = await this.dependencies.store.addParticipants(
+    const updatedAt = monotonicTimestamp(context.now, event.event.updatedAt);
+    const result = await this.dependencies.store.addParticipants({
       eventId,
-      ids,
-      ids.map(() => this.createId()),
-      context.now,
-      "moderator",
+      userIds: ids,
+      participantIds: ids.map(() => this.createId()),
+      now: context.now,
+      mode: "moderator",
+      actorUserId: actor.userId,
+      expectedUpdatedAt: event.event.updatedAt,
+      updatedAt,
       audit,
-    );
-    this.publish(eventId, "participants_added_by_moderator", context.now);
-    return participants;
+    });
+    if (result.changed) this.publish(eventId, "participants_added_by_moderator", updatedAt);
+    return result.participants;
   }
 
   async removeParticipants(
@@ -496,7 +532,7 @@ export class EventsService {
     eventId: string,
     userIds: readonly string[],
   ): Promise<number> {
-    context.authorization.require(PERMISSION_ID.EVENTS_EDIT);
+    const actor = context.authorization.require(PERMISSION_ID.EVENTS_EDIT);
     const event = await this.requireEvent(eventId);
     const ids = [...new Set(userIds)];
     const audit = createAuditEvent(context, {
@@ -509,8 +545,16 @@ export class EventsService {
         value: { type: "reference", value: { id: eventId, label: event.event.title } },
       }],
     });
-    const removed = await this.dependencies.store.removeParticipants(eventId, ids, audit);
-    this.publish(eventId, "participants_removed_by_moderator", context.now);
+    const updatedAt = monotonicTimestamp(context.now, event.event.updatedAt);
+    const removed = await this.dependencies.store.removeParticipants({
+      eventId,
+      userIds: ids,
+      actorUserId: actor.userId,
+      expectedUpdatedAt: event.event.updatedAt,
+      updatedAt,
+      audit,
+    });
+    if (removed > 0) this.publish(eventId, "participants_removed_by_moderator", updatedAt);
     return removed;
   }
 
@@ -536,8 +580,17 @@ export class EventsService {
       action: "vote",
       context: [{ field: "option_count", value: { type: "number", value: ids.length } }],
     });
-    await this.dependencies.store.replacePollVote(eventId, actor.userId, ids, context.now, audit);
-    this.publish(eventId, "poll_voted", context.now);
+    const updatedAt = monotonicTimestamp(context.now, event.event.updatedAt);
+    const changed = await this.dependencies.store.replacePollVote({
+      eventId,
+      userId: actor.userId,
+      optionIds: ids,
+      now: context.now,
+      expectedUpdatedAt: event.event.updatedAt,
+      updatedAt,
+      audit,
+    });
+    if (changed) this.publish(eventId, "poll_voted", updatedAt);
   }
 
   async drawRaffle(context: RequestContext, eventId: string) {
@@ -561,15 +614,18 @@ export class EventsService {
       action: "raffle_draw",
       context: [],
     });
-    const result = await this.dependencies.store.drawRaffle(
+    const updatedAt = monotonicTimestamp(context.now, event.event.updatedAt);
+    const result = await this.dependencies.store.drawRaffle({
       eventId,
-      winners,
-      winners.map(() => this.createId()),
-      context.now,
-      actor.userId,
+      winnerIds: winners,
+      winnerRowIds: winners.map(() => this.createId()),
+      now: context.now,
+      actorUserId: actor.userId,
+      expectedUpdatedAt: event.event.updatedAt,
+      updatedAt,
       audit,
-    );
-    this.publish(eventId, "raffle_drawn", context.now);
+    });
+    this.publish(eventId, "raffle_drawn", updatedAt);
     return result;
   }
 
@@ -618,7 +674,8 @@ export class EventsService {
       mediaIds: normalizeMediaIds(input.attachments),
       audit,
     };
-    return this.attachTemplateOne(await this.dependencies.store.createTemplate(write));
+    const created = await this.dependencies.store.createTemplate(write);
+    return { ...created, attachments: write.mediaIds };
   }
 
   async updateTemplate(
@@ -628,6 +685,9 @@ export class EventsService {
   ): Promise<RecurringTemplateAggregate> {
     const actor = context.authorization.require(PERMISSION_ID.EVENTS_TEMPLATES);
     const existing = await this.requireTemplate(templateId);
+    if (input.expected_updated_at !== existing.template.updatedAt) {
+      throw appError("CONFLICT", 409, "Template changed");
+    }
     const effectiveType = input.type ?? existing.template.type;
     this.assertTemplateType(effectiveType);
     const recurrenceChanged = (
@@ -701,6 +761,8 @@ export class EventsService {
       templateId,
       actorUserId: actor.userId,
       now: context.now,
+      expectedUpdatedAt: existing.template.updatedAt,
+      updatedAt: monotonicTimestamp(context.now, existing.template.updatedAt),
       patch,
       ...(input.class_quotas === undefined
         ? {}
@@ -709,7 +771,8 @@ export class EventsService {
       ...(recurrenceChanged ? { restartCursorDate: recurrenceCursorDate(context.now) } : {}),
       audit,
     };
-    return this.attachTemplateOne(await this.dependencies.store.updateTemplate(write));
+    const updated = await this.dependencies.store.updateTemplate(write);
+    return { ...updated, attachments: write.mediaIds ?? existing.attachments };
   }
 
   async pauseTemplate(context: RequestContext, templateId: string): Promise<void> {
@@ -726,7 +789,13 @@ export class EventsService {
         after: { type: "code", value: "paused" },
       }],
     });
-    await this.dependencies.store.setTemplatePaused(templateId, true, context.now, audit);
+    await this.dependencies.store.setTemplatePaused({
+      templateId,
+      paused: true,
+      expectedUpdatedAt: template.template.updatedAt,
+      updatedAt: monotonicTimestamp(context.now, template.template.updatedAt),
+      audit,
+    });
   }
 
   async resumeTemplate(context: RequestContext, templateId: string): Promise<void> {
@@ -743,13 +812,14 @@ export class EventsService {
         after: { type: "code", value: "active" },
       }],
     });
-    await this.dependencies.store.setTemplatePaused(
+    await this.dependencies.store.setTemplatePaused({
       templateId,
-      false,
-      context.now,
+      paused: false,
+      expectedUpdatedAt: template.template.updatedAt,
+      updatedAt: monotonicTimestamp(context.now, template.template.updatedAt),
       audit,
-      recurrenceCursorDate(context.now),
-    );
+      resumeCursorDate: recurrenceCursorDate(context.now),
+    });
   }
 
   async deleteTemplate(context: RequestContext, templateId: string): Promise<void> {
@@ -920,6 +990,8 @@ export class EventsService {
       eventId: existing.event.id,
       actorUserId,
       now: context.now,
+      expectedUpdatedAt: existing.event.updatedAt,
+      updatedAt: monotonicTimestamp(context.now, existing.event.updatedAt),
       patch,
       ...(input.class_quotas === undefined
         ? {}

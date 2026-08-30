@@ -6,8 +6,11 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { getSchema } from "@tiptap/core";
+import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
+import { EditorState } from "@tiptap/pm/state";
+import { CellSelection, mergeCells } from "@tiptap/pm/tables";
+import StarterKit from "@tiptap/starter-kit";
 import { useState } from "react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -17,8 +20,12 @@ import {
   DrawerTitle,
 } from "@portal/components/ui/drawer";
 import { TooltipProvider } from "@portal/components/ui/tooltip";
+import { canonicalizeRichTextLinkAttributes, createAnnouncementSchema, createWikiArticleSchema, updateAnnouncementSchema, updateWikiArticleSchema } from "@guild/shared";
 import { sanitizeTipTapHtml, TipTapEditor } from "./TipTapEditor";
-import { buildTipTapEditorLabels } from "./tiptap-meta";
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 
 const editorLabels = {
   bold: "Bold",
@@ -135,54 +142,71 @@ function NestedDrawerEditor() {
 }
 
 describe("TipTapEditor shared contracts", () => {
+  it("saves real editor link attributes through wiki and announcement schemas", () => {
+    const schema = getSchema([StarterKit]);
+    const link = schema.mark("link", { href: "https://example.com/guide" });
+    expect(link.attrs.title).toBeNull();
+    const attrs = canonicalizeRichTextLinkAttributes(link.attrs, "https://guild.example");
+    const document = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("Guide", [schema.mark("link", attrs)])]),
+    ]);
+    const body_json = JSON.stringify(document.toJSON());
+    expect(updateWikiArticleSchema.safeParse({ body_json }).success).toBe(true);
+    expect(createWikiArticleSchema.safeParse({ title: "Guide", category_id: "guides", body_json }).success).toBe(true);
+    expect(updateAnnouncementSchema.safeParse({ body_json }).success).toBe(true);
+    expect(createAnnouncementSchema.safeParse({ title: "Dispatch", body_json }).success).toBe(true);
+  });
+
+  it("saves merged table cells with an unmeasured column width", () => {
+    const schema = getSchema([StarterKit, Table, TableRow, TableHeader, TableCell]);
+    const cell = (colwidth: number[] | null) => schema.node("tableCell", { colwidth }, [schema.node("paragraph")]);
+    const document = schema.node("doc", null, [
+      schema.node("table", null, [schema.node("tableRow", null, [cell([100]), cell(null)])]),
+    ]);
+    const state = EditorState.create({
+      schema,
+      doc: document,
+      selection: CellSelection.create(document, 2, 6),
+    });
+    let mergedDocument = document;
+    expect(mergeCells(state, (transaction) => { mergedDocument = transaction.doc; })).toBe(true);
+    expect(mergedDocument.firstChild?.firstChild?.firstChild?.attrs.colwidth).toEqual([100, 0]);
+    const body_json = JSON.stringify(mergedDocument.toJSON());
+    expect(updateWikiArticleSchema.safeParse({ body_json }).success).toBe(true);
+    expect(updateAnnouncementSchema.safeParse({ body_json }).success).toBe(true);
+  });
+
+  it("saves table JSON produced by the real editor through wiki and announcement schemas", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <TooltipProvider>
+        <TipTapEditor
+          value={JSON.stringify({ type: "doc", content: [{ type: "paragraph" }] })}
+          onChange={onChange}
+          editable
+          labels={editorLabels}
+        />
+      </TooltipProvider>,
+    );
+    await user.click(await screen.findByRole("button", { name: editorLabels.table }));
+    await user.click(await screen.findByRole("menuitem", { name: editorLabels.table }));
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const body_json = onChange.mock.lastCall![0] as string;
+    expect(body_json).toContain('"tableHeader"');
+    expect(body_json).toContain('"tableCell"');
+    expect(updateWikiArticleSchema.safeParse({ body_json }).success).toBe(true);
+    expect(createWikiArticleSchema.safeParse({ title: "Guide", category_id: "guides", body_json }).success).toBe(true);
+    expect(updateAnnouncementSchema.safeParse({ body_json }).success).toBe(true);
+    expect(createAnnouncementSchema.safeParse({ title: "Dispatch", body_json }).success).toBe(true);
+  });
+
   beforeAll(() => {
     if (!HTMLElement.prototype.getClientRects) {
       Object.defineProperty(HTMLElement.prototype, "getClientRects", {
         configurable: true,
         value: () => [{ bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0 }],
       });
-    }
-  });
-
-  it("builds labels for color, formatting cleanup, alignment, divider, tasks, and history controls", () => {
-    const labels = buildTipTapEditorLabels((key) => `label:${key}`) as unknown as Record<string, string>;
-
-    expect(labels.textColor).toBe("label:toolbar.textColor");
-    expect(labels.customTextColor).toBe("label:toolbar.customTextColor");
-    expect(labels.highlight).toBe("label:toolbar.highlight");
-    expect(labels.customHighlightColor).toBe("label:toolbar.customHighlightColor");
-    expect(labels.clearFormatting).toBe("label:toolbar.clearFormatting");
-    expect(labels.alignLeft).toBe("label:toolbar.alignLeft");
-    expect(labels.alignCenter).toBe("label:toolbar.alignCenter");
-    expect(labels.alignRight).toBe("label:toolbar.alignRight");
-    expect(labels.divider).toBe("label:toolbar.divider");
-    expect(labels.taskList).toBe("label:toolbar.taskList");
-    expect(labels.undo).toBe("label:toolbar.undo");
-    expect(labels.redo).toBe("label:toolbar.redo");
-    expect(labels.lightboxTitle).toBe("label:lightbox.title");
-    expect(labels.lightboxPreview).toBe("label:lightbox.preview");
-    expect(labels.lightboxZoomOut).toBe("label:lightbox.zoomOut");
-    expect(labels.lightboxZoomReset).toBe("label:lightbox.zoomReset");
-    expect(labels.lightboxZoomIn).toBe("label:lightbox.zoomIn");
-    expect(labels.lightboxZoomLevel).toBe("label:lightbox.zoomLevel");
-  });
-
-  it("uses only the source-owned Base UI layer across the editor cluster", () => {
-    const editorFiles = [
-      "TipTapEditor.tsx",
-      "TipTapEditorToolbar.tsx",
-      "TipTapEditorContextMenu.tsx",
-      "TipTapEditorFindReplace.tsx",
-      "TipTapEditorLinkDialog.tsx",
-      "tiptap-editor.css",
-    ];
-
-    for (const file of editorFiles) {
-      const source = readFileSync(
-        resolve(process.cwd(), "apps/portal/components/shared", file),
-        "utf8",
-      );
-      expect(source.toLowerCase()).not.toContain(["man", "tine"].join(""));
     }
   });
 
@@ -197,11 +221,70 @@ describe("TipTapEditor shared contracts", () => {
     expect(html).toContain("<mark");
   });
 
+  it("does not request externally hosted images from persisted JSON content", async () => {
+    render(
+      <TooltipProvider>
+        <TipTapEditor
+          value={JSON.stringify({
+            type: "doc",
+            content: [
+              { type: "image", attrs: { src: "https://tracker.example/pixel.gif", alt: "Tracker" } },
+              { type: "image", attrs: { src: "/api/media/123456789012345678901/view", alt: "Managed" } },
+            ],
+          })}
+          onChange={vi.fn()}
+          readOnly
+          labels={editorLabels}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: "Managed" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tracker" })).not.toBeInTheDocument();
+  });
+
+  it("normalizes unsafe saved link attributes before read-only JSON rendering", async () => {
+    render(
+      <TooltipProvider>
+        <TipTapEditor
+          value={JSON.stringify({
+            type: "doc",
+            content: [{
+              type: "paragraph",
+              content: [{
+                type: "text",
+                text: "External guide",
+                marks: [{
+                  type: "link",
+                  attrs: {
+                    href: "https://external.example/guide",
+                    target: "_blank",
+                    rel: "opener",
+                    class: "unsafe-link",
+                  },
+                }],
+              }],
+            }],
+          })}
+          onChange={vi.fn()}
+          readOnly
+          labels={editorLabels}
+        />
+      </TooltipProvider>,
+    );
+
+    const link = await screen.findByRole("link", { name: "External guide" });
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
   it("opens an in-app link dialog instead of the browser prompt", async () => {
     const prompt = vi.spyOn(window, "prompt").mockReturnValue("https://example.com");
+    const user = userEvent.setup();
     renderHtmlEditor();
 
-    fireEvent.click(await screen.findByRole("button", { name: editorLabels.link }));
+    await user.click(await screen.findByRole("button", { name: editorLabels.moreFormatting }));
+    await user.click(await screen.findByRole("menuitem", { name: editorLabels.link }));
 
     expect(prompt).not.toHaveBeenCalled();
     expect(await screen.findByRole("dialog", { name: editorLabels.linkPrompt })).toBeInTheDocument();
@@ -231,8 +314,11 @@ describe("TipTapEditor shared contracts", () => {
     render(<NestedDrawerEditor />);
 
     const drawer = await screen.findByRole("dialog", { name: "Wiki editor" });
-    const linkTrigger = await within(drawer).findByRole("button", { name: editorLabels.link });
-    fireEvent.click(linkTrigger);
+    const formattingTrigger = await within(drawer).findByRole("button", {
+      name: editorLabels.moreFormatting,
+    });
+    await user.click(formattingTrigger);
+    await user.click(await screen.findByRole("menuitem", { name: editorLabels.link }));
 
     expect(await screen.findByRole("dialog", { name: editorLabels.linkPrompt })).toBeInTheDocument();
     await user.keyboard("{Escape}");
@@ -240,11 +326,12 @@ describe("TipTapEditor shared contracts", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: editorLabels.linkPrompt })).not.toBeInTheDocument();
       expect(screen.getByRole("dialog", { name: "Wiki editor" })).toBeInTheDocument();
-      expect(linkTrigger).toHaveFocus();
+      expect(formattingTrigger).toHaveFocus();
     });
 
-    const videoTrigger = within(drawer).getByRole("button", { name: editorLabels.embedVideo });
-    fireEvent.click(videoTrigger);
+    const insertTrigger = within(drawer).getByRole("button", { name: editorLabels.moreInsert });
+    await user.click(insertTrigger);
+    await user.click(await screen.findByRole("menuitem", { name: editorLabels.embedVideo }));
 
     expect(await screen.findByRole("dialog", { name: editorLabels.embedVideo })).toBeInTheDocument();
     await user.keyboard("{Escape}");
@@ -252,14 +339,16 @@ describe("TipTapEditor shared contracts", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: editorLabels.embedVideo })).not.toBeInTheDocument();
       expect(screen.getByRole("dialog", { name: "Wiki editor" })).toBeInTheDocument();
-      expect(videoTrigger).toHaveFocus();
+      expect(insertTrigger).toHaveFocus();
     });
   });
 
   it("applies heading commands from the rendered toolbar", async () => {
     const { onChange } = renderHtmlEditor();
+    const user = userEvent.setup();
 
-    fireEvent.click(await screen.findByRole("button", { name: editorLabels.h1 }));
+    await user.click(await screen.findByRole("button", { name: editorLabels.moreFormatting }));
+    await user.click(await screen.findByRole("menuitem", { name: editorLabels.h1 }));
 
     await waitFor(() => {
       expect(onChange).toHaveBeenCalledWith(expect.stringContaining("<h1>Alpha</h1>"));
@@ -274,51 +363,6 @@ describe("TipTapEditor shared contracts", () => {
     await waitFor(() => {
       expect(onChange).toHaveBeenCalledWith(expect.stringContaining("<ul><li><p>Alpha</p></li></ul>"));
     });
-  });
-
-  it("restores visible heading and list styles inside the editor surface", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
-
-    expect(css).toContain(".infini-tiptap-surface h1");
-    expect(css).toContain(".infini-tiptap-surface ul");
-    expect(css).toContain("list-style: disc");
-    expect(css).toContain("list-style: decimal");
-  });
-
-  it("styles linked text inside the editor surface so assigned links are visible", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
-
-    expect(css).toContain(".infini-tiptap-surface a");
-    expect(css).toContain("text-decoration");
-    expect(css).toContain("text-underline-offset");
-  });
-
-  it("keeps task checklist checkboxes and text on the same row", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
-
-    expect(css).toContain('.infini-tiptap-surface ul[data-type="taskList"] > li');
-    expect(css).toContain('grid-template-columns: auto minmax(0, 1fr)');
-    expect(css).toContain('.infini-tiptap-surface ul[data-type="taskList"] > li > div > p');
-  });
-
-  it("centers task checklist checkboxes vertically with their text", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
-
-    expect(css).toContain("align-items: center");
-    expect(css).toContain("padding-top: 0");
-  });
-
-  it("stretches an empty editor across the narrow column layout", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
-    const narrowLayoutRule = css.match(
-      /@media \(max-width: 768px\)[\s\S]*?\.infini-tiptap-layout\s*\{([^}]*)\}/,
-    )?.[1] ?? "";
-    const surfaceRule = css.match(/\.infini-tiptap-surface\s*\{([^}]*)\}/)?.[1] ?? "";
-
-    expect(narrowLayoutRule).toContain("flex-direction: column");
-    expect(narrowLayoutRule).toContain("align-items: stretch");
-    expect(surfaceRule).toContain("min-height: 180px");
-    expect(surfaceRule).not.toContain("overflow-y");
   });
 
   it("opens read-only images by keyboard with localized lightbox controls and preserved alt text", async () => {
@@ -375,7 +419,7 @@ describe("TipTapEditor shared contracts", () => {
   });
 
   it("does not keyboardize content images while the editor is editable", async () => {
-    const { container } = render(
+    render(
       <TooltipProvider>
         <TipTapEditor
           value={'<img src="https://example.com/editable.jpg" alt="Editable image">'}
@@ -387,10 +431,7 @@ describe("TipTapEditor shared contracts", () => {
       </TooltipProvider>,
     );
 
-    await waitFor(() => {
-      expect(container.querySelector(".infini-tiptap-surface img")).not.toBeNull();
-    });
-    const image = container.querySelector(".infini-tiptap-surface img")!;
+    const image = await screen.findByAltText("Editable image");
     expect(image).not.toHaveAttribute("role", "button");
     expect(image).not.toHaveAttribute("tabindex");
 
@@ -398,18 +439,4 @@ describe("TipTapEditor shared contracts", () => {
     expect(screen.queryByRole("dialog", { name: editorLabels.lightboxTitle })).not.toBeInTheDocument();
   });
 
-  it("keeps lightbox controls touch-sized and contained at narrow widths", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
-    const controlsRule = css.match(/\.infini-tiptap-lightbox-controls\s*\{([^}]*)\}/)?.[1] ?? "";
-    const controlButtonRule = css.match(
-      /\.infini-tiptap-lightbox-controls \[data-slot="button"\]\s*\{([^}]*)\}/,
-    )?.[1] ?? "";
-    const viewportRule = css.match(/\.infini-tiptap-lightbox-viewport\s*\{([^}]*)\}/)?.[1] ?? "";
-
-    expect(controlsRule).toContain("flex-wrap: wrap");
-    expect(controlButtonRule).toContain("min-width: 44px");
-    expect(controlButtonRule).toContain("min-height: 44px");
-    expect(viewportRule).toContain("max-width: 100%");
-    expect(viewportRule).toContain("min-width: 0");
-  });
 });

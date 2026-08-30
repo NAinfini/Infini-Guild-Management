@@ -5,7 +5,6 @@ export {
   uploadAnnouncementAttachment,
   uploadPendingAnnouncementImages,
   updateAnnouncement,
-  uploadAnnouncementImages,
 } from "../api/mutations/announcements";
 export type {
   CreateAnnouncementPayload,
@@ -15,11 +14,13 @@ export type {
   AnnouncementAttachmentUploadResponse,
   AnnouncementImageUploadResponse,
 } from "@guild/shared";
+export { isApiRequestError } from "../api/client";
 import { queryKeys } from "../api/query-keys";
 
 export {
   fetchAnnouncement,
   fetchAnnouncements,
+  recordAnnouncementView,
 } from "../api/queries/announcements";
 
 export const announcementQueryKeys = queryKeys.announcements;

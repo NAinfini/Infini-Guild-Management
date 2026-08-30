@@ -126,6 +126,13 @@ describe("audit boundary", () => {
       action: "create",
       context: [{ field: "slug", value: { type: "code", value: "raid-strategy" } }],
     })).not.toThrow();
+
+    expect(() => createAuditEvent(context(), {
+      subjectType: "gallery_item",
+      subjectId: "video-1",
+      action: "delete",
+      context: [{ field: "type", value: { type: "code", value: "video" } }],
+    })).not.toThrow();
   });
 
   it("does not let audit read and export permissions substitute for each other", async () => {

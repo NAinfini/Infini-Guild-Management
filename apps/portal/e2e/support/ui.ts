@@ -12,6 +12,18 @@ export function field(scope: Locator | Page, label: string): Locator {
     .and(scope.locator("input, textarea, select, [contenteditable='true'], [role='combobox'], button[aria-haspopup='listbox']"));
 }
 
+/** 应用侧栏的当前入口使用 aria-current="page"，而不是 tab 语义。 */
+export function appSiderNavigationItem(page: Page, label: string): Locator {
+  return page.locator(".app-sider").getByRole("button", { name: label, exact: true });
+}
+
+/** PageSubnav uses labelled navigation and route-task buttons, never tab semantics. */
+export function pageSubnavItem(page: Page, workspaceLabel: string, itemLabel: string): Locator {
+  return page
+    .getByRole("navigation", { name: workspaceLabel, exact: true })
+    .getByRole("button", { name: itemLabel, exact: true });
+}
+
 /**
  * 选中一个原生或 Base UI Select 的选项。
  * Base UI 的选项浮层会移植到页面根部，因此选项从页面作用域定位，而非字段局部。
@@ -32,14 +44,16 @@ export async function selectOption(scope: Locator | Page, label: string, optionT
 }
 
 /**
- * 共享工具栏始终把次要筛选收进 Popover / Drawer。按无障碍名找到入口并确认已经展开；
- * 计数徽章会把名字变成 `Filter & sort (2)`，所以名称只允许多出末尾的数字计数。
+ * 共享工具栏始终把次要筛选收进 Popover / Drawer。入口文案由各页面和语言决定，
+ * E2E 只依赖共享组件自己的结构契约；找不到入口必须立即失败，不能把未打开的面板当成功。
  */
 export async function ensureFiltersOpen(scope: Locator | Page): Promise<void> {
-  const toggle = scope
-    .getByRole("button", { name: /^Filter & sort(?: \(\d+\))?$/ })
-    .first();
-  if (!(await toggle.isVisible())) return;
+  const toggle = scope.locator(".content-filter-toolbar__toggle").first();
+  await expect(toggle, "当前作用域里没有可见的共享筛选入口").toBeVisible();
+
+  const visiblePanel = () => toggle.page().locator(
+    ".content-filter-toolbar__popover:visible, .content-filter-toolbar__drawer-content:visible",
+  ).first();
 
   const dismissAutofocusedCombobox = async (): Promise<void> => {
     const expandedCombobox = toggle.page().getByRole("combobox", { expanded: true }).first();
@@ -48,24 +62,18 @@ export async function ensureFiltersOpen(scope: Locator | Page): Promise<void> {
     }
   };
 
-  const focusFirstVisibleDialogButton = async (): Promise<void> => {
-    const dialog = toggle.page()
-      .getByRole("dialog", { name: /^Filter & sort(?: \(\d+\))?$/ })
-      .first();
-    const buttons = dialog.getByRole("button");
-    for (let index = 0; index < await buttons.count(); index += 1) {
-      const button = buttons.nth(index);
-      if (await button.isVisible()) {
-        await button.focus();
-        return;
-      }
-    }
+  const focusFirstVisiblePanelControl = async (): Promise<void> => {
+    const control = visiblePanel().locator(
+      "button:not([role='combobox']):visible, input:not([role='combobox']):visible, [role='radio']:visible, [role='switch']:visible",
+    ).first();
+    if (await control.count()) await control.focus();
   };
 
   if ((await toggle.getAttribute("aria-expanded")) !== "true") {
     await toggle.click();
   }
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(visiblePanel()).toBeVisible();
 
   // 弹层打开时可能自动聚焦第一个可搜索选择器，并把内层 listbox 展开到筛选面板之上。
   // 先收起内层 listbox；若 Escape 连外层一起收掉，只重开一次并转移到面板内的按钮。
@@ -73,11 +81,21 @@ export async function ensureFiltersOpen(scope: Locator | Page): Promise<void> {
   if ((await toggle.getAttribute("aria-expanded")) !== "true") {
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await focusFirstVisibleDialogButton();
+    await expect(visiblePanel()).toBeVisible();
+    await focusFirstVisiblePanelControl();
   } else {
-    await focusFirstVisibleDialogButton();
+    await focusFirstVisiblePanelControl();
   }
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(visiblePanel()).toBeVisible();
+}
+
+/** 成功和错误通知都可能只提供标题或正文；E2E 在一个入口断言用户实际看见的文案。 */
+export async function expectToast(page: Page, text: string): Promise<void> {
+  await expect(
+    page.locator('[data-slot="toast-title"], [data-slot="toast-description"]').filter({ hasText: text }),
+    `没有弹出通知「${text}」`,
+  ).toBeVisible();
 }
 
 /**
@@ -150,7 +168,7 @@ export async function readInteger(locator: Locator, label: string): Promise<numb
 
 /** 当前最上层的对话框或抽屉。只在页面上确定只有一个弹层时用。 */
 export function topDialog(page: Page): Locator {
-  return page.getByRole("dialog").last();
+  return page.locator('[role="dialog"], [role="alertdialog"]').last();
 }
 
 /**
@@ -159,7 +177,7 @@ export function topDialog(page: Page): Locator {
  * 凡是有多层弹窗的场景，一律按标题取。
  */
 export function dialogTitled(page: Page, title: string): Locator {
-  return page.getByRole("dialog").filter({
+  return page.locator('[role="dialog"], [role="alertdialog"]').filter({
     has: page.getByRole("heading", { name: title, exact: true }),
   });
 }
@@ -169,7 +187,10 @@ export function dialogTitled(page: Page, title: string): Locator {
  * Base UI 的对话框和遮罩会分别做退场动画；两个都消失后才能继续点击页面。
  */
 export async function expectNoDialog(page: Page): Promise<void> {
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const modalDialogs = page.locator('[role="dialog"], [role="alertdialog"]').filter({
+    hasNot: page.locator('[data-slot="toast-content"]'),
+  });
+  await expect(modalDialogs).toHaveCount(0);
   await expect(page.locator("[data-slot$='overlay']")).toHaveCount(0);
 }
 

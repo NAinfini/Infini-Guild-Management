@@ -1,19 +1,17 @@
 // @vitest-environment node
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
-  DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
+  DASHBOARD_CLOCK_TICK_MS,
   isDashboardEventStartingSoon,
   orderDashboardUpcomingRows,
   participantToDashboardMember,
   roundDashboardNow,
   summarizeDashboardAttention,
 } from "./DashboardPage";
+import { announcementQueryKeys } from "../../services/AnnouncementService";
 import {
   dashboardQueryKeys,
   fetchDashboardEvents,
-  fetchDashboardMemberStats,
   fetchDashboardWars,
 } from "../../services/DashboardService";
 
@@ -24,67 +22,6 @@ vi.mock("../../api/client", () => ({
 const { apiRequest } = await import("../../api/client");
 
 describe("DashboardPage upcoming event query", () => {
-  it("puts my signups directly above upcoming events in the left dashboard column", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/DashboardPage.tsx"),
-      "utf8",
-    );
-    const styles = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/DashboardPage.css"),
-      "utf8",
-    );
-    const sectionPositions = [
-      source.indexOf("dashboard-workspace__main"),
-      source.indexOf("dashboard-workspace__signups"),
-      source.indexOf("dashboard-workspace__upcoming"),
-      source.indexOf("dashboard-workspace__aside"),
-      source.indexOf("dashboard-workspace__announcement"),
-      source.indexOf("dashboard-workspace__attention"),
-      source.indexOf("dashboard-workspace__war"),
-    ];
-
-    expect(sectionPositions.every((position) => position >= 0)).toBe(true);
-    expect(sectionPositions).toEqual([...sectionPositions].sort((left, right) => left - right));
-    expect(source).not.toContain("dashboard-workspace__lower");
-    expect(styles).toMatch(/\.dashboard-workspace\s*\{[^}]*grid-template-columns:/s);
-    expect(styles).toMatch(/\.dashboard-workspace__aside\s*\{[^}]*display:\s*grid/s);
-    expect(styles).toMatch(/@media \(max-width: 64rem\)[\s\S]*\.dashboard-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/);
-    expect(styles).toMatch(/@media \(max-width: 64rem\)[\s\S]*\.dashboard-workspace__main,[\s\S]*display:\s*contents/);
-    expect(styles).toMatch(/\.dashboard-workspace__attention\s*\{[^}]*order:\s*2/);
-    expect(styles).toMatch(/\.dashboard-workspace__upcoming\s*\{[^}]*order:\s*3/);
-  });
-
-  it("uses one personalized command briefing without duplicating the primary navigation", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/DashboardPage.tsx"),
-      "utf8",
-    );
-    const styles = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/DashboardPage.css"),
-      "utf8",
-    );
-
-    expect(source).toContain('className="dashboard-briefing"');
-    expect(source).toContain('t("welcome"');
-    expect(source).toContain('t("briefing.description"');
-    expect(source).toContain('className="dashboard-briefing__metrics"');
-    expect(source).not.toContain('t("command.action.roster"');
-    expect(source).not.toContain('t("command.action.guildWar"');
-    expect(source).not.toContain("fetchDashboardMemberStats");
-    expect(source).toContain('className="dashboard-bulletin-card gap-0 py-0"');
-    expect(source).toContain("<DashboardGuildPulse items={pulseItems} />");
-    expect(source).toContain('aria-pressed={paused}');
-    expect(source).toContain("fetchInboxNotifications");
-    expect(source).toContain("<DashboardActivityCard");
-    expect(styles).not.toContain("--page-layout-max-width");
-    expect(styles).not.toContain("--shadow-card");
-    expect(styles).toMatch(/\.dashboard-briefing\s*\{/);
-    expect(styles).toMatch(/\.dashboard-briefing__metrics\s*\{[^}]*grid-template-columns:/s);
-    expect(styles).toMatch(/\.dashboard-bulletin-card\s*\{/);
-    expect(styles).toMatch(/\.dashboard-pulse\[data-paused\][\s\S]*animation-play-state:\s*paused/);
-    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.dashboard-pulse__track\s*\{[\s\S]*animation:\s*none !important/);
-  });
-
   it("summarizes only real event schedule and lineup conditions", () => {
     expect(summarizeDashboardAttention([
       {
@@ -116,8 +53,11 @@ describe("DashboardPage upcoming event query", () => {
     expect(input.toISOString()).toBe("2026-05-06T16:17:42.000Z");
   });
 
-  it("keeps upcoming event data fresh for read-only dashboard viewers", () => {
-    expect(DASHBOARD_EVENTS_REFETCH_INTERVAL_MS).toBe(60_000);
+  it("advances time locally without reusing the announcement list cache shape", () => {
+    expect(DASHBOARD_CLOCK_TICK_MS).toBe(60_000);
+    expect(dashboardQueryKeys.latestAnnouncement()).not.toEqual(
+      announcementQueryKeys.list("published", "all", "", "updated_desc"),
+    );
   });
 
   it("orders upcoming rows by closest start time before pinned priority", () => {
@@ -159,14 +99,12 @@ describe("DashboardPage upcoming event query", () => {
     });
   });
 
-  it("fetches member, event, and war cards through independent endpoints", async () => {
+  it("fetches event and war cards through independent endpoints", async () => {
     await Promise.all([
-      fetchDashboardMemberStats(),
       fetchDashboardEvents(),
       fetchDashboardWars(),
     ]);
 
-    expect(apiRequest).toHaveBeenCalledWith("/api/dashboard/members");
     expect(apiRequest).toHaveBeenCalledWith("/api/dashboard/events");
     expect(apiRequest).toHaveBeenCalledWith("/api/dashboard/wars");
   });

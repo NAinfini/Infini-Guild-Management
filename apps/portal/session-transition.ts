@@ -3,7 +3,6 @@ import type { QueryClient } from "@tanstack/react-query";
 import { apiRequest, isApiRequestError, resetApiSessionCache } from "./api/client";
 import { useAuthStore } from "./stores/auth";
 import { useGuildWarStore } from "./stores/guildWar";
-import { synchronizeNotificationStorage, useNotificationStore } from "./stores/notifications";
 
 export type PortalSession = {
   user: User;
@@ -51,7 +50,6 @@ export function transitionSession(
   resetApiSessionCache();
   queryClient.clear();
   useGuildWarStore.getState().resetSessionState();
-  useNotificationStore.getState().setIdentity(session?.user.id ?? null);
   if (session) {
     useAuthStore.getState().setSession(session.user, session.profile, session.session_scope);
   } else {
@@ -77,7 +75,6 @@ export function installSessionSynchronization({
   const handledSignals = new Set<string>();
 
   const onStorage = (event: StorageEvent) => {
-    synchronizeNotificationStorage(event);
     if (event.key !== AUTH_SESSION_STORAGE_KEY) return;
     const signal = parseSessionSignal(event.newValue);
     if (!signal || handledSignals.has(signal.id)) return;

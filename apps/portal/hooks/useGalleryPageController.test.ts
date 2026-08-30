@@ -4,6 +4,7 @@ import type { UploadStatus, UploadTask } from "../types/media";
 import {
   classifyGalleryUploadFile,
   getVisibleGallerySelection,
+  hasUnsavedGalleryMediaDraft,
   removeGalleryUpload,
   restoreCancelledGalleryUpload,
   retryGalleryUpload,
@@ -14,7 +15,8 @@ function uploadTask(id: string, status: UploadStatus): UploadTask {
   return {
     id,
     file: { name: `${id}.png`, type: "image/png", size: 128 } as File,
-    caption: "",
+    title: id,
+    description: "",
     status,
     error: status === "error" ? "Upload failed" : undefined,
   };
@@ -27,6 +29,22 @@ describe("gallery selection", () => {
 });
 
 describe("gallery upload queue", () => {
+  it("distinguishes unfinished image or video drafts from completed uploads", () => {
+    expect(hasUnsavedGalleryMediaDraft([], { url: "", title: "", description: "" })).toBe(false);
+    expect(hasUnsavedGalleryMediaDraft(
+      [uploadTask("queued", "queued")],
+      { url: "", title: "", description: "" },
+    )).toBe(true);
+    expect(hasUnsavedGalleryMediaDraft(
+      [uploadTask("done", "done")],
+      { url: "", title: "", description: "" },
+    )).toBe(false);
+    expect(hasUnsavedGalleryMediaDraft(
+      [],
+      { url: "https://www.youtube.com/watch?v=abc", title: "", description: "" },
+    )).toBe(true);
+  });
+
   it("reports both successes and failures for a partially failed batch", () => {
     expect(summarizeGalleryUploadBatch(10, 3)).toEqual({
       total: 10,
@@ -40,8 +58,12 @@ describe("gallery upload queue", () => {
     expect(classifyGalleryUploadFile({ type: "image/png", size: 64 * 1024 * 1024 })).toBe("queued");
   });
 
-  it("returns a failed upload to the queue without losing its caption", () => {
-    const failed = { ...uploadTask("failed", "error"), caption: "Guild night" };
+  it("returns a failed upload to the queue without losing its metadata", () => {
+    const failed = {
+      ...uploadTask("failed", "error"),
+      title: "Guild night",
+      description: "A clear night at the keep.",
+    };
 
     expect(retryGalleryUpload([failed], failed.id)).toEqual([
       {

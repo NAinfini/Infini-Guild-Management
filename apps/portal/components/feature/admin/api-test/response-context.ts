@@ -1,3 +1,4 @@
+import { announcementEtag, galleryItemEtag as makeGalleryItemEtag, wikiArticleEtag } from "@guild/shared";
 import {
   type EndpointDef,
   type EndpointResult,
@@ -7,6 +8,8 @@ import {
   isRecord,
   readString,
 } from "./types";
+import { clearContextForDelete } from "./response-context-delete";
+import { captureStorageResponseContext } from "./response-context-storage";
 
 function firstMediaId(payload: Record<string, unknown>): string | null {
   return Array.isArray(payload.media_ids)
@@ -23,88 +26,7 @@ export function captureContextFromResponse(
 
   // Clear created*Id when in-category DELETEs succeed so cleanup won't 404
   if (isSuccess && endpoint.method === "DELETE") {
-    const next: TestRunContext = { ...previous };
-    if (endpoint.path === "/api/wiki/categories/:id" && next.createdWikiCategoryId === next.wikiCategoryId) {
-      next.createdWikiCategoryId = null;
-    }
-    if (endpoint.path === "/api/guild-war/history/:id" && next.createdWarHistoryId === next.warHistoryId) {
-      next.createdWarHistoryId = null;
-    }
-    if (endpoint.path === "/api/guild-war/history/:id" && next.createdConcludedWarHistoryId === next.warHistoryId) {
-      next.createdConcludedWarHistoryId = null;
-    }
-    if (endpoint.path === "/api/events/templates/:id" && next.createdTemplateId === next.eventTemplateId) {
-      next.createdTemplateId = null;
-    }
-    if (endpoint.path === "/api/events/:id/destroy" && next.createdEventId) {
-      next.createdEventId = null;
-      next.eventImageMediaId = null;
-    }
-    if (endpoint.path === "/api/announcements/:id/permanent" && next.createdAnnouncementId) {
-      next.createdAnnouncementId = null;
-      next.announcementImageMediaId = null;
-    }
-    if (endpoint.path === "/api/wiki/articles/:id/permanent" && next.createdWikiArticleId) {
-      next.createdWikiArticleId = null;
-      next.wikiImageMediaId = null;
-    }
-    if (endpoint.path === "/api/gallery/:id") {
-      const deletedId = next.galleryDeleteId ?? next.createdGalleryImageId;
-      if (deletedId && deletedId === next.createdGalleryVideoId) {
-        next.createdGalleryVideoId = null;
-      }
-      if (deletedId && deletedId === next.createdGalleryImageId) {
-        next.createdGalleryImageId = null;
-        next.galleryImageMediaId = null;
-      }
-    }
-    if (endpoint.path === "/api/badges/:id" && next.createdBadgeId === next.badgeId) {
-      next.createdBadgeId = null;
-    }
-    if (endpoint.path === "/api/admin/invite-links/:id/permanent" && next.createdInviteLinkId === next.inviteLinkId) {
-      next.createdInviteLinkId = null;
-    }
-    if (endpoint.path === "/api/admin/roles/:id" && next.createdRoleId === next.adminRoleId) {
-      next.createdRoleId = null;
-    }
-    if (endpoint.path === "/api/admin/users/batch/delete") {
-      next.adminCreatedUserId = null;
-      next.adminCreatedLoginName = null;
-      next.adminCreatedUserPassword = null;
-    }
-    if (endpoint.path === "/api/users/:id/media/images") {
-      next.uploadedImageMediaId = null;
-    }
-    if (endpoint.path === "/api/storage/items/:id" && next.createdStorageItemId === next.storageItemId) {
-      next.createdStorageItemId = null;
-      next.storageItemId = null;
-      next.storageImageMediaId = null;
-    }
-    if (endpoint.path === "/api/storage/items/:id/images/:imageId") {
-      next.storageImageMediaId = null;
-    }
-    if (endpoint.path === "/api/storage/storages/:storageId/categories/:id" && next.createdStorageCategoryId === next.storageCategoryId) {
-      next.createdStorageCategoryId = null;
-      next.storageCategoryId = null;
-    }
-    if (endpoint.path === "/api/storage/storages/:id" && next.createdStorageId === next.storageId) {
-      next.createdStorageId = null;
-      next.storageId = null;
-    }
-    if (endpoint.path === "/api/classes/:id/icon") {
-      next.createdClassIconMediaId = null;
-    }
-    if (endpoint.path === "/api/classes/:id") {
-      next.createdClassId = null;
-      next.createdClassIconMediaId = null;
-    }
-    if (endpoint.path === "/api/class-tags/:id") {
-      next.createdClassTagId = null;
-    }
-    if (endpoint.path === "/api/users/:id/absences/:absenceId") {
-      next.createdAbsenceId = null;
-    }
-    return next;
+    return clearContextForDelete(previous, endpoint, result);
   }
 
   if (!isSuccess || result.parsedJson === null) {
@@ -143,6 +65,7 @@ export function captureContextFromResponse(
   if (endpoint.path === "/api/classes") {
     if (!Array.isArray(result.parsedJson)) {
       next.createdClassId = readString(payload.id) ?? next.createdClassId;
+      next.createdClassUpdatedAt = readString(payload.updated_at) ?? next.createdClassUpdatedAt;
     }
     return next;
   }
@@ -150,12 +73,30 @@ export function captureContextFromResponse(
   if (endpoint.path === "/api/class-tags") {
     if (!Array.isArray(result.parsedJson) && endpoint.method === "POST") {
       next.createdClassTagId = readString(payload.id) ?? next.createdClassTagId;
+      next.createdClassTagUpdatedAt = readString(payload.updated_at) ?? next.createdClassTagUpdatedAt;
+      next.createdClassTagUsageCount = typeof payload.usage_count === "number"
+        ? payload.usage_count
+        : next.createdClassTagUsageCount;
     }
     return next;
   }
 
   if (endpoint.path === "/api/classes/:id/icon") {
     next.createdClassIconMediaId = readString(payload.icon_media_id) ?? next.createdClassIconMediaId;
+    next.createdClassUpdatedAt = readString(payload.updated_at) ?? next.createdClassUpdatedAt;
+    return next;
+  }
+
+  if (endpoint.path === "/api/classes/:id") {
+    next.createdClassUpdatedAt = readString(payload.updated_at) ?? next.createdClassUpdatedAt;
+    return next;
+  }
+
+  if (endpoint.path === "/api/class-tags/:id") {
+    next.createdClassTagUpdatedAt = readString(payload.updated_at) ?? next.createdClassTagUpdatedAt;
+    next.createdClassTagUsageCount = typeof payload.usage_count === "number"
+      ? payload.usage_count
+      : next.createdClassTagUsageCount;
     return next;
   }
 
@@ -167,6 +108,7 @@ export function captureContextFromResponse(
   if (endpoint.path === "/api/auth/register/:inviteCode") {
     const userId = readString(payload.user_id) ?? readString((isRecord(payload.user) ? payload.user : null)?.id);
     next.registeredUserId = userId ?? next.registeredUserId;
+    next.registerInviteCode = null;
     return next;
   }
 
@@ -219,6 +161,11 @@ export function captureContextFromResponse(
     return next;
   }
 
+  if (endpoint.path === "/api/events/:id") {
+    next.eventUpdatedAt = readString(payload.updated_at) ?? next.eventUpdatedAt;
+    return next;
+  }
+
   if (
     endpoint.path === "/api/events" ||
     endpoint.path === "/api/events?fixture=guild-war" ||
@@ -235,6 +182,7 @@ export function captureContextFromResponse(
       next.createdRaffleEventId = id ?? next.createdRaffleEventId;
     } else {
       next.createdEventId = id ?? next.createdEventId;
+      next.eventUpdatedAt = readString(payload.updated_at) ?? next.eventUpdatedAt;
     }
     return next;
   }
@@ -249,6 +197,7 @@ export function captureContextFromResponse(
 
   if (endpoint.path === "/api/events/:id/images") {
     next.eventImageMediaId = firstMediaId(payload) ?? next.eventImageMediaId;
+    next.eventUpdatedAt = readString(payload.updated_at) ?? next.eventUpdatedAt;
     return next;
   }
 
@@ -262,6 +211,12 @@ export function captureContextFromResponse(
     const id = readString(payload.id);
     next.eventTemplateId = id ?? next.eventTemplateId;
     next.createdTemplateId = id ?? next.createdTemplateId;
+    next.eventTemplateUpdatedAt = readString(payload.updated_at) ?? next.eventTemplateUpdatedAt;
+    return next;
+  }
+
+  if (endpoint.path === "/api/events/templates/:id") {
+    next.eventTemplateUpdatedAt = readString(payload.updated_at) ?? next.eventTemplateUpdatedAt;
     return next;
   }
 
@@ -281,11 +236,17 @@ export function captureContextFromResponse(
     const id = readString(payload.id);
     next.announcementId = id ?? next.announcementId;
     next.createdAnnouncementId = id ?? next.createdAnnouncementId;
+    next.announcementEtag = announcementRecordEtag(payload) ?? result.etag ?? next.announcementEtag;
     return next;
   }
 
-  if (endpoint.path === "/api/announcements/:id/images") {
+  if (endpoint.path === "/api/announcements/images") {
     next.announcementImageMediaId = firstMediaId(payload) ?? next.announcementImageMediaId;
+    return next;
+  }
+
+  if (endpoint.path.startsWith("/api/announcements/:id")) {
+    next.announcementEtag = announcementRecordEtag(payload) ?? result.etag ?? next.announcementEtag;
     return next;
   }
 
@@ -301,6 +262,7 @@ export function captureContextFromResponse(
     next.galleryItemId = itemId ?? next.galleryItemId;
     next.createdGalleryImageId = itemId ?? next.createdGalleryImageId;
     next.galleryImageMediaId = readString(firstItem?.media_id) ?? next.galleryImageMediaId;
+    next.galleryItemEtag = galleryRecordEtag(firstItem) ?? next.galleryItemEtag;
     return next;
   }
 
@@ -365,16 +327,15 @@ export function captureContextFromResponse(
     return next;
   }
 
-  if (endpoint.path === "/api/wiki/categories") {
-    if (Array.isArray(payload)) {
-      const firstCategory = payload.find((item): item is Record<string, unknown> => isRecord(item));
-      next.wikiCategoryId = readString(firstCategory?.id) ?? next.wikiCategoryId;
-    } else {
-      const id = readString(payload.id);
-      next.wikiCategoryId = id ?? next.wikiCategoryId;
-      if (endpoint.method === "POST") {
-        next.createdWikiCategoryId = id ?? next.createdWikiCategoryId;
-      }
+  if (endpoint.path.startsWith("/api/wiki/categories")) {
+    const categories = Array.isArray(payload.categories) ? payload.categories : [];
+    const firstCategory = categories.find((item): item is Record<string, unknown> => isRecord(item));
+    next.wikiCategoryId = readString(firstCategory?.id) ?? next.wikiCategoryId;
+    next.wikiCategoryRevisionToken = readString(payload.revision_token) ?? next.wikiCategoryRevisionToken;
+    const id = readString(payload.id);
+    next.wikiCategoryId = id ?? next.wikiCategoryId;
+    if (endpoint.method === "POST") {
+      next.createdWikiCategoryId = id ?? next.createdWikiCategoryId;
     }
     return next;
   }
@@ -393,11 +354,17 @@ export function captureContextFromResponse(
     next.wikiArticleSlug = readString(payload.slug) ?? next.wikiArticleSlug;
     next.wikiArticleCategoryId = readString(payload.category_id) ?? next.wikiArticleCategoryId;
     next.createdWikiArticleId = id ?? next.createdWikiArticleId;
+    next.wikiArticleEtag = wikiRecordEtag(payload) ?? result.etag ?? next.wikiArticleEtag;
     return next;
   }
 
   if (endpoint.path === "/api/wiki/articles/:id/images") {
     next.wikiImageMediaId = firstMediaId(payload) ?? next.wikiImageMediaId;
+    return next;
+  }
+
+  if (endpoint.path.startsWith("/api/wiki/articles/")) {
+    next.wikiArticleEtag = wikiRecordEtag(payload) ?? result.etag ?? next.wikiArticleEtag;
     return next;
   }
 
@@ -432,9 +399,11 @@ export function captureContextFromResponse(
         })
         .sort((left, right) => Number(right.level) - Number(left.level))[0];
       next.adminRoleId = readString(assignableRole?.id) ?? next.adminRoleId;
+      next.adminRoleRevisionToken = readString(assignableRole?.revision_token) ?? next.adminRoleRevisionToken;
     } else {
       const id = readString(payload.id);
       next.adminRoleId = id ?? next.adminRoleId;
+      next.adminRoleRevisionToken = readString(payload.revision_token) ?? next.adminRoleRevisionToken;
       if (endpoint.method === "POST") {
         next.createdRoleId = id ?? next.createdRoleId;
       }
@@ -450,14 +419,10 @@ export function captureContextFromResponse(
     return next;
   }
 
-  if (endpoint.path === "/api/admin/audit-archive/download") {
+  if (endpoint.path === "/api/admin/audit-archive/files") {
     if (Array.isArray(payload.files)) {
       const firstFile = payload.files.find((item): item is Record<string, unknown> => isRecord(item));
-      const rawUrl = readString(firstFile?.url);
-      if (rawUrl) {
-        const url = new URL(rawUrl, window.location.origin);
-        next.auditArchiveDownloadToken = url.searchParams.get("token") ?? next.auditArchiveDownloadToken;
-      }
+      next.auditArchiveId = readString(firstFile?.id) ?? next.auditArchiveId;
     }
     return next;
   }
@@ -474,68 +439,29 @@ export function captureContextFromResponse(
       next.badgeId = id ?? next.badgeId;
       if (endpoint.method === "POST") {
         next.createdBadgeId = id ?? next.createdBadgeId;
+        next.createdBadgeUpdatedAt = readString(payload.updated_at) ?? next.createdBadgeUpdatedAt;
       }
     }
     return next;
   }
 
-  if (endpoint.path === "/api/storage") {
-    if (Array.isArray(payload.data)) {
-      const first = firstArrayItem(payload.data);
-      next.storageId = readString(first?.id) ?? next.storageId;
-      const categories = Array.isArray(first?.categories) ? first.categories : [];
-      const firstCategory = categories.find((item): item is Record<string, unknown> => isRecord(item));
-      next.storageCategoryId = readString(firstCategory?.id) ?? next.storageCategoryId;
-    }
+  if (endpoint.path === "/api/badges/:id") {
+    next.createdBadgeUpdatedAt = readString(payload.updated_at) ?? next.createdBadgeUpdatedAt;
     return next;
   }
 
-  const fixturelessPath = endpoint.path.replace(/\?fixture=[^&]+$/, "");
-
-  if (fixturelessPath === "/api/storage/storages") {
-    const id = readString(payload.id);
-    next.storageId = id ?? next.storageId;
-    if (endpoint.method === "POST") {
-      next.createdStorageId = id ?? next.createdStorageId;
-    }
+  if (endpoint.path.startsWith("/api/guild-war/history/:id")) {
+    next.warHistoryEtag = readString(payload.etag) ?? result.etag ?? next.warHistoryEtag;
     return next;
   }
 
-  if (fixturelessPath === "/api/storage/storages/:storageId/categories") {
-    const id = readString(payload.id);
-    next.storageCategoryId = id ?? next.storageCategoryId;
-    if (endpoint.method === "POST") {
-      next.createdStorageCategoryId = id ?? next.createdStorageCategoryId;
-    }
+  if (endpoint.path === "/api/badges/:id/assign" || endpoint.path === "/api/badges/:id/unassign") {
+    next.createdBadgeUpdatedAt = readString(payload.updated_at) ?? next.createdBadgeUpdatedAt;
     return next;
   }
 
-  if (fixturelessPath === "/api/storage/items") {
-    if (Array.isArray(payload.data)) {
-      const first = firstArrayItem(payload.data);
-      next.storageItemId = readString(first?.id) ?? next.storageItemId;
-    } else {
-      const id = readString(payload.id);
-      next.storageItemId = id ?? next.storageItemId;
-      if (endpoint.method === "POST") {
-        next.createdStorageItemId = id ?? next.createdStorageItemId;
-      }
-    }
-    return next;
-  }
-
-  if (endpoint.path === "/api/storage/items/:id") {
-    next.storageItemId = readString(payload.id) ?? next.storageItemId;
-    return next;
-  }
-
-  if (endpoint.path === "/api/storage/items/:id/images" && endpoint.method === "POST") {
-    const firstImage = Array.isArray(result.parsedJson)
-      ? result.parsedJson.find((item): item is Record<string, unknown> => isRecord(item))
-      : null;
-    next.storageImageMediaId = readString(firstImage?.media_id) ?? next.storageImageMediaId;
-    return next;
-  }
+  const storageContext = captureStorageResponseContext(next, endpoint, payload);
+  if (storageContext) return storageContext;
 
   if (endpoint.path === "/api/site-config" || endpoint.path === "/api/admin/site-config") {
     next.siteLogoMediaId = readString(payload.site_logo_media_id) ?? next.siteLogoMediaId;
@@ -543,4 +469,22 @@ export function captureContextFromResponse(
   }
 
   return next;
+}
+
+function announcementRecordEtag(payload: Record<string, unknown>): string | null {
+  const id = readString(payload.id);
+  const updatedAt = readString(payload.updated_at);
+  return id && updatedAt ? announcementEtag({ id, updated_at: updatedAt }) : null;
+}
+
+function wikiRecordEtag(payload: Record<string, unknown>): string | null {
+  const id = readString(payload.id);
+  const updatedAt = readString(payload.updated_at);
+  return id && updatedAt ? wikiArticleEtag({ id, updated_at: updatedAt }) : null;
+}
+
+function galleryRecordEtag(payload: Record<string, unknown> | null): string | null {
+  const id = readString(payload?.id);
+  const revisionToken = readString(payload?.revision_token);
+  return id && revisionToken ? makeGalleryItemEtag({ id, revision_token: revisionToken }) : null;
 }

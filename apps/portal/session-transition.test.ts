@@ -8,7 +8,6 @@ import {
 } from "./session-transition";
 import { useAuthStore } from "./stores/auth";
 import { useGuildWarStore } from "./stores/guildWar";
-import { useNotificationStore } from "./stores/notifications";
 import { usePreferencesStore } from "./stores/preferences";
 
 function session(id: string) {
@@ -23,24 +22,20 @@ describe("session transitions", () => {
   beforeEach(() => {
     localStorage.clear();
     useAuthStore.getState().clearSession();
-    useNotificationStore.getState().setIdentity(null);
-    useNotificationStore.getState().resetNotifications();
     useGuildWarStore.getState().resetSessionState();
     usePreferencesStore.getState().setThemeMode("dark");
   });
 
-  it("does not carry A's query, feature freshness, or guild-war state into B", () => {
+  it("does not carry A's query or guild-war state into B", () => {
     const queryClient = new QueryClient();
     transitionSession(queryClient, session("user-a"), { broadcast: false });
     queryClient.setQueryData(["private"], { owner: "user-a" });
-    useNotificationStore.getState().setFeatureLatest("announcements", "2026-08-01T00:00:00.000Z");
     useGuildWarStore.getState().setSelectedEventId("event-a");
 
     transitionSession(queryClient, null, { broadcast: false });
     transitionSession(queryClient, session("user-b"), { broadcast: false });
 
     expect(queryClient.getQueryData(["private"])).toBeUndefined();
-    expect(useNotificationStore.getState().features.announcements.latestUpdatedAt).toBeNull();
     expect(useGuildWarStore.getState().selectedEventId).toBeUndefined();
     expect(usePreferencesStore.getState().themeMode).toBe("dark");
   });

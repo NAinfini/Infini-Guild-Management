@@ -32,6 +32,7 @@ type TreeStorage = {
   id: string;
   name: string;
   description: string | null;
+  structure_revision: number;
   categories: { id: string; name: string }[];
 };
 
@@ -50,7 +51,11 @@ test.beforeEach(async ({ page, api }) => {
 
 test.afterEach(async ({ api }) => {
   for (const id of disposableStorageIds) {
-    const response = await api.delete(`/api/storage/storages/${id}`);
+    const current = await readStorage(api, id);
+    if (!current) continue;
+    const response = await api.delete(`/api/storage/storages/${id}`, {
+      data: { expected_structure_revision: current.structure_revision },
+    });
     // 用例自己删掉的仓库这里会拿到 404，那是预期的；其余状态码都是真失败。
     expect([200, 204, 404], `清理仓库 ${id} 返回 ${response.status()}`).toContain(response.status());
   }
@@ -60,8 +65,14 @@ async function createStorage(api: APIRequestContext, name: string): Promise<Tree
   const created = await readJson(
     await api.post("/api/storage/storages", { data: { name, description: null } }),
     `创建一次性仓库 ${name}`,
-  ) as { id: string };
-  return { id: created.id, name, description: null, categories: [] };
+  ) as { id: string; structure_revision: number };
+  return {
+    id: created.id,
+    name,
+    description: null,
+    structure_revision: created.structure_revision,
+    categories: [],
+  };
 }
 
 async function readStorage(api: APIRequestContext, id: string): Promise<TreeStorage | null> {
@@ -162,10 +173,13 @@ test("新建分类：落到该仓库名下，树上的分类计数跟着 +1", as
 
 test("重命名分类：没改名时保存按钮按不动，改了才落库", async ({ page, flow, api }) => {
   const original = `${SYSTEM_TEST_CONTENT_MARKER} Cat ${stamp}`;
+  const current = await readStorage(api, storage.id);
   const category = await readJson(
-    await api.post(`/api/storage/storages/${storage.id}/categories`, { data: { name: original } }),
+    await api.post(`/api/storage/storages/${storage.id}/categories`, {
+      data: { name: original, expected_structure_revision: current!.structure_revision },
+    }),
     "预置分类",
-  ) as { id: string };
+  ) as { category: { id: string }; structure_revision: number };
 
   /*
    * 分类是用 API 预置的，页面上的树还是旧快照，必须重新载入。
@@ -189,14 +203,17 @@ test("重命名分类：没改名时保存按钮按不动，改了才落库", as
   await flow.click(panel.getByRole("button", { name: "Save Category", exact: true }), UPDATE_CATEGORY);
 
   const persisted = await readStorage(api, storage.id);
-  expect(persisted?.categories.find((entry) => entry.id === category.id)?.name).toBe(renamed);
+  expect(persisted?.categories.find((entry) => entry.id === category.category.id)?.name).toBe(renamed);
   await expect(categoryRow(page, renamed)).toHaveCount(1);
 });
 
 test("删除分类：取消什么都不做，确认才真的删掉", async ({ page, flow, api }) => {
   const name = `${SYSTEM_TEST_CONTENT_MARKER} Cat ${stamp}`;
+  const current = await readStorage(api, storage.id);
   await readJson(
-    await api.post(`/api/storage/storages/${storage.id}/categories`, { data: { name } }),
+    await api.post(`/api/storage/storages/${storage.id}/categories`, {
+      data: { name, expected_structure_revision: current!.structure_revision },
+    }),
     "预置分类",
   );
   // 同上：刷新拿新树，用元素出现来确认，不要用 flow.act 包导航。

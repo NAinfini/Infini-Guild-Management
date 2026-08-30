@@ -130,17 +130,24 @@ describe("useRecurringTemplatesController", () => {
         daysOfWeek: [2, 4],
       },
     };
+    const image = new File(["image"], "template.png", { type: "image/png" });
 
     await act(async () => {
-      await result.current.createRecurringTemplate(payload);
-      await result.current.updateRecurringTemplate("tpl-2", payload);
+      await result.current.createRecurringTemplate(payload, [image]);
+      await result.current.updateRecurringTemplate("tpl-2", {
+        ...payload,
+        expected_updated_at: "2026-08-09T12:00:00.000Z",
+      }, [image]);
       await result.current.pauseRecurringTemplate("tpl-2");
       await result.current.resumeRecurringTemplate("tpl-2");
       await result.current.deleteRecurringTemplate("tpl-2");
     });
 
-    expect(serviceMocks.createTemplate).toHaveBeenCalledWith(payload, expect.any(Object));
-    expect(serviceMocks.updateTemplate).toHaveBeenCalledWith("tpl-2", payload);
+    expect(serviceMocks.createTemplate).toHaveBeenCalledWith(payload, [image]);
+    expect(serviceMocks.updateTemplate).toHaveBeenCalledWith("tpl-2", {
+      ...payload,
+      expected_updated_at: "2026-08-09T12:00:00.000Z",
+    }, [image]);
     expect(serviceMocks.pauseTemplate).toHaveBeenCalledWith("tpl-2", expect.any(Object));
     expect(serviceMocks.resumeTemplate).toHaveBeenCalledWith("tpl-2", expect.any(Object));
     expect(serviceMocks.deleteTemplate).toHaveBeenCalledWith("tpl-2", expect.any(Object));

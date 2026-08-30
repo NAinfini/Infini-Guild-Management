@@ -1,5 +1,5 @@
 import type { User } from "@guild/shared";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { UserProfileDropdown } from "./UserProfileDropdown";
@@ -64,7 +64,7 @@ describe("UserProfileDropdown", () => {
 
     render(<UserProfileDropdown user={user} onLogout={onLogout} />);
 
-    fireEvent.mouseDown(
+    await userEventInstance.click(
       screen.getByRole("button", { name: "Nielsen: Open profile menu" }),
     );
 

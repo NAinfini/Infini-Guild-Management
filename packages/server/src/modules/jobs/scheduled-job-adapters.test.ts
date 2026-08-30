@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { AppError, type RequestContext } from "@guild/kernel";
 import type { MaterializationAuditFactory } from "@guild/server/modules/events";
-import { createSchedulerAuditFactory } from "./scheduled-jobs.js";
+import { MEDIA_GARBAGE_COLLECTION_BATCH_SIZE } from "@guild/server/modules/media";
+import { createSchedulerAuditFactory, SCHEDULED_JOB_LIMITS } from "./scheduled-jobs.js";
 import {
   ScheduledAuditArchiveJob,
   ScheduledAnnouncementPublishJob,
@@ -49,7 +50,7 @@ describe("scheduled job domain adapters", () => {
     await expect(job.run({
       now: NOW,
       afterTemplateId: "template-000",
-      maxTemplates: 25,
+      maxTemplates: 2,
       maxOccurrencesPerTemplate: 10,
       audit: createSchedulerAuditFactory("recurrence", NOW),
     })).resolves.toEqual({ processed: 1, hasMore: false, nextTemplateCursor: null });
@@ -127,6 +128,7 @@ describe("scheduled job domain adapters", () => {
         title: "Draw",
         winnerCount: 2,
         drawnByUserId: "owner-1",
+        updatedAt: "2026-08-08T23:59:59.999Z",
         participantIds: ["user-1", "user-2", "user-3"],
       }],
       hasMore: false,
@@ -142,13 +144,15 @@ describe("scheduled job domain adapters", () => {
 
     await expect(job.run({
       now: NOW,
-      limit: 25,
+      limit: SCHEDULED_JOB_LIMITS.raffleAutoDraw,
       audit: createSchedulerAuditFactory("raffle", NOW),
     })).resolves.toEqual({ processed: 1, hasMore: false });
     expect(drawRaffle).toHaveBeenCalledWith(expect.objectContaining({
       eventId: "raffle-1",
       winnerIds: ["user-1", "user-2"],
       drawnByUserId: "owner-1",
+      expectedUpdatedAt: "2026-08-08T23:59:59.999Z",
+      updatedAt: NOW,
       audit: expect.objectContaining({ actorId: "system:scheduler", action: "raffle_draw" }),
     }));
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({ hint: "raffle_drawn" }));
@@ -160,7 +164,7 @@ describe("scheduled job domain adapters", () => {
     }));
     await expect(job.run({
       now: NOW,
-      limit: 25,
+      limit: SCHEDULED_JOB_LIMITS.raffleAutoDraw,
       audit: createSchedulerAuditFactory("raffle-lost", NOW),
     })).resolves.toEqual({ processed: 0, hasMore: false });
     expect(publish).toHaveBeenCalledTimes(1);
@@ -186,7 +190,7 @@ describe("scheduled job domain adapters", () => {
     const media = new ScheduledMediaGarbageCollectionJob({ collectGarbage, inspectGarbageBacklog } as never);
     await expect(media.run({
       before: NOW,
-      limit: 50,
+      limit: MEDIA_GARBAGE_COLLECTION_BATCH_SIZE,
       audit: createSchedulerAuditFactory("media", NOW),
     })).resolves.toEqual({ processed: 2, hasMore: false });
     await expect(media.inspectBacklog({ before: NOW })).resolves.toEqual(backlog);
@@ -202,16 +206,26 @@ describe("scheduled job domain adapters", () => {
       });
       return { archived: 100, archiveId: "archive-1" };
     });
-    const inspectBacklog = vi.fn().mockResolvedValue(backlog);
-    const audit = new ScheduledAuditArchiveJob({ archiveBatch, inspectBacklog });
+    const cleanupExpired = vi.fn().mockResolvedValue({ deleted: 0 });
+    const inspectCombinedBacklog = vi.fn().mockResolvedValue(backlog);
+    const audit = new ScheduledAuditArchiveJob({ archiveBatch, cleanupExpired, inspectCombinedBacklog });
     await expect(audit.run({
       before: "2026-05-01T00:00:00.000Z",
+      expiredBefore: "2025-08-09T12:00:00.000Z",
       now: NOW,
       limit: 100,
       audit: createSchedulerAuditFactory("audit", NOW),
     }))
       .resolves.toEqual({ processed: 100, hasMore: true });
-    await expect(audit.inspectBacklog({ before: "2026-05-01T00:00:00.000Z" })).resolves.toEqual(backlog);
+    expect(cleanupExpired).toHaveBeenCalledWith(
+      "2025-08-09T12:00:00.000Z",
+      16,
+      expect.any(Function),
+    );
+    await expect(audit.inspectBacklog({
+      before: "2026-05-01T00:00:00.000Z",
+      expiredBefore: "2025-08-09T12:00:00.000Z",
+    })).resolves.toEqual(backlog);
   });
 
   it("propagates media garbage-collection failures instead of reporting completed work", async () => {
@@ -222,19 +236,19 @@ describe("scheduled job domain adapters", () => {
 
     await expect(media.run({
       before: NOW,
-      limit: 50,
+      limit: MEDIA_GARBAGE_COLLECTION_BATCH_SIZE,
       audit: createSchedulerAuditFactory("media-failure", NOW),
     })).rejects.toBe(failure);
   });
 
-  it("cleans expired system-test runs in fixed batches of 25", async () => {
-    const cleanupExpired = vi.fn().mockResolvedValue({ processed: 25, completed: 24, failed: 1 });
+  it("cleans one expired system-test run per scheduled batch", async () => {
+    const cleanupExpired = vi.fn().mockResolvedValue({ processed: 1, completed: 1, failed: 0 });
     const inspectExpiredBacklog = vi.fn().mockResolvedValue(backlog);
     const job = new ScheduledSystemTestCleanupJob({ cleanupExpired, inspectExpiredBacklog });
-    await expect(job.run({ before: NOW, limit: 25 }))
-      .resolves.toEqual({ processed: 25, hasMore: true });
-    expect(cleanupExpired).toHaveBeenCalledWith(NOW, 25);
+    await expect(job.run({ before: NOW, limit: 1 }))
+      .resolves.toEqual({ processed: 1, hasMore: true });
+    expect(cleanupExpired).toHaveBeenCalledWith(NOW, 1);
     await expect(job.inspectBacklog({ before: NOW })).resolves.toEqual(backlog);
-    await expect(job.run({ before: NOW, limit: 26 })).rejects.toThrow("batches of 25");
+    await expect(job.run({ before: NOW, limit: 2 })).rejects.toThrow("one run per batch");
   });
 });

@@ -22,7 +22,7 @@ export function createAnnouncement(payload: CreateAnnouncementPayload): Promise<
   });
 }
 
-export function updateAnnouncement(id: string, payload: UpdateAnnouncementPayload, ifMatch?: string): Promise<Announcement> {
+export function updateAnnouncement(id: string, payload: UpdateAnnouncementPayload, ifMatch: string): Promise<Announcement> {
   const bodyJson = updateAnnouncementSchema.parse(payload);
   return apiRequest<Announcement>(`/api/announcements/${id}`, {
     method: "PATCH",
@@ -31,15 +31,17 @@ export function updateAnnouncement(id: string, payload: UpdateAnnouncementPayloa
   });
 }
 
-export function archiveAnnouncement(id: string): Promise<{ ok: true }> {
+export function archiveAnnouncement(id: string, ifMatch: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/announcements/${id}`, {
     method: "DELETE",
+    ifMatch,
   });
 }
 
-export function deleteAnnouncement(id: string): Promise<{ ok: true }> {
+export function deleteAnnouncement(id: string, ifMatch: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/announcements/${id}/permanent`, {
     method: "DELETE",
+    ifMatch,
   });
 }
 
@@ -62,17 +64,6 @@ export async function uploadPendingAnnouncementImages(
     },
   );
   return announcementImageUploadResponseSchema.parse(response);
-}
-
-export async function uploadAnnouncementImages(
-  announcementId: string,
-  files: File[],
-): Promise<{ media_ids: string[] }> {
-  const formData = await buildAnnouncementImageFormData(files);
-  return apiRequest<{ media_ids: string[] }>(`/api/announcements/${announcementId}/images`, {
-    method: "POST",
-    body: formData,
-  });
 }
 
 export async function uploadAnnouncementAttachment(

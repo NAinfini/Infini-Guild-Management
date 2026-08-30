@@ -56,8 +56,8 @@ describe("wiki queries", () => {
   });
 
   it("includes sort in the article query key", () => {
-    const curated = queryKeys.wiki.articles("all", "", "active", false, "curated");
-    const updated = queryKeys.wiki.articles("all", "", "active", false, "updated_asc");
+    const curated = queryKeys.wiki.articles("all", "", "active", "curated");
+    const updated = queryKeys.wiki.articles("all", "", "active", "updated_asc");
 
     expect(curated).not.toEqual(updated);
     expect(curated.at(-1)).toBe("curated");

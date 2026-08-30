@@ -49,7 +49,10 @@ vi.mock("./useGuildWarDragData", () => ({
   }),
 }));
 
-function setup(persistTeamSnapshot = vi.fn().mockResolvedValue({ ok: true })) {
+function setup(
+  persistTeamSnapshot = vi.fn().mockResolvedValue({ ok: true }),
+  canRemoveParticipants = true,
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   const showError = vi.fn();
@@ -62,7 +65,7 @@ function setup(persistTeamSnapshot = vi.fn().mockResolvedValue({ ok: true })) {
   return {
     persistTeamSnapshot, showError, client,
     ...renderHook(() => useGuildWarDragController({
-      activeData, usersData: [], canManageActive: true, selectedEventId: "event-1",
+      activeData, usersData: [], canManageActive: true, canRemoveParticipants, selectedEventId: "event-1",
       activeController, roleTagMutation: { isPending: false, mutate: vi.fn() },
       guildWarService: { persistTeamSnapshot } as never, showError,
     }), { wrapper }),
@@ -107,5 +110,29 @@ describe("useGuildWarDragController team deletion", () => {
     expect(mocks.fetchActive).not.toHaveBeenCalled();
     expect(persist).not.toHaveBeenCalled();
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["guild-war", "active", "event-1"] });
+  });
+});
+
+describe("useGuildWarDragController participant removal authorization", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("does not send a removal when events.edit is unavailable", () => {
+    const { result } = setup(undefined, false);
+
+    act(() => result.current.handleRemoveFromWar("user-1"));
+
+    expect(mocks.move).not.toHaveBeenCalled();
+  });
+
+  it("sends a removal when both team and event permissions are available", async () => {
+    mocks.move.mockResolvedValue({ ok: true });
+    const { result } = setup(undefined, true);
+
+    act(() => result.current.handleRemoveFromWar("user-1"));
+
+    await waitFor(() => expect(mocks.move).toHaveBeenCalledWith(expect.objectContaining({
+      event_id: "event-1",
+      moves: [{ user_id: "user-1", to: "remove" }],
+    })));
   });
 });

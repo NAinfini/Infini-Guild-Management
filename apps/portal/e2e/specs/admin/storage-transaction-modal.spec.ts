@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
 import { createTestStorage } from "../../support/storage";
-import { expectNoDialog, selectOption, topDialog } from "../../support/ui";
+import { expectNoDialog, readInteger, selectOption, topDialog } from "../../support/ui";
 
 /*
  * 出入库弹窗的每一个控件：类型分段器、物品下拉、领取人下拉、数量、备注、取消、提交。
@@ -50,14 +50,20 @@ test.beforeEach(async ({ page, api }) => {
   // 给个已知起点：后面所有推演断言都以 10 为基准。
   const stocked = await readJson(
     await api.post(`/api/storage/items/${itemId}/transactions`, {
-      data: { type: "intake", quantity: START_STOCK, recipient_user_id: null, note: null },
+      data: {
+        idempotency_key: `e2e-storage-intake-${itemId}`,
+        type: "intake",
+        quantity: START_STOCK,
+        recipient_user_id: null,
+        note: null,
+      },
     }),
     "预置起始库存",
   ) as { quantity_delta: number };
   expect(stocked.quantity_delta, "预置入库必须是 +10").toBe(START_STOCK);
 
   await page.goto(`/storage?storageId=${storageId}`);
-  await expect(stockValue(page)).toHaveText(String(START_STOCK));
+  expect(await readInteger(stockValue(page), "预置起始库存")).toBe(START_STOCK);
 });
 
 function itemCard(page: Page): Locator {
@@ -99,11 +105,11 @@ test("存入弹窗打开时：类型为 Intake，领取人可选，预览是 10 
   await expect(dialog.getByRole("button", { name: "Submit", exact: true })).toBeEnabled();
 });
 
-test("切到 Distribute：领取人变必填，预览转为减库存，选人后才能提交", async ({ page }) => {
+test("切到 Withdrawal：领取人变必填，预览转为减库存，选人后才能提交", async ({ page }) => {
   const dialog = await openDeposit(page);
-  await transactionTypeButton(dialog, "Distribute").click();
+  await transactionTypeButton(dialog, "Withdrawal").click();
 
-  await expect(transactionTypeButton(dialog, "Distribute")).toHaveAttribute("aria-pressed", "true");
+  await expect(transactionTypeButton(dialog, "Withdrawal")).toHaveAttribute("aria-pressed", "true");
   await expect(dialog.getByLabel("Member", { exact: true })).toBeVisible();
   await expect(dialog.getByLabel("Quantity", { exact: true })).toHaveValue("1");
   await expectPreview(dialog, START_STOCK, START_STOCK - 1, "-1");
@@ -115,9 +121,9 @@ test("切到 Distribute：领取人变必填，预览转为减库存，选人后
   await expect(submit).toBeEnabled();
 });
 
-test("切到 Adjust：领取人消失，数量预填当前库存，没变化时禁止提交", async ({ page }) => {
+test("切到 Stocktake：领取人消失，数量预填当前库存，没变化时禁止提交", async ({ page }) => {
   const dialog = await openDeposit(page);
-  await transactionTypeButton(dialog, "Adjust").click();
+  await transactionTypeButton(dialog, "Stocktake").click();
 
   await expect(dialog.getByLabel("Member (optional)", { exact: true })).toHaveCount(0);
   await expect(dialog.getByLabel("Member", { exact: true })).toHaveCount(0);
@@ -137,7 +143,7 @@ test("切到 Adjust：领取人消失，数量预填当前库存，没变化时�
 
 test("校验：出库数量超过库存会报错并禁用提交", async ({ page }) => {
   const dialog = await openDeposit(page);
-  await transactionTypeButton(dialog, "Distribute").click();
+  await transactionTypeButton(dialog, "Withdrawal").click();
   await selectOption(dialog, "Member", "member_01");
 
   await dialog.getByLabel("Quantity", { exact: true }).fill(String(START_STOCK + 1));
@@ -162,16 +168,16 @@ test("取消：填了数量也不产生任何请求，服务端库存原封不�
   await flow.clickWithoutApi(dialog.getByRole("button", { name: "Cancel", exact: true }));
 
   await expectNoDialog(page);
-  await expect(stockValue(page)).toHaveText(String(START_STOCK));
+  expect(await readInteger(stockValue(page), "取消后的库存")).toBe(START_STOCK);
   expect(
     (await readJson(await api.get(`/api/storage/items/${itemId}`), "取消后回读物品") as { quantity: number }).quantity,
     "取消不该改动服务端库存",
   ).toBe(START_STOCK);
 });
 
-test("Adjust 完整链路：目标库存 4 落到服务端，并留下一条 -6 的盘点流水", async ({ page, flow, api }) => {
+test("Stocktake 完整链路：目标库存 4 落到服务端，并留下一条 -6 的盘点流水", async ({ page, flow, api }) => {
   const dialog = await openDeposit(page);
-  await transactionTypeButton(dialog, "Adjust").click();
+  await transactionTypeButton(dialog, "Stocktake").click();
   await dialog.getByLabel("Target stock", { exact: true }).fill("4");
 
   await flow.click(
@@ -179,7 +185,7 @@ test("Adjust 完整链路：目标库存 4 落到服务端，并留下一条 -6 
     TRANSACTION_REQUEST,
   );
 
-  await expect(stockValue(page)).toHaveText("4");
+  await expect.poll(() => readInteger(stockValue(page), "盘点后的库存")).toBe(4);
   expect(
     (await readJson(await api.get(`/api/storage/items/${itemId}`), "盘点后回读物品") as { quantity: number }).quantity,
     "盘点到 4 之后服务端库存必须是 4",
@@ -200,14 +206,15 @@ test("Manual Entry：物品下拉可搜索，选中后预览换成该物品", as
   const dialog = topDialog(page);
   await expect(dialog.getByText("Choose an item to preview the stock change.")).toBeVisible();
 
-  const itemSelect = dialog.getByLabel("Item", { exact: true });
-  await itemSelect.click();
-  // 物品下拉的搜索是服务端的，敲字必须真的把查询发出去。
+  const itemSearch = dialog.getByRole("searchbox", { name: "Search items", exact: true });
+  // 物品搜索是服务端的，敲字必须真的把查询发出去。
   await flow.act(
-    () => itemSelect.fill(itemName),
+    () => itemSearch.fill(itemName),
     { method: "GET", path: /^\/api\/storage\/items$/ },
   );
 
+  const itemSelect = dialog.getByLabel("Item", { exact: true });
+  await itemSelect.click();
   await page.getByRole("option", { name: `${itemName} (${START_STOCK})`, exact: true }).click();
 
   await expect(dialog.locator(".storage-transaction-modal__item-line")).toContainText(itemName);

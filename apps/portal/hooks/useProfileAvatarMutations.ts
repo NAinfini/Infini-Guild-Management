@@ -6,10 +6,17 @@ import { notifySuccess } from "../utils/notifications";
 
 type UseProfileAvatarMutationsParams = {
   userId?: string;
+  profileRevisionToken?: string | null;
   showError: (error: unknown, fallbackMessage: string) => void;
+  onProfileRevision?: (revisionToken: string) => void;
 };
 
-export function useProfileAvatarMutations({ userId, showError }: UseProfileAvatarMutationsParams) {
+export function useProfileAvatarMutations({
+  userId,
+  profileRevisionToken,
+  showError,
+  onProfileRevision,
+}: UseProfileAvatarMutationsParams) {
   const { t } = useTranslation("profile");
   const queryClient = useQueryClient();
 
@@ -21,9 +28,11 @@ export function useProfileAvatarMutations({ userId, showError }: UseProfileAvata
   const avatarUploadMutation = useMutation({
     mutationFn: (file: File) => {
       if (!userId) throw new Error("Missing user session");
-      return uploadAvatar(userId, file);
+      if (!profileRevisionToken) throw new Error("Missing profile revision token");
+      return uploadAvatar(userId, file, profileRevisionToken);
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      onProfileRevision?.(result.profileRevisionToken);
       await invalidateProfileImages();
       notifySuccess(t("message.avatarUploaded"));
     },
@@ -33,9 +42,11 @@ export function useProfileAvatarMutations({ userId, showError }: UseProfileAvata
   const avatarDeleteMutation = useMutation({
     mutationFn: () => {
       if (!userId) throw new Error("Missing user session");
-      return deleteAvatar(userId);
+      if (!profileRevisionToken) throw new Error("Missing profile revision token");
+      return deleteAvatar(userId, profileRevisionToken);
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      onProfileRevision?.(result.profileRevisionToken);
       await invalidateProfileImages();
       notifySuccess(t("message.avatarRemoved"));
     },

@@ -11,6 +11,7 @@ export type UploadTask = {
   id: string;
   file: File;
   status: UploadStatus;
-  caption: string;
+  title: string;
+  description: string;
   error?: string;
 };

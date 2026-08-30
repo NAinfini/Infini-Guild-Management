@@ -62,8 +62,8 @@ export function ExperienceControls({ compact = false }: ExperienceControlsProps)
             {t("label.theme")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t("label.locale")}</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={locale} onValueChange={setLocale}>
+            <DropdownMenuLabel>{t("label.locale")}</DropdownMenuLabel>
             {localeItems}
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>

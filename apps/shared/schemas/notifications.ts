@@ -83,6 +83,37 @@ export const inboxNotificationMutationResponseSchema = z.object({
   unread_count: z.number().int().nonnegative(),
 }).strict();
 
+const authorizationRefreshIdsSchema = z.array(z.string().min(1).max(256)).min(1).max(100);
+
+export const notificationAuthorizationRefreshSchema = z.object({
+  type: z.literal("authorization_refresh"),
+  session_ids: authorizationRefreshIdsSchema.optional(),
+  user_ids: authorizationRefreshIdsSchema.optional(),
+  role_ids: authorizationRefreshIdsSchema.optional(),
+}).strict().refine(
+  (value) => value.session_ids !== undefined || value.user_ids !== undefined || value.role_ids !== undefined,
+  "At least one authorization refresh target is required",
+);
+
+export const notificationPreferencesSchema = z.object({
+  member_joined: z.boolean(),
+  announcement_published: z.boolean(),
+  event_created: z.boolean(),
+  wiki_article_created: z.boolean(),
+  updated_at: z.string().datetime({ offset: true }).nullable(),
+}).strict();
+
+export const updateNotificationPreferencesSchema = notificationPreferencesSchema
+  .omit({ updated_at: true })
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one notification preference is required",
+  });
+
+export type NotificationPreferences = z.infer<typeof notificationPreferencesSchema>;
+export type UpdateNotificationPreferences = z.infer<typeof updateNotificationPreferencesSchema>;
+export type NotificationAuthorizationRefresh = z.infer<typeof notificationAuthorizationRefreshSchema>;
+
 export const heartbeatMessageSchema = z.object({
   type: z.literal("heartbeat"),
   tab_id: z.string().min(1).max(64),

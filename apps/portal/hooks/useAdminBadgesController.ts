@@ -1,4 +1,4 @@
-import type { MemberBadge } from "@guild/shared";
+import { catalogRevisionToken, type MemberBadge } from "@guild/shared";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
@@ -15,7 +15,7 @@ import {
 } from "../services/AdminService";
 import type { CreateBadgePayload, UpdateBadgePayload } from "../services/AdminService";
 import { queryKeys } from "../api/query-keys";
-import { notifyError, notifySuccess } from "../utils/notifications";
+import { notifySuccess } from "../utils/notifications";
 import { useAppError } from "./useAppError";
 import { useAdminPendingActions } from "./useAdminPendingActions";
 
@@ -38,12 +38,14 @@ export const EMPTY_BADGE_FORM: BadgeForm = {
 
 type BadgeDraft = {
   id: string | null;
+  updatedAt: string | null;
   form: BadgeForm;
   memberIds: string[];
 };
 
 const EMPTY_BADGE_DRAFT: BadgeDraft = {
   id: null,
+  updatedAt: null,
   form: EMPTY_BADGE_FORM,
   memberIds: [],
 };
@@ -64,6 +66,7 @@ function normalizeMemberIds(memberIds: Iterable<string>) {
 function toBadgeDraft(badge: MemberBadge, memberIds: Iterable<string> = []): BadgeDraft {
   return {
     id: badge.id,
+    updatedAt: badge.updated_at,
     form: toBadgeForm(badge),
     memberIds: normalizeMemberIds(memberIds),
   };
@@ -78,6 +81,7 @@ function sameBadgeForm(left: BadgeForm, right: BadgeForm) {
 
 function sameBadgeDraft(left: BadgeDraft, right: BadgeDraft) {
   return left.id === right.id
+    && left.updatedAt === right.updatedAt
     && sameBadgeForm(left.form, right.form)
     && left.memberIds.length === right.memberIds.length
     && left.memberIds.every((id, index) => id === right.memberIds[index]);
@@ -92,12 +96,13 @@ function toCreateBadgePayload(form: BadgeForm): CreateBadgePayload {
   };
 }
 
-function toUpdateBadgePayload(form: BadgeForm): UpdateBadgePayload {
+function toUpdateBadgePayload(form: BadgeForm, expectedUpdatedAt: string): UpdateBadgePayload {
   return {
     name: form.name,
     label_html: form.label_html,
     color: form.color,
     description: form.description || null,
+    expected_updated_at: expectedUpdatedAt,
   };
 }
 
@@ -171,16 +176,12 @@ export function useAdminBadgesController(enabled: boolean) {
     if (isCreating || !selectedBadge || !assignmentsQuery.isSuccess) return;
     const memberIds = normalizeMemberIds(assignments.map((assignment) => assignment.user_id));
 
-    setBaseline((current) => current.id === selectedBadge.id && membershipDirty
-      ? current
-      : current.id === selectedBadge.id
-        ? { ...current, memberIds }
-        : toBadgeDraft(selectedBadge, memberIds));
-    setDraft((current) => current.id === selectedBadge.id && membershipDirty
-      ? current
-      : current.id === selectedBadge.id
-        ? { ...current, memberIds }
-        : toBadgeDraft(selectedBadge, memberIds));
+    setBaseline((current) => current.id !== selectedBadge.id
+      ? toBadgeDraft(selectedBadge, memberIds)
+      : membershipDirty ? current : { ...current, memberIds });
+    setDraft((current) => current.id !== selectedBadge.id
+      ? toBadgeDraft(selectedBadge, memberIds)
+      : membershipDirty ? current : { ...current, memberIds });
   }, [assignments, assignmentsQuery.isSuccess, isCreating, membershipDirty, selectedBadge]);
 
   const setForm: Dispatch<SetStateAction<BadgeForm>> = (next) => {
@@ -217,22 +218,39 @@ export function useAdminBadgesController(enabled: boolean) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (vars: { id: string; payload: BadgeForm }) => updateBadge(vars.id, toUpdateBadgePayload(vars.payload)),
+    mutationFn: (vars: { id: string; payload: BadgeForm; expectedUpdatedAt: string | null }) => {
+      if (!vars.expectedUpdatedAt) throw new Error("Badge editor revision is missing");
+      return updateBadge(vars.id, toUpdateBadgePayload(vars.payload, vars.expectedUpdatedAt));
+    },
     onSuccess: async (updated) => {
       notifySuccess(t("badges.message.updated"));
       setBaseline((current) => current.id === updated.id
-        ? { ...current, form: toBadgeForm(updated) }
+        ? { ...current, form: toBadgeForm(updated), updatedAt: updated.updated_at }
         : current);
       setDraft((current) => current.id === updated.id
-        ? { ...current, form: toBadgeForm(updated) }
+        ? { ...current, form: toBadgeForm(updated), updatedAt: updated.updated_at }
         : current);
       await invalidateBadges();
     },
     onError: (error) => showError(error, t("badges.message.failed")),
   });
 
+  /* A clean detail follows a fresh query; a dirty one retains both its local
+     fields and the exact revision it opened with. */
+  useEffect(() => {
+    if (isCreating || !selectedBadge || isDirty || updateMutation.isPending) return;
+    const nextForm = toBadgeForm(selectedBadge);
+    setBaseline((current) => current.id === selectedBadge.id
+      ? { ...current, form: nextForm, updatedAt: selectedBadge.updated_at }
+      : current);
+    setDraft((current) => current.id === selectedBadge.id
+      ? { ...current, form: nextForm, updatedAt: selectedBadge.updated_at }
+      : current);
+  }, [isCreating, isDirty, selectedBadge, updateMutation.isPending]);
+
   const deleteMutation = useMutation({
-    mutationFn: deleteBadge,
+    mutationFn: ({ id, expectedUpdatedAt }: { id: string; expectedUpdatedAt: string }) =>
+      deleteBadge(id, expectedUpdatedAt),
     onSuccess: async () => {
       notifySuccess(t("badges.message.deleted"));
       setExplicitBadgeId(null);
@@ -240,33 +258,43 @@ export function useAdminBadgesController(enabled: boolean) {
       setBaseline(EMPTY_BADGE_DRAFT);
       await invalidateBadges();
     },
-    onError: (error) => showError(error, t("badges.message.failed")),
+    onError: (error) => {
+      void invalidateBadges();
+      showError(error, t("badges.message.failed"));
+    },
   });
 
   /*
    * assignBadgeSchema / unassignBadgeSchema 都是一次最多 100 个 user_id。面板里有
    * 「全选当前结果」，公会一旦超过 100 人就能一键越过这个上限，所以按 100 切片顺序发。
    * 不做静默截断：切片是把整件事做完，截断是假装做完了。
-   */
+  */
   const BATCH = 100;
-  const runBatched = async (userIds: string[], call: (chunk: string[]) => Promise<number>) => {
-    let total = 0;
-    for (let i = 0; i < userIds.length; i += BATCH) {
-      total += await call(userIds.slice(i, i + BATCH));
-    }
-    return total;
-  };
 
   const membershipMutation = useMutation({
     mutationFn: async (vars: { badgeId: string; add: string[]; remove: string[]; memberIds: string[] }) => {
-      const assigned = await runBatched(vars.add, async (chunk) => (await assignBadge(vars.badgeId, chunk)).assigned);
-      const removed = await runBatched(vars.remove, async (chunk) => (await unassignBadge(vars.badgeId, chunk)).removed);
-      return { assigned, removed };
+      let updatedAt: string | null = null;
+      let assigned = 0;
+      for (let index = 0; index < vars.add.length; index += BATCH) {
+        const result = await assignBadge(vars.badgeId, vars.add.slice(index, index + BATCH));
+        assigned += result.assigned;
+        updatedAt = result.updated_at;
+      }
+      let removed = 0;
+      for (let index = 0; index < vars.remove.length; index += BATCH) {
+        const result = await unassignBadge(vars.badgeId, vars.remove.slice(index, index + BATCH));
+        removed += result.removed;
+        updatedAt = result.updated_at;
+      }
+      return { assigned, removed, updatedAt };
     },
     onSuccess: (data, variables) => {
       notifySuccess(t("badges.message.membershipSaved", { added: data.assigned, removed: data.removed }));
       setBaseline((current) => current.id === variables.badgeId
-        ? { ...current, memberIds: variables.memberIds }
+        ? { ...current, memberIds: variables.memberIds, updatedAt: data.updatedAt ?? current.updatedAt }
+        : current);
+      setDraft((current) => current.id === variables.badgeId
+        ? { ...current, updatedAt: data.updatedAt ?? current.updatedAt }
         : current);
     },
     onError: (error) => showError(error, t("badges.message.failed")),
@@ -276,8 +304,14 @@ export function useAdminBadgesController(enabled: boolean) {
 
   const unassignMutation = useMutation({
     mutationFn: (vars: { badgeId: string; userIds: string[] }) => unassignBadge(vars.badgeId, vars.userIds),
-    onSuccess: async (data) => {
+    onSuccess: async (data, variables) => {
       notifySuccess(t("badges.message.unassigned", { count: data.removed }));
+      setBaseline((current) => current.id === variables.badgeId
+        ? { ...current, updatedAt: data.updated_at }
+        : current);
+      setDraft((current) => current.id === variables.badgeId
+        ? { ...current, updatedAt: data.updated_at }
+        : current);
       await invalidateBadges();
     },
     onError: (error) => showError(error, t("badges.message.failed")),
@@ -292,8 +326,9 @@ export function useAdminBadgesController(enabled: boolean) {
    * 「松手前那份」本身也是错的，只有重新拉才是真相。
    */
   const reorderMutation = useMutation({
-    mutationFn: (order: string[]) => reorderBadges(order),
-    onMutate: async (order: string[]) => {
+    mutationFn: ({ order, expectedRevisionToken }: { order: string[]; expectedRevisionToken: string }) =>
+      reorderBadges(order, expectedRevisionToken),
+    onMutate: async ({ order }: { order: string[]; expectedRevisionToken: string }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.badges.list() });
       const previous = queryClient.getQueryData<MemberBadge[]>(queryKeys.badges.list());
       if (previous) {
@@ -305,11 +340,11 @@ export function useAdminBadgesController(enabled: boolean) {
       }
       return { previous };
     },
-    onError: (error, _order, context) => {
+    onError: (error, _variables, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKeys.badges.list(), context.previous);
       }
-      notifyError(error instanceof Error ? error.message : t("badges.message.reorderFailed"));
+      showError(error, t("badges.message.reorderFailed"));
       void invalidateBadges();
     },
     /* 响应体就是重排后的整张表，直接当新缓存用；再作废一次列表只是把同一份数据
@@ -324,7 +359,10 @@ export function useAdminBadgesController(enabled: boolean) {
     const from = badges.findIndex((badge) => badge.id === activeId);
     const to = badges.findIndex((badge) => badge.id === overId);
     if (from < 0 || to < 0 || from === to) return;
-    reorderMutation.mutate(arrayMove([...badges], from, to).map((badge) => badge.id));
+    reorderMutation.mutate({
+      order: arrayMove([...badges], from, to).map((badge) => badge.id),
+      expectedRevisionToken: catalogRevisionToken(badges),
+    });
   };
 
   const startCreate = () => {
@@ -386,10 +424,10 @@ export function useAdminBadgesController(enabled: boolean) {
       action: "unassign",
     });
 
-  const deleteBadgeWithPending = (badgeId: string) => {
+  const deleteBadgeWithPending = (badgeId: string, expectedUpdatedAt: string) => {
     const pending = runPendingAction(
       { resource: "badge", resourceId: badgeId, action: "delete" },
-      () => deleteMutation.mutateAsync(badgeId),
+      () => deleteMutation.mutateAsync({ id: badgeId, expectedUpdatedAt }),
     );
     if (pending) void pending.catch(() => undefined);
   };
@@ -448,7 +486,7 @@ export function useAdminBadgesController(enabled: boolean) {
     toggleDraftMember,
     formValid,
     createBadge: () => createMutation.mutate(toCreateBadgePayload(form)),
-    updateBadge: (id: string) => updateMutation.mutate({ id, payload: form }),
+    updateBadge: (id: string) => updateMutation.mutate({ id, payload: form, expectedUpdatedAt: draft.updatedAt }),
     deleteBadge: deleteBadgeWithPending,
     saveMembership: (badgeId: string) =>
       membershipMutation.mutate({ badgeId, add: draftAdded, remove: draftRemoved, memberIds: draft.memberIds }),

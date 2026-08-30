@@ -1,6 +1,7 @@
 import {
   auditEventCursorResponseSchema,
   auditEventSchema,
+  formatCsvCell,
   type AuditEvent,
   type CursorResponse,
 } from "@guild/shared";
@@ -83,11 +84,5 @@ function auditCsvRow(row: AuditEvent): string {
     row.subject.label,
     JSON.stringify(row.payload),
     row.occurred_at,
-  ].map(csvCell).join(",");
-}
-
-function csvCell(value: string | null): string {
-  if (value === null) return "";
-  const safe = /^[=+\-@]/.test(value.trimStart()) ? `'${value}` : value;
-  return /[",\r\n]/.test(safe) ? `"${safe.replaceAll("\"", "\"\"")}"` : safe;
+  ].map((value) => formatCsvCell(value)).join(",");
 }

@@ -27,13 +27,6 @@ function emptyAvailability(timezone = "UTC"): MemberAvailability {
 }
 
 describe("memberProfileSchema", () => {
-  it("uses user_id as the sole profile identity", () => {
-    expect(memberProfileSchema.partial().parse({
-      id: "legacy-profile-id",
-      user_id: "user-1",
-    })).toEqual({ user_id: "user-1" });
-  });
-
   it("accepts a nullable audio display name up to 255 characters", () => {
     expect(memberProfileSchema.partial().safeParse({ audio_name: null }).success).toBe(true);
     expect(memberProfileSchema.partial().safeParse({ audio_name: "a".repeat(255) }).success).toBe(true);

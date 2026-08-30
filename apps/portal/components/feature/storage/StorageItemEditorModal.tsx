@@ -1,9 +1,11 @@
 import {
+  STORAGE_RARITIES,
   SELECTABLE_IMAGE_TYPES,
   type CreateStorageItemPayload,
   type Storage,
   type StorageCategory,
   type StorageItem,
+  type StorageRarity,
   type UpdateStorageItemPayload,
 } from "@guild/shared";
 import { PhotoOffIcon, TrashIcon, UploadIcon, XIcon } from "@portal/components/icons";
@@ -43,6 +45,8 @@ type ItemDraft = {
   category_id: string | null;
   name: string;
   description: string;
+  rarity: StorageRarity;
+  unit: string;
   allow_member_deposit: boolean;
   allow_member_withdraw: boolean;
 };
@@ -58,15 +62,17 @@ type StorageItemEditorModalProps = {
   onClose: () => void;
   onCreateItem: (payload: CreateStorageItemPayload, onSuccess: ItemSaveSuccess) => void;
   onUpdateItem: (id: string, payload: UpdateStorageItemPayload, onSuccess: ItemSaveSuccess) => void;
-  onDeleteItem: (id: string) => void;
-  onUploadImages: (itemId: string, files: File[]) => void;
-  onDeleteImage: (itemId: string, imageId: string) => Promise<boolean>;
+  onDeleteItem: (id: string, expectedUpdatedAt: string) => void;
+  onUploadImages: (itemId: string, files: File[], expectedUpdatedAt: string) => void;
+  onDeleteImage: (itemId: string, imageId: string, expectedUpdatedAt: string) => Promise<boolean>;
 };
 
 const emptyDraft: ItemDraft = {
   category_id: null,
   name: "",
   description: "",
+  rarity: "common",
+  unit: "",
   allow_member_deposit: false,
   allow_member_withdraw: false,
 };
@@ -78,6 +84,8 @@ function draftFromItem(item: StorageItem | null): ItemDraft {
     category_id: item.category_id,
     name: item.name,
     description: item.description ?? "",
+    rarity: item.rarity,
+    unit: item.unit ?? "",
     allow_member_deposit: item.allow_member_deposit,
     allow_member_withdraw: item.allow_member_withdraw,
   } : { ...emptyDraft };
@@ -87,6 +95,8 @@ function sameDraft(left: ItemDraft, right: ItemDraft): boolean {
   return left.category_id === right.category_id
     && left.name === right.name
     && left.description === right.description
+    && left.rarity === right.rarity
+    && left.unit === right.unit
     && left.allow_member_deposit === right.allow_member_deposit
     && left.allow_member_withdraw === right.allow_member_withdraw;
 }
@@ -113,7 +123,9 @@ export function StorageItemEditorModal({
   const [baseline, setBaseline] = useState<ItemDraft>(emptyDraft);
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
   const [hydratedFor, setHydratedFor] = useState<string | null>(null);
+  const [revisionBaseline, setRevisionBaseline] = useState<Readonly<{ id: string; updatedAt: string }> | null>(null);
   const { pendingKeys, runPending } = useKeyedPending();
+  const isDirty = !sameDraft(draft, baseline);
 
   useEffect(() => {
     if (!opened) {
@@ -121,15 +133,23 @@ export function StorageItemEditorModal({
       return;
     }
     const key = item?.id ?? "__new__";
-    if (hydratedFor === key) return;
     const nextDraft = draftFromItem(item);
+    const nextRevision = item ? { id: item.id, updatedAt: item.updated_at } : null;
+    const currentMatchesIncoming = hydratedFor === key
+      && sameDraft(draft, nextDraft)
+      && sameDraft(baseline, nextDraft)
+      && revisionBaseline?.id === nextRevision?.id
+      && revisionBaseline?.updatedAt === nextRevision?.updatedAt;
+    if (currentMatchesIncoming) return;
+    const sameItem = hydratedFor === key;
+    if (sameItem && (isDirty || isSaving || isDeleting || isUploading || pendingKeys.size > 0)) return;
     setDraft(nextDraft);
     setBaseline(nextDraft);
     setBrokenImages(new Set());
     setHydratedFor(key);
-  }, [hydratedFor, item, opened]);
+    setRevisionBaseline(nextRevision);
+  }, [baseline, draft, hydratedFor, isDeleting, isDirty, isSaving, isUploading, item, opened, pendingKeys.size, revisionBaseline]);
 
-  const isDirty = !sameDraft(draft, baseline);
   useBeforeUnloadPrompt(opened && isDirty);
 
   const patchDraft = (patch: Partial<ItemDraft>) => setDraft((current) => ({ ...current, ...patch }));
@@ -137,6 +157,10 @@ export function StorageItemEditorModal({
     { value: "uncategorized", label: t("category.uncategorized") },
     ...categories.map((category) => ({ value: category.id, label: category.name })),
   ];
+  const rarityOptions = STORAGE_RARITIES.map((rarity) => ({
+    value: rarity,
+    label: t(`rarity.${rarity}`),
+  }));
 
   const handleSave = () => {
     if (!selectedStorage) return;
@@ -144,16 +168,21 @@ export function StorageItemEditorModal({
     const payload = {
       ...draft,
       category_id: draft.category_id,
+      unit: draft.unit.trim() || null,
       description: draft.description.trim() || null,
     };
     const handleSaveSuccess: ItemSaveSuccess = (savedItem) => {
       const nextBaseline = draftFromItem(savedItem);
       setBaseline(nextBaseline);
       setHydratedFor(savedItem.id);
+      setRevisionBaseline({ id: savedItem.id, updatedAt: savedItem.updated_at });
       setDraft((current) => sameDraft(current, submittedDraft) ? nextBaseline : current);
     };
     if (item) {
-      onUpdateItem(item.id, payload, handleSaveSuccess);
+      const expectedUpdatedAt = revisionBaseline?.id === item.id
+        ? revisionBaseline.updatedAt
+        : item.updated_at;
+      onUpdateItem(item.id, { ...payload, expected_updated_at: expectedUpdatedAt }, handleSaveSuccess);
     } else {
       onCreateItem({ ...payload, storage_id: selectedStorage.id }, handleSaveSuccess);
     }
@@ -176,14 +205,12 @@ export function StorageItemEditorModal({
 
   const editorBody = (
     <div className={`storage-item-editor ${item ? "" : "storage-item-editor--create"}`}>
-      <div className="storage-item-editor__fields">
+      <section className="storage-item-editor__fields" aria-labelledby="storage-item-details-title">
+        <div className="storage-item-editor__section-heading">
+          <strong id="storage-item-details-title">{t("manageItems.detailsTitle")}</strong>
+          {selectedStorage ? <span>{selectedStorage.name}</span> : null}
+        </div>
         {!selectedStorage ? <p className="storage-muted-copy">{t("empty.noStorage")}</p> : null}
-        {selectedStorage ? (
-          <div className="storage-item-editor__storage-context">
-            <span className="storage-meta-label">{t("field.storage")}</span>
-            <strong>{selectedStorage.name}</strong>
-          </div>
-        ) : null}
 
         <div className="storage-field">
           <Label htmlFor="storage-item-name">{t("field.itemName")}</Label>
@@ -222,34 +249,64 @@ export function StorageItemEditorModal({
             </SelectContent>
           </Select>
         </div>
+        <div className="storage-item-editor__metadata-grid">
+          <div className="storage-field">
+            <Label>{t("field.rarity")}</Label>
+            <Select
+              value={draft.rarity}
+              items={rarityOptions}
+              onValueChange={(value) => patchDraft({ rarity: value as StorageRarity })}
+              disabled={!selectedStorage}
+            >
+              <SelectTrigger aria-label={t("field.rarity")} className="storage-field__control">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {rarityOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="storage-field">
+            <Label htmlFor="storage-item-unit">{t("field.unit")}</Label>
+            <Input
+              id="storage-item-unit"
+              value={draft.unit}
+              onChange={(event) => patchDraft({ unit: event.currentTarget.value })}
+              placeholder={t("field.unitPlaceholder")}
+              disabled={!selectedStorage}
+            />
+          </div>
+        </div>
 
         <fieldset className="storage-item-editor__access">
           <legend>{t("manageItems.memberAccess")}</legend>
           <p>{t("manageItems.memberAccessHint")}</p>
           <label className="storage-switch-field">
+            <span>{t("field.allowDeposit")}</span>
             <Switch
               checked={draft.allow_member_deposit}
               onCheckedChange={(checked) => patchDraft({ allow_member_deposit: checked })}
               disabled={!selectedStorage}
             />
-            <span>{t("field.allowDeposit")}</span>
           </label>
           <label className="storage-switch-field">
+            <span>{t("field.allowWithdraw")}</span>
             <Switch
               checked={draft.allow_member_withdraw}
               onCheckedChange={(checked) => patchDraft({ allow_member_withdraw: checked })}
               disabled={!selectedStorage}
             />
-            <span>{t("field.allowWithdraw")}</span>
           </label>
         </fieldset>
         {!item ? <p className="storage-muted-copy">{t("manageItems.noImages")}</p> : null}
-      </div>
+      </section>
 
       {item ? (
         <section className="storage-item-editor__media" aria-labelledby="storage-item-images-title">
-          <div className="storage-item-editor__media-header">
-            <strong id="storage-item-images-title">{t("action.uploadImages")}</strong>
+          <div className="storage-item-editor__section-heading storage-item-editor__media-header">
+            <strong id="storage-item-images-title">{t("manageItems.mediaTitle")}</strong>
             <span>{item.images.length}</span>
           </div>
           {item.images.length ? (
@@ -276,9 +333,12 @@ export function StorageItemEditorModal({
                     })}
                     loading={pendingKeys.has(`delete:image:${item.id}/${image.media_id}`)}
                     onClick={() => {
+                      const expectedUpdatedAt = revisionBaseline?.id === item.id
+                        ? revisionBaseline.updatedAt
+                        : item.updated_at;
                       void runPending(
                         `delete:image:${item.id}/${image.media_id}`,
-                        () => onDeleteImage(item.id, image.media_id),
+                        () => onDeleteImage(item.id, image.media_id, expectedUpdatedAt),
                       );
                     }}
                   >
@@ -301,7 +361,10 @@ export function StorageItemEditorModal({
               disabled={isUploading}
               onChange={(event) => {
                 const files = Array.from(event.currentTarget.files ?? []);
-                if (files.length > 0) onUploadImages(item.id, files);
+                const expectedUpdatedAt = revisionBaseline?.id === item.id
+                  ? revisionBaseline.updatedAt
+                  : item.updated_at;
+                if (files.length > 0) onUploadImages(item.id, files, expectedUpdatedAt);
                 event.currentTarget.value = "";
               }}
             />
@@ -309,18 +372,30 @@ export function StorageItemEditorModal({
         </section>
       ) : null}
 
-      <div className={`storage-modal-actions ${item ? "" : "storage-modal-actions--create"}`}>
-        {item ? (
-          <Button variant="destructive" loading={isDeleting} onClick={() => onDeleteItem(item.id)}>
-            {t("action.deleteItem")}
-          </Button>
-        ) : <span />}
-        <div>
-          <Button variant="outline" onClick={() => { void requestExit(); }}>{t("common:action.cancel")}</Button>
-          <Button onClick={handleSave} disabled={!selectedStorage || !draft.name.trim()} loading={isSaving}>
-            {item ? t("action.saveItem") : t("action.createItem")}
-          </Button>
-        </div>
+    </div>
+  );
+
+  const editorFooter = (
+    <div className={`storage-modal-actions storage-item-editor__footer ${item ? "" : "storage-modal-actions--create"}`}>
+      {item ? (
+        <Button
+          variant="destructive"
+          loading={isDeleting}
+          onClick={() => {
+            const expectedUpdatedAt = revisionBaseline?.id === item.id
+              ? revisionBaseline.updatedAt
+              : item.updated_at;
+            onDeleteItem(item.id, expectedUpdatedAt);
+          }}
+        >
+          {t("action.deleteItem")}
+        </Button>
+      ) : <span />}
+      <div>
+        <Button variant="outline" onClick={() => { void requestExit(); }}>{t("common:action.cancel")}</Button>
+        <Button onClick={handleSave} disabled={!selectedStorage || !draft.name.trim()} loading={isSaving}>
+          {item ? t("action.saveItem") : t("action.createItem")}
+        </Button>
       </div>
     </div>
   );
@@ -343,6 +418,7 @@ export function StorageItemEditorModal({
             </div>
           </DrawerHeader>
           <div className="storage-modal-body">{editorBody}</div>
+          {editorFooter}
         </DrawerContent>
       </Drawer>
     );
@@ -365,6 +441,7 @@ export function StorageItemEditorModal({
           </div>
         </SheetHeader>
         <div className="storage-modal-body">{editorBody}</div>
+        {editorFooter}
       </SheetContent>
     </Sheet>
   );

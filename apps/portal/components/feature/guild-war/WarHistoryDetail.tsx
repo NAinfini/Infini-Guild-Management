@@ -1,5 +1,4 @@
 import { DEFAULT_GAME_RULES } from "@guild/shared";
-import { Alert } from "@portal/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@portal/components/ui/avatar";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
@@ -10,33 +9,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@portal/components/ui/select";
-import { Skeleton } from "@portal/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import {
-  ArrowLeftIcon,
   ChartBarIcon,
   CodeIcon,
-  FlagIcon,
-  GemIcon,
   LayoutGridIcon,
   NoteIcon,
   PencilIcon,
   SaveIcon,
-  ShieldIcon,
   SwordsIcon,
   TableIcon,
-  TargetArrowIcon,
   TrashIcon,
   TrophyIcon,
   UsersIcon,
 } from "@portal/components/icons";
 import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
-import { EmptyState } from "@portal/components/shared/EmptyState";
 import { SectionHeader } from "@portal/components/shared/SectionHeader";
 import { useMediaQuery } from "@portal/hooks/useMediaQuery";
 import { resolveMediaUrl } from "@portal/utils/media";
 import { useSiteConfigStore } from "@portal/stores/site-config";
-import { flexRender, useReactTable } from "@tanstack/react-table";
+import type { DataTableInstance } from "@portal/components/shared/data-table-features";
 import ReactEChartsCore from "echarts-for-react/esm/core";
 import { BarChart, LineChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
@@ -56,6 +47,15 @@ import {
   getGuildWarResultLabel,
   getGuildWarTeamStatLabel,
 } from "@portal/utils/game-rules";
+import {
+  MetricColumn,
+  MvpRow,
+  WarHistoryMemberCards,
+  type ComparisonMetric,
+} from "./WarHistoryDetailPrimitives";
+import { WarHistoryDetailMobileNavigation } from "./WarHistoryDetailMobileNavigation";
+import { WarHistoryDetailState } from "./WarHistoryDetailState";
+import { getWarHistoryChartMetricOptions } from "./war-history-detail-helpers";
 
 echarts.use([
   BarChart,
@@ -76,7 +76,7 @@ type WarHistoryDetailProps = {
   historyMvp: HistoryMvpSummary | null;
   historyViewMode: HistoryViewMode;
   historyChartMetric: AnalyticsMetricKey;
-  detailTable: ReturnType<typeof useReactTable<HistoryMemberStat>>;
+  detailTable: DataTableInstance<HistoryMemberStat>;
   canManage: boolean;
   hasUnsavedMemberChanges: boolean;
   isEditingMemberStats: boolean;
@@ -99,13 +99,6 @@ type WarHistoryDetailProps = {
   hashToPaletteColor: (value: string, palette: string[]) => string;
   getMetricLabel: (metric: AnalyticsMetricKey) => string;
   metricValueOrNullFromWarMember: (row: HistoryMemberStat, metric: AnalyticsMetricKey) => number | null;
-};
-
-type ComparisonMetric = {
-  id: string;
-  label: string;
-  own: number;
-  enemy: number;
 };
 
 export function WarHistoryDetail({
@@ -171,13 +164,7 @@ export function WarHistoryDetail({
   const primaryStat = gameRules.guild_war.team_stats.find((definition) => definition.dashboard === "primary")
     ?? gameRules.guild_war.team_stats[0];
   const headline = comparisonMetrics.find((metric) => metric.id === primaryStat?.key) ?? comparisonMetrics[0] ?? null;
-  const chartMetricOptions = detailTable
-    .getAllLeafColumns()
-    .filter((column) => !["user_id", "role_tag", "missing"].includes(column.id))
-    .map((column) => ({
-      value: column.id,
-      label: String(column.columnDef.header ?? column.id),
-    }));
+  const chartMetricOptions = getWarHistoryChartMetricOptions(detailTable);
 
   return (
     <section
@@ -185,32 +172,19 @@ export function WarHistoryDetail({
       aria-label={detailTitle}
       data-testid="war-history-inline-detail"
     >
-      <div className="war-history-detail-panel__mobile-nav">
-        <Button
-          variant="ghost"
-          onClick={onBackToList}
-        >
-          <ArrowLeftIcon size={16} data-icon="inline-start" />
-          {t("history.backToList")}
-        </Button>
-      </div>
+      <WarHistoryDetailMobileNavigation
+        label={t("history.backToList")}
+        onBackToList={onBackToList}
+      />
 
       <div className="war-history-detail-panel__body">
-        {historyDetailLoading ? (
-          <div className="war-history-detail-panel__loading">
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-18 w-full" />
-            <Skeleton className="h-55 w-full" />
-          </div>
-        ) : null}
-
-        {historyDetailError ? <Alert variant="destructive">{loadErrorMessage}</Alert> : null}
-
-        {!historyDetailLoading && !historyDetailError && !historyDetail ? (
-          <div className="whd-placeholder">
-            <EmptyState title={t("history.selectRecordHint")} />
-          </div>
-        ) : null}
+        <WarHistoryDetailState
+          loading={historyDetailLoading}
+          error={historyDetailError}
+          errorMessage={loadErrorMessage}
+          empty={!historyDetailLoading && !historyDetailError && !historyDetail}
+          emptyTitle={t("history.selectRecordHint")}
+        />
 
         {!historyDetailLoading && !historyDetailError && historyDetail ? (
           <div className="whd-content">
@@ -356,7 +330,12 @@ export function WarHistoryDetail({
                                     className="whd-chip__avatar"
                                   >
                                     {member.avatar_media_id ? (
-                                      <AvatarImage src={resolveMediaUrl(member.avatar_media_id)} alt="" />
+                                      <AvatarImage
+                                        src={resolveMediaUrl(member.avatar_media_id)}
+                                        alt=""
+                                        loading="lazy"
+                                        decoding="async"
+                                      />
                                     ) : null}
                                     <AvatarFallback>{label.slice(0, 2).toUpperCase()}</AvatarFallback>
                                   </Avatar>
@@ -536,104 +515,5 @@ export function WarHistoryDetail({
         ) : null}
       </div>
     </section>
-  );
-}
-
-function WarHistoryMemberCards({
-  detailTable,
-  label,
-}: {
-  detailTable: ReturnType<typeof useReactTable<HistoryMemberStat>>;
-  label: string;
-}) {
-  const headersByColumnId = new Map(
-    detailTable.getFlatHeaders().map((header) => [header.column.id, header]),
-  );
-
-  return (
-    <div className="whd-member-cards" role="list" aria-label={label}>
-      {detailTable.getRowModel().rows.map((row) => (
-        <article
-          key={row.id}
-          className="whd-member-card"
-          role="listitem"
-          data-testid={`war-history-member-card-${row.original.user_id}`}
-        >
-          <dl className="whd-member-card__fields">
-            {row.getVisibleCells().map((cell) => {
-              const header = headersByColumnId.get(cell.column.id);
-              return (
-                <div
-                  key={cell.id}
-                  className="whd-member-card__field"
-                  data-column-id={cell.column.id}
-                >
-                  <dt className="whd-member-card__label">
-                    {header && !header.isPlaceholder
-                      ? flexRender(header.column.columnDef.header, header.getContext())
-                      : cell.column.id}
-                  </dt>
-                  <dd className="whd-member-card__value">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </dd>
-                </div>
-              );
-            })}
-          </dl>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function MetricColumn({
-  id,
-  label,
-  own,
-  enemy,
-  enemyLabel,
-}: ComparisonMetric & { enemyLabel: string }) {
-  const margin = own - enemy;
-  const outcome = margin > 0 ? "positive" : margin < 0 ? "negative" : "neutral";
-  const formattedMargin = margin > 0 ? `+${margin.toLocaleString()}` : margin.toLocaleString();
-
-  return (
-    <article className="whd-strip__cell" data-metric={id}>
-      <span className="whd-strip__heading">
-        <HistoryMetricIcon id={id} />
-        <span className="whd-strip__label">{label}</span>
-      </span>
-      <span className="whd-strip__values">
-        <strong className="tabular-nums">{own.toLocaleString()}</strong>
-        <Tooltip>
-          <TooltipTrigger render={<span className="tabular-nums" tabIndex={0} />}>
-            / {enemy.toLocaleString()}
-          </TooltipTrigger>
-          <TooltipContent>{enemyLabel}</TooltipContent>
-        </Tooltip>
-      </span>
-      <span className={`whd-strip__margin whd-strip__margin--${outcome} tabular-nums`}>
-        {formattedMargin}
-      </span>
-    </article>
-  );
-}
-
-function HistoryMetricIcon({ id }: { id: string }) {
-  const props = { className: "whd-strip__icon", size: 15, "aria-hidden": true } as const;
-
-  if (id === "kills") return <SwordsIcon {...props} />;
-  if (id === "towers") return <FlagIcon {...props} />;
-  if (id === "base_hp") return <ShieldIcon {...props} />;
-  if (id === "credits") return <GemIcon {...props} />;
-  return <TargetArrowIcon {...props} />;
-}
-
-function MvpRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="whd-mvp__row">
-      <span className="whd-mvp__label">{label}</span>
-      <span className="whd-mvp__value">{value}</span>
-    </div>
   );
 }

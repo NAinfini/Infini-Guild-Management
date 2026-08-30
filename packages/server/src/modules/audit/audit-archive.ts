@@ -5,6 +5,7 @@ import type { RequestContext } from "@guild/kernel";
 import type { AuditEventWrite } from "./audit.js";
 
 export const AUDIT_ARCHIVE_BATCH_SIZE = 100;
+export const AUDIT_ARCHIVE_CLEANUP_BATCH_SIZE = 16;
 const AUDIT_ARCHIVE_LEASE_MS = 10 * 60 * 1_000;
 export const AUDIT_ARCHIVE_CONTENT_TYPE = "application/x-ndjson; charset=UTF-8";
 
@@ -50,6 +51,13 @@ export interface AuditArchiveStore {
     audit: AuditEventWrite;
   }>): Promise<boolean>;
   inspectBacklog(before: string): Promise<ScheduledJobBacklog>;
+  inspectExpiredBacklog(completedBefore: string): Promise<ScheduledJobBacklog>;
+  listExpired(completedBefore: string, limit: number): Promise<readonly AuditArchiveManifest[]>;
+  deleteExpired(input: Readonly<{
+    id: string;
+    completedBefore: string;
+    audit: AuditEventWrite;
+  }>): Promise<boolean>;
   listMonths(): Promise<readonly string[]>;
   listReady(month: string): Promise<readonly AuditArchiveManifest[]>;
   getReady(id: string): Promise<AuditArchiveManifest | null>;
@@ -125,6 +133,46 @@ export class AuditArchiveService {
     return this.store.inspectBacklog(before);
   }
 
+  async cleanupExpired(
+    completedBefore: string,
+    limit: number,
+    createAudit: AuditArchiveAuditFactory,
+  ): Promise<Readonly<{ deleted: number }>> {
+    assertIsoDate(completedBefore, "Archive retention cutoff");
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > AUDIT_ARCHIVE_CLEANUP_BATCH_SIZE) {
+      throw new TypeError(`Audit archive cleanup limit must be between 1 and ${AUDIT_ARCHIVE_CLEANUP_BATCH_SIZE}`);
+    }
+    const expired = await this.store.listExpired(completedBefore, limit);
+    let deleted = 0;
+    for (const manifest of expired) {
+      await this.blobs.delete(manifest.objectKey);
+      if (!await this.store.deleteExpired({
+        id: manifest.id,
+        completedBefore,
+        audit: createAudit(manifest.id, manifest.rowCount),
+      })) {
+        throw new AppError({
+          code: "CONFLICT",
+          status: 409,
+          message: "Audit archive changed before retention cleanup",
+        });
+      }
+      deleted += 1;
+    }
+    return { deleted };
+  }
+
+  async inspectCombinedBacklog(
+    archiveBefore: string,
+    expiredBefore: string,
+  ): Promise<ScheduledJobBacklog> {
+    assertIsoDate(archiveBefore, "Archive cutoff");
+    assertIsoDate(expiredBefore, "Archive retention cutoff");
+    const expired = await this.store.inspectExpiredBacklog(expiredBefore);
+    if (expired.status === "unknown" || expired.pendingCount > 0) return expired;
+    return this.store.inspectBacklog(archiveBefore);
+  }
+
   listMonths(context: RequestContext): Promise<readonly string[]> {
     context.authorization.require(PERMISSION_ID.ADMIN_AUDIT_EXPORT);
     return this.store.listMonths();
@@ -179,93 +227,6 @@ function matchesManifest(metadata: BlobMetadata, manifest: AuditArchiveManifest)
     && metadata.size === manifest.sizeBytes
     && metadata.contentType === AUDIT_ARCHIVE_CONTENT_TYPE
     && metadata.sha256 === manifest.sha256;
-}
-
-type AuditArchiveDownloadPayload = Readonly<{
-  archiveId: string;
-  actorId: string;
-  sessionId: string;
-  expiresAt: number;
-}>;
-
-export class AuditArchiveDownloadTokens {
-  readonly #key: Promise<CryptoKey>;
-
-  constructor(secret: Uint8Array) {
-    if (secret.byteLength < 32) throw new TypeError("Audit archive download token secret must be at least 32 bytes");
-    const keyBytes = Uint8Array.from(secret);
-    this.#key = crypto.subtle.importKey(
-      "raw",
-      keyBytes,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign", "verify"],
-    );
-  }
-
-  async issue(
-    context: RequestContext,
-    archiveId: string,
-    ttlSeconds: number,
-  ): Promise<Readonly<{ token: string; expiresAt: string }>> {
-    const actor = context.authorization.require(PERMISSION_ID.ADMIN_AUDIT_EXPORT);
-    assertArchiveId(archiveId);
-    if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > 900) {
-      throw new TypeError("Audit archive download token TTL must be between 1 and 900 seconds");
-    }
-    const expiresAt = Math.floor(Date.parse(context.now) / 1_000) + ttlSeconds;
-    const payload: AuditArchiveDownloadPayload = {
-      archiveId,
-      actorId: actor.userId,
-      sessionId: actor.sessionId,
-      expiresAt,
-    };
-    const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
-    const signature = new Uint8Array(await crypto.subtle.sign("HMAC", await this.#key, payloadBytes));
-    return {
-      token: `${base64UrlEncode(payloadBytes)}.${base64UrlEncode(signature)}`,
-      expiresAt: new Date(expiresAt * 1_000).toISOString(),
-    };
-  }
-
-  async verify(context: RequestContext, token: string): Promise<string> {
-    const actor = context.authorization.require(PERMISSION_ID.ADMIN_AUDIT_EXPORT);
-    if (token.length < 16 || token.length > 2_048) throw invalidDownloadToken();
-    const parts = token.split(".");
-    if (parts.length !== 2) throw invalidDownloadToken();
-    let payloadBytes: Uint8Array;
-    let signature: Uint8Array;
-    try {
-      payloadBytes = base64UrlDecode(parts[0] ?? "");
-      signature = base64UrlDecode(parts[1] ?? "");
-    } catch {
-      throw invalidDownloadToken();
-    }
-    if (signature.byteLength !== 32 || !await crypto.subtle.verify(
-      "HMAC",
-      await this.#key,
-      Uint8Array.from(signature).buffer,
-      Uint8Array.from(payloadBytes).buffer,
-    )) {
-      throw invalidDownloadToken();
-    }
-
-    let payload: unknown;
-    try {
-      payload = JSON.parse(new TextDecoder().decode(payloadBytes));
-    } catch {
-      throw invalidDownloadToken();
-    }
-    if (!isDownloadPayload(payload)) throw invalidDownloadToken();
-    if (
-      payload.actorId !== actor.userId
-      || payload.sessionId !== actor.sessionId
-      || Date.parse(context.now) >= payload.expiresAt * 1_000
-    ) {
-      throw invalidDownloadToken();
-    }
-    return payload.archiveId;
-  }
 }
 
 const ndjsonEncoder = new TextEncoder();
@@ -410,40 +371,4 @@ function assertMonth(value: string): void {
 
 function validation(message: string): AppError {
   return new AppError({ code: "VALIDATION_ERROR", status: 400, message });
-}
-
-function assertArchiveId(value: string): void {
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(value)) throw new TypeError("Audit archive id is invalid");
-}
-
-function isDownloadPayload(value: unknown): value is AuditArchiveDownloadPayload {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  return Object.keys(record).length === 4
-    && typeof record.archiveId === "string"
-    && /^[A-Za-z0-9_-]{1,64}$/.test(record.archiveId)
-    && typeof record.actorId === "string"
-    && record.actorId.length > 0
-    && typeof record.sessionId === "string"
-    && record.sessionId.length > 0
-    && typeof record.expiresAt === "number"
-    && Number.isSafeInteger(record.expiresAt);
-}
-
-function invalidDownloadToken(): AppError {
-  return new AppError({ code: "FORBIDDEN", status: 403, message: "Audit archive download token is invalid or expired" });
-}
-
-function base64UrlEncode(value: Uint8Array): string {
-  let binary = "";
-  for (const byte of value) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function base64UrlDecode(value: string): Uint8Array {
-  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new TypeError("Invalid base64url");
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-  const binary = atob(padded);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }

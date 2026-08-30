@@ -53,7 +53,7 @@ export function EventsPage() {
   const canManageTemplates = canManagePermission(["events.templates"]) && !isExternalView;
   const canInteract = Boolean(user) && !isExternalView;
   const viewMode: EventListViewMode = routeSearch.view ?? "cards";
-  const filtering = useEventsFiltering({ currentUserId: user?.id });
+  const filtering = useEventsFiltering({ currentUserId: user?.id, externalView: isExternalView });
   const mutations = useEventActions({
     canInteract,
     user,
@@ -186,7 +186,7 @@ export function EventsPage() {
             onTogglePinEvent={mutations.togglePinnedEvent}
             onToggleLockEvent={mutations.toggleLockedEvent}
             onArchiveEvent={mutations.archiveEventById}
-            onUnarchiveEvent={mutations.unarchiveEventById}
+            onUnarchiveEvent={mutations.unarchiveEvent}
             onDeleteEvent={(event) => { void mutations.deleteEventWithConfirm(event); }}
             hasMore={filtering.eventsHasMore}
             isLoadingMore={filtering.eventsLoadingMore}

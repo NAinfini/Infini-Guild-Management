@@ -1,4 +1,6 @@
-import type { ImportantNotice } from "@guild/shared";
+import type {
+  ImportantNotice,
+} from "@guild/shared";
 import {
   useMutation,
   useQuery,
@@ -15,9 +17,9 @@ import {
 import { queryKeys } from "@portal/api/query-keys";
 import { EyeIcon, PencilIcon, PlusIcon, SendIcon, TrashIcon } from "@portal/components/icons";
 import { EmptyState } from "@portal/components/shared/EmptyState";
-import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
 import { TIPTAP_DEFAULT_JSON, buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
+import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
 import {
@@ -38,23 +40,23 @@ import { formatDateTime, fromDateTimeLocalValue, toDateTimeLocalValue } from "@p
 import { notifySuccess } from "@portal/utils/notifications";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  AdminImportantNoticeDeliveryFields,
+  type NoticeDraft,
+} from "./AdminImportantNoticeDeliveryFields";
 import "./AdminImportantNoticesSection.css";
-
-type NoticeDraft = {
-  id: string | null;
-  title: string;
-  bodyJson: string;
-  publishAt: string;
-  expiresAt: string;
-};
 
 function blankDraft(): NoticeDraft {
   return {
     id: null,
+    revisionToken: null,
     title: "",
     bodyJson: TIPTAP_DEFAULT_JSON,
     publishAt: "",
     expiresAt: "",
+    requiresAcknowledgement: false,
+    audienceScope: "all",
+    audienceRoleIds: [],
   };
 }
 
@@ -64,12 +66,16 @@ export function draftFromNotice(notice: ImportantNotice): NoticeDraft {
     : "";
   return {
     id: notice.id,
+    revisionToken: notice.revision_token,
     title: notice.title,
     bodyJson: notice.body_json,
     // A withdrawn notice is being prepared for a new publication. Its prior
     // instant cannot be sent back as a schedule, because that time has passed.
     publishAt: notice.status === "withdrawn" ? "" : toDateTimeLocalValue(notice.publish_at),
     expiresAt,
+    requiresAcknowledgement: notice.requires_acknowledgement,
+    audienceScope: notice.audience_scope,
+    audienceRoleIds: [...notice.audience_role_ids].sort(),
   };
 }
 
@@ -111,6 +117,8 @@ export function AdminImportantNoticesSection() {
     staleTime: 30_000,
   });
   const notices = noticesQuery.data ?? [];
+  const noticesBlockingError = noticesQuery.isError && noticesQuery.data === undefined;
+  const noticesRefreshError = noticesQuery.isError && noticesQuery.data !== undefined;
   const selected = notices.find((notice) => notice.id === selectedId) ?? null;
   const selectedDraft = useMemo(() => selected ? draftFromNotice(selected) : null, [selected]);
   const isPublished = !creating && selected?.status === "published";
@@ -123,18 +131,23 @@ export function AdminImportantNoticesSection() {
     || (draft.expiresAt.length > 0 && !expiresAt)
     || expiryIsPast
     || expiryPrecedesPublication;
-  const canSave = editable && draft.title.trim().length > 0 && !hasInvalidDate;
+  const hasValidAudience = draft.audienceScope === "all" || draft.audienceRoleIds.length > 0;
+  const canSave = editable && draft.title.trim().length > 0 && !hasInvalidDate && hasValidAudience;
   const isDirty = Boolean(selectedDraft && !creating && (
     draft.title !== selectedDraft.title
     || draft.bodyJson !== selectedDraft.bodyJson
     || draft.publishAt !== selectedDraft.publishAt
     || draft.expiresAt !== selectedDraft.expiresAt
+    || draft.requiresAcknowledgement !== selectedDraft.requiresAcknowledgement
+    || draft.audienceScope !== selectedDraft.audienceScope
+    || draft.audienceRoleIds.join("\u0000") !== selectedDraft.audienceRoleIds.join("\u0000")
   ));
 
   useEffect(() => {
     if (!selectedDraft || creating) return;
+    if (draft.id === selectedDraft.id) return;
     setDraft(selectedDraft);
-  }, [creating, selectedDraft]);
+  }, [creating, draft.id, selectedDraft]);
 
   useEffect(() => {
     const firstNotice = notices[0];
@@ -150,11 +163,16 @@ export function AdminImportantNoticesSection() {
   const saveMutation = useMutation({
     mutationFn: async (next: NoticeDraft) => {
       if (next.id) {
+        if (!next.revisionToken) throw new TypeError("Important notice draft is missing its revision token");
         return updateAdminImportantNotice(next.id, {
+          expected_revision_token: next.revisionToken,
           title: next.title.trim(),
           body_json: next.bodyJson,
           publish_at: next.publishAt ? fromDateTimeLocalValue(next.publishAt) ?? null : null,
           expires_at: next.expiresAt ? fromDateTimeLocalValue(next.expiresAt) ?? null : null,
+          requires_acknowledgement: next.requiresAcknowledgement,
+          audience_scope: next.audienceScope,
+          audience_role_ids: next.audienceRoleIds,
         });
       }
       return createAdminImportantNotice({
@@ -163,6 +181,9 @@ export function AdminImportantNoticesSection() {
         status: next.publishAt ? "scheduled" : "draft",
         publish_at: next.publishAt ? fromDateTimeLocalValue(next.publishAt) : undefined,
         expires_at: next.expiresAt ? fromDateTimeLocalValue(next.expiresAt) : undefined,
+        requires_acknowledgement: next.requiresAcknowledgement,
+        audience_scope: next.audienceScope,
+        audience_role_ids: next.audienceRoleIds,
       });
     },
     onSuccess: async (notice) => {
@@ -232,10 +253,20 @@ export function AdminImportantNoticesSection() {
   };
 
   const previewTitle = draft.title.trim() || t("importantNotices.untitled");
-
-  if (noticesQuery.isSuccess && notices.length === 0 && !creating) {
+  if (noticesQuery.data !== undefined && notices.length === 0 && !creating) {
     return (
       <div className="admin-panel important-notices-admin important-notices-admin--empty">
+        {noticesRefreshError ? (
+          <Alert variant="destructive">
+            <AlertTitle>{common("loadError")}</AlertTitle>
+            <AlertDescription>
+              <span>{common("loadErrorRetry")}</span>
+              <Button size="sm" variant="outline" loading={noticesQuery.isFetching} onClick={() => void noticesQuery.refetch()}>
+                {common("action.retry")}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : null}
         <EmptyState
           title={t("importantNotices.empty.title")}
           description={t("importantNotices.empty.description")}
@@ -270,11 +301,22 @@ export function AdminImportantNoticesSection() {
 
         <ScrollArea className="important-notices-admin__list">
           <div className="important-notices-admin__list-content">
+            {noticesRefreshError ? (
+              <Alert variant="destructive">
+                <AlertTitle>{common("loadError")}</AlertTitle>
+                <AlertDescription>
+                  <span>{common("loadErrorRetry")}</span>
+                  <Button size="sm" variant="outline" loading={noticesQuery.isFetching} onClick={() => void noticesQuery.refetch()}>
+                    {common("action.retry")}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            ) : null}
             {noticesQuery.isLoading ? (
               Array.from({ length: 4 }).map((_, index) => (
                 <Skeleton className="important-notices-admin__notice-skeleton" key={index} />
               ))
-            ) : noticesQuery.isError ? (
+            ) : noticesBlockingError ? (
               <EmptyState
                 status="error"
                 title={common("loadError")}
@@ -383,31 +425,15 @@ export function AdminImportantNoticesSection() {
                     />
                   </div>
                 </div>
-                <div className="important-notices-admin__schedule">
-                  <NativeDateTimeInput
-                    type="datetime-local"
-                    label={t("importantNotices.field.publishAt")}
-                    description={t("importantNotices.field.publishAtDescription")}
-                    value={draft.publishAt}
-                    disabled={!editable}
-                    onChange={(event) => {
-                      const publishAt = event.currentTarget.value;
-                      setDraft((current) => ({ ...current, publishAt }));
-                    }}
-                  />
-                  <NativeDateTimeInput
-                    type="datetime-local"
-                    label={t("importantNotices.field.expiresAt")}
-                    description={t("importantNotices.field.expiresAtDescription")}
-                    value={draft.expiresAt}
-                    disabled={!editable}
-                    error={expiryIsPast || expiryPrecedesPublication ? t("importantNotices.validation.expiry") : undefined}
-                    onChange={(event) => {
-                      const expiresAt = event.currentTarget.value;
-                      setDraft((current) => ({ ...current, expiresAt }));
-                    }}
-                  />
-                </div>
+                <AdminImportantNoticeDeliveryFields
+                  draft={draft}
+                  editable={editable}
+                  hasValidAudience={hasValidAudience}
+                  expiryError={expiryIsPast || expiryPrecedesPublication
+                    ? t("importantNotices.validation.expiry")
+                    : undefined}
+                  setDraft={setDraft}
+                />
               </div>
             </ScrollArea>
 
@@ -423,7 +449,11 @@ export function AdminImportantNoticesSection() {
                 </Button>
               ) : (
                 <div className="important-notices-admin__footer-actions">
-                  {isDirty ? <span className="important-notices-admin__unsaved">{t("importantNotices.unsavedBeforePublish")}</span> : null}
+                  {creating || isDirty ? (
+                    <span className="important-notices-admin__unsaved">
+                      {t("importantNotices.unsavedBeforePublish")}
+                    </span>
+                  ) : null}
                   <Button
                     variant="outline"
                     loading={saveMutation.isPending}
@@ -433,29 +463,25 @@ export function AdminImportantNoticesSection() {
                     <PencilIcon size={16} data-icon="inline-start" />
                     {t("importantNotices.action.save")}
                   </Button>
-                  {selected ? (
-                    <>
-                      {selected.status === "scheduled" ? (
-                        <Button
-                          variant="outline"
-                          className="important-notices-admin__withdraw"
-                          loading={lifecycleMutation.isPending}
-                          disabled={isDirty}
-                          onClick={() => lifecycleMutation.mutate({ id: selected.id, action: "withdraw" })}
-                        >
-                          {t("importantNotices.action.withdraw")}
-                        </Button>
-                      ) : null}
-                      <Button
-                        loading={lifecycleMutation.isPending}
-                        disabled={isDirty}
-                        onClick={() => lifecycleMutation.mutate({ id: selected.id, action: "publish" })}
-                      >
-                        <SendIcon size={16} data-icon="inline-start" />
-                        {t("importantNotices.action.publish")}
-                      </Button>
-                    </>
+                  {selected?.status === "scheduled" ? (
+                    <Button
+                      variant="outline"
+                      className="important-notices-admin__withdraw"
+                      loading={lifecycleMutation.isPending}
+                      disabled={isDirty}
+                      onClick={() => lifecycleMutation.mutate({ id: selected.id, action: "withdraw" })}
+                    >
+                      {t("importantNotices.action.withdraw")}
+                    </Button>
                   ) : null}
+                  <Button
+                    loading={lifecycleMutation.isPending}
+                    disabled={!selected || isDirty}
+                    onClick={() => selected && lifecycleMutation.mutate({ id: selected.id, action: "publish" })}
+                  >
+                    <SendIcon size={16} data-icon="inline-start" />
+                    {t("importantNotices.action.publish")}
+                  </Button>
                 </div>
               )}
             </div>

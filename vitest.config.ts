@@ -28,7 +28,7 @@ export default defineConfig({
         test: {
           name: "portal",
           include: ["apps/portal/**/*.test.ts", "apps/portal/**/*.test.tsx"],
-          exclude: ["apps/portal/components/feature/events/RecurringTemplateFormModal.helpers.test.ts"],
+          exclude: ["apps/portal/components/feature/events/RecurringTemplateForm.helpers.test.ts"],
           environment: "jsdom",
           setupFiles: [path.resolve(repoRoot, "apps/portal/tests/setup.ts")],
           /* Node 自带的 localStorage 全局挡在 jsdom 前面。vitest 搬运 window 的键时
@@ -46,7 +46,7 @@ export default defineConfig({
           // Changing TZ takes effect for a Node process, not for a Vitest worker thread.
           // This file deliberately verifies DST behavior in a named timezone.
           name: "portal-timezone",
-          include: ["apps/portal/components/feature/events/RecurringTemplateFormModal.helpers.test.ts"],
+          include: ["apps/portal/components/feature/events/RecurringTemplateForm.helpers.test.ts"],
           environment: "node",
           pool: "forks",
         },

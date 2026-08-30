@@ -1,4 +1,3 @@
-import type { CreateStorageCategoryPayload, CreateStoragePayload, Storage } from "@guild/shared";
 import { PlusIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
@@ -16,27 +15,14 @@ import { useKeyedPending } from "@portal/hooks/useKeyedPending";
 import { useMediaQuery } from "@portal/hooks/useMediaQuery";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-type CreationDraft =
-  | { type: "storage" }
-  | { type: "category"; storageId: string };
-
-type StorageStructureManagerProps = {
-  storages: Storage[];
-  selectedStorage: Storage | null;
-  selectedCategoryId: string | null;
-  onSelectStorage: (id: string) => void;
-  onSelectCategory: (storageId: string, categoryId: string) => void;
-  onCreateStorage: (payload: CreateStoragePayload) => Promise<boolean>;
-  onUpdateStorage: (id: string, payload: Partial<CreateStoragePayload>) => Promise<boolean>;
-  onDeleteStorage: (id: string) => Promise<boolean>;
-  onCreateCategory: (storageId: string, payload: CreateStorageCategoryPayload) => Promise<boolean>;
-  onUpdateCategory: (storageId: string, categoryId: string, payload: CreateStorageCategoryPayload) => Promise<boolean>;
-  onDeleteCategory: (storageId: string, categoryId: string) => Promise<boolean>;
-};
-
-type StructureAction = "create" | "update" | "delete";
-type StructureResource = "storage" | "category";
+import type {
+  CategoryBaseline,
+  CreationDraft,
+  StorageBaseline,
+  StorageStructureManagerProps,
+  StructureAction,
+  StructureResource,
+} from "./StorageStructureManager.types";
 
 const pendingKey = (action: StructureAction, resource: StructureResource, id: string) =>
   `${action}:${resource}:${id}`;
@@ -82,6 +68,8 @@ export function StorageStructureManager({
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editCategoryName, setEditCategoryName] = useState("");
+  const [storageBaseline, setStorageBaseline] = useState<StorageBaseline | null>(null);
+  const [categoryBaseline, setCategoryBaseline] = useState<CategoryBaseline | null>(null);
   const [creationDraft, setCreationDraft] = useState<CreationDraft | null>(null);
   const [treeOpened, setTreeOpened] = useState(false);
   const { pendingKeys, runPending } = useKeyedPending();
@@ -113,13 +101,51 @@ export function StorageStructureManager({
       : selectedStorage?.description || labels.emptyDescription;
 
   useEffect(() => {
-    setEditName(selectedStorage?.name ?? "");
-    setEditDescription(selectedStorage?.description ?? "");
-  }, [selectedStorage]);
+    if (creationDraft?.type === "storage") return;
+    if (!selectedStorage) {
+      setEditName("");
+      setEditDescription("");
+      setStorageBaseline(null);
+      return;
+    }
+    const incoming = {
+      id: selectedStorage.id,
+      name: selectedStorage.name,
+      description: selectedStorage.description,
+      structureRevision: selectedStorage.structure_revision,
+    };
+    const draftIsDirty = storageBaseline?.id === incoming.id
+      && (editName !== storageBaseline.name || editDescription !== (storageBaseline.description ?? ""));
+    if (storageBaseline?.id === incoming.id
+      && storageBaseline.name === incoming.name
+      && storageBaseline.description === incoming.description
+      && storageBaseline.structureRevision === incoming.structureRevision) return;
+    if (draftIsDirty) return;
+    setEditName(incoming.name);
+    setEditDescription(incoming.description ?? "");
+    setStorageBaseline(incoming);
+  }, [creationDraft, editDescription, editName, selectedStorage, storageBaseline]);
 
   useEffect(() => {
-    setEditCategoryName(selectedCategory?.name ?? "");
-  }, [selectedCategory]);
+    if (creationDraft?.type === "category") return;
+    if (!selectedCategory) {
+      setEditCategoryName("");
+      setCategoryBaseline(null);
+      return;
+    }
+    const incoming = {
+      id: selectedCategory.id,
+      name: selectedCategory.name,
+      structureRevision: selectedStorage!.structure_revision,
+    };
+    const draftIsDirty = categoryBaseline?.id === incoming.id && editCategoryName !== categoryBaseline.name;
+    if (categoryBaseline?.id === incoming.id
+      && categoryBaseline.name === incoming.name
+      && categoryBaseline.structureRevision === incoming.structureRevision) return;
+    if (draftIsDirty) return;
+    setEditCategoryName(incoming.name);
+    setCategoryBaseline(incoming);
+  }, [categoryBaseline, creationDraft, editCategoryName, selectedCategory, selectedStorage]);
 
   const handleBeginCreateStorage = () => {
     setCreationDraft({ type: "storage" });
@@ -129,7 +155,13 @@ export function StorageStructureManager({
   };
 
   const handleBeginCreateCategory = (storageId: string) => {
-    setCreationDraft({ type: "category", storageId });
+    const storage = storages.find((candidate) => candidate.id === storageId);
+    if (!storage) return;
+    setCreationDraft({
+      type: "category",
+      storageId,
+      structureRevision: storage.structure_revision,
+    });
     setEditCategoryName("");
     onSelectStorage(storageId);
     setTreeOpened(false);
@@ -146,9 +178,36 @@ export function StorageStructureManager({
       return;
     }
     if (!selectedStorage) return;
+    const baseline = storageBaseline?.id === selectedStorage.id
+      ? storageBaseline
+      : {
+        id: selectedStorage.id,
+        name: selectedStorage.name,
+        description: selectedStorage.description,
+        structureRevision: selectedStorage.structure_revision,
+      };
     void runPending(
       pendingKey("update", "storage", selectedStorage.id),
-      () => onUpdateStorage(selectedStorage.id, payload),
+      async () => {
+        const saved = await onUpdateStorage(selectedStorage.id, {
+          ...payload,
+          expected_name: baseline.name,
+          expected_description: baseline.description,
+          expected_structure_revision: baseline.structureRevision,
+        });
+        if (saved) {
+          const nextBaseline = {
+            id: saved.id,
+            name: saved.name,
+            description: saved.description,
+            structureRevision: saved.structure_revision,
+          };
+          setStorageBaseline(nextBaseline);
+          setEditName((current) => current === name ? saved.name : current);
+          setEditDescription((current) => current === (payload.description ?? "") ? saved.description ?? "" : current);
+        }
+        return saved;
+      },
     );
   };
 
@@ -157,14 +216,40 @@ export function StorageStructureManager({
     if (!name) return;
     if (creationDraft?.type === "category") {
       void runPending(pendingKey("create", "category", creationDraft.storageId), async () => {
-        if (await onCreateCategory(creationDraft.storageId, { name })) setCreationDraft(null);
+        if (await onCreateCategory(creationDraft.storageId, {
+          name,
+          expected_structure_revision: creationDraft.structureRevision,
+        })) setCreationDraft(null);
+        return null;
       });
       return;
     }
     if (!selectedStorage || !selectedCategory) return;
+    const baseline = categoryBaseline?.id === selectedCategory.id
+      ? categoryBaseline
+      : {
+        id: selectedCategory.id,
+        name: selectedCategory.name,
+        structureRevision: selectedStorage.structure_revision,
+      };
     void runPending(
       pendingKey("update", "category", `${selectedStorage.id}/${selectedCategory.id}`),
-      () => onUpdateCategory(selectedStorage.id, selectedCategory.id, { name }),
+      async () => {
+        const saved = await onUpdateCategory(selectedStorage.id, selectedCategory.id, {
+          name,
+          expected_name: baseline.name,
+          expected_structure_revision: baseline.structureRevision,
+        });
+        if (saved) {
+          setCategoryBaseline({
+            id: saved.category.id,
+            name: saved.category.name,
+            structureRevision: saved.structure_revision,
+          });
+          setEditCategoryName((current) => current === name ? saved.category.name : current);
+        }
+        return saved;
+      },
     );
   };
 
@@ -185,6 +270,17 @@ export function StorageStructureManager({
     setEditName(selectedStorage?.name ?? "");
     setEditDescription(selectedStorage?.description ?? "");
     setEditCategoryName(selectedCategory?.name ?? "");
+    setStorageBaseline(selectedStorage ? {
+      id: selectedStorage.id,
+      name: selectedStorage.name,
+      description: selectedStorage.description,
+      structureRevision: selectedStorage.structure_revision,
+    } : null);
+    setCategoryBaseline(selectedCategory ? {
+      id: selectedCategory.id,
+      name: selectedCategory.name,
+      structureRevision: selectedStorage!.structure_revision,
+    } : null);
   };
 
   const treePanel = (
@@ -215,14 +311,13 @@ export function StorageStructureManager({
               </Button>
               <Button
                 size="icon-sm"
-                variant="ghost"
-                className="storage-button--danger"
+                variant="destructive"
                 aria-label={labels.delete}
                 loading={pendingKeys.has(pendingKey("delete", "storage", storage.id))}
                 onClick={() => {
-                  void runPending(
-                    pendingKey("delete", "storage", storage.id),
-                    () => onDeleteStorage(storage.id),
+                    void runPending(
+                      pendingKey("delete", "storage", storage.id),
+                    () => onDeleteStorage(storage.id, storage.structure_revision),
                   );
                 }}
               >
@@ -243,14 +338,13 @@ export function StorageStructureManager({
                 </button>
                 <Button
                   size="icon-sm"
-                  variant="ghost"
-                  className="storage-button--danger"
+                  variant="destructive"
                   aria-label={labels.deleteCategory}
                   loading={pendingKeys.has(pendingKey("delete", "category", `${storage.id}/${category.id}`))}
                   onClick={() => {
                     void runPending(
                       pendingKey("delete", "category", `${storage.id}/${category.id}`),
-                      () => onDeleteCategory(storage.id, category.id),
+                      () => onDeleteCategory(storage.id, category.id, storage.structure_revision),
                     );
                   }}
                 >

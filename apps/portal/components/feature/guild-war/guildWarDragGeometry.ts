@@ -16,8 +16,13 @@ import {
  */
 
 /* 投放目标只有列和回收区，行不是目标。指针在画面上时就按指针判，键盘拖拽没有指针，退到按中心判。 */
-export const guildWarCollisionDetection: CollisionDetection = (args) =>
-  args.pointerCoordinates ? pointerWithin(args) : closestCenter(args);
+export const guildWarCollisionDetection: CollisionDetection = (args) => {
+  if (!args.pointerCoordinates) return closestCenter(args);
+  const collisions = pointerWithin(args);
+  const trashCollision = collisions.find(({ id }) => id === "trash-zone");
+  if (!trashCollision) return collisions;
+  return [trashCollision, ...collisions.filter(({ id }) => id !== "trash-zone")];
+};
 
 /*
  * 每次移动都重新量投放矩形。默认只在拖起那一刻量一次，而队伍区是个滚动容器：

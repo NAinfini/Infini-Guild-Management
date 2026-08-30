@@ -1,16 +1,39 @@
-import type { PortalVisualTheme } from "./visual/themes";
+import {
+  resolveVisualThemeAssetSource,
+  type PortalVisualTheme,
+  type VisualColorMode,
+} from "./visual/themes";
 
 export function applySplashVisualTheme(
   theme: Pick<PortalVisualTheme, "id" | "mark" | "scenes">,
+  colorMode: VisualColorMode,
 ): void {
-  document.getElementById("splash")?.setAttribute("data-visual-theme", theme.id);
+  document.documentElement.dataset.theme = colorMode;
+
+  const splash = document.getElementById("splash");
+  splash?.setAttribute("data-visual-theme", theme.id);
+  splash?.setAttribute("data-visual-color-mode", colorMode);
+
+  const desktopSource = resolveVisualThemeAssetSource(
+    theme.scenes.access.login.desktop,
+    colorMode,
+  ).src;
+  const mobileSource = resolveVisualThemeAssetSource(
+    theme.scenes.access.login.mobile,
+    colorMode,
+  ).src;
 
   const scene = document.getElementById("splash-scene");
-  if (scene instanceof HTMLImageElement) scene.src = theme.scenes.access.desktop.src;
+  if (scene instanceof HTMLImageElement) scene.src = desktopSource;
 
-  const mobileScene = document.getElementById("splash-scene-mobile");
-  if (mobileScene instanceof HTMLSourceElement) {
-    mobileScene.srcset = theme.scenes.access.mobile.src;
+  for (const sourceId of ["splash-scene-light-desktop"]) {
+    const source = document.getElementById(sourceId);
+    if (source instanceof HTMLSourceElement) source.srcset = desktopSource;
+  }
+
+  for (const sourceId of ["splash-scene-light-mobile", "splash-scene-mobile"]) {
+    const source = document.getElementById(sourceId);
+    if (source instanceof HTMLSourceElement) source.srcset = mobileSource;
   }
 
   const emblem = document.getElementById("splash-emblem");

@@ -1,6 +1,7 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { RecurringTemplateFormContent } from "./RecurringTemplateFormContent";
 import type { RecurringTemplate } from "@guild/shared";
@@ -12,13 +13,20 @@ vi.mock("react-i18next", () => ({
       "field.title": "Title",
       "filter.type": "Type",
       "recurring.field.startTime": "Start Time",
+      "recurring.field.durationUnitLabel": "Duration unit",
       "button.cancel": "Cancel",
     }[key] ?? key),
     i18n: { language: "en" },
   }),
 }));
 
-function renderForm(onDirtyChange = vi.fn()) {
+function renderForm(
+  onDirtyChange = vi.fn(),
+  media: Partial<Pick<
+    ComponentProps<typeof RecurringTemplateFormContent>,
+    "attachmentItems" | "onAttachmentsChange" | "onFilesSelected" | "onAttachmentDelete"
+  >> = {},
+) {
   return render(
     <>
       <RecurringTemplateFormContent
@@ -27,6 +35,10 @@ function renderForm(onDirtyChange = vi.fn()) {
         confirmLoading={false}
         onCancel={() => {}}
         onSave={() => {}}
+        attachmentItems={media.attachmentItems ?? []}
+        onAttachmentsChange={media.onAttachmentsChange ?? vi.fn()}
+        onFilesSelected={media.onFilesSelected ?? vi.fn()}
+        onAttachmentDelete={media.onAttachmentDelete ?? vi.fn()}
         onDirtyChange={onDirtyChange}
         stickyActions
       />
@@ -70,6 +82,7 @@ describe("RecurringTemplateFormContent", () => {
     await user.selectOptions(screen.getByLabelText("Type"), "social");
     await user.type(screen.getByLabelText("Start Time"), "10:00");
 
+    expect(screen.getByLabelText("Duration unit")).toHaveValue("hours");
     expect(createButton).toBeEnabled();
   });
 
@@ -84,6 +97,21 @@ describe("RecurringTemplateFormContent", () => {
     expect(document.querySelector(".rtf-actions--sticky")).toBeInTheDocument();
   });
 
+  it("shows saved template images and forwards newly selected files", () => {
+    const onFilesSelected = vi.fn();
+    const view = renderForm(vi.fn(), {
+      attachmentItems: [{ id: "media-1", src: "/api/media/media-1", alt: "Template image 1" }],
+      onFilesSelected,
+    });
+
+    expect(screen.getByRole("img", { name: "Template image 1" })).toBeInTheDocument();
+    const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).not.toBeNull();
+    const file = new File(["image"], "raid.png", { type: "image/png" });
+    fireEvent.change(input!, { target: { files: [file] } });
+    expect(onFilesSelected).toHaveBeenCalledWith([file]);
+  });
+
   it("preserves a dirty draft when the same template is refreshed", async () => {
     const user = userEvent.setup();
     const onDirtyChange = vi.fn();
@@ -96,6 +124,10 @@ describe("RecurringTemplateFormContent", () => {
           confirmLoading={false}
           onCancel={() => {}}
           onSave={() => {}}
+          attachmentItems={[]}
+          onAttachmentsChange={vi.fn()}
+          onFilesSelected={vi.fn()}
+          onAttachmentDelete={vi.fn()}
           onDirtyChange={onDirtyChange}
         />
       </>,
@@ -113,6 +145,10 @@ describe("RecurringTemplateFormContent", () => {
           confirmLoading={false}
           onCancel={() => {}}
           onSave={() => {}}
+          attachmentItems={[]}
+          onAttachmentsChange={vi.fn()}
+          onFilesSelected={vi.fn()}
+          onAttachmentDelete={vi.fn()}
           onDirtyChange={onDirtyChange}
         />
       </>,

@@ -23,7 +23,6 @@ export type SidebarNavigationItem = {
   id: string;
   labelKey: string;
   icon: ComponentType<IconProps>;
-  isNew?: boolean;
   rightSection?: ReactNode;
 };
 
@@ -159,7 +158,6 @@ export function AppSidebar({
                       >
                         <span className="app-nav-icon-wrap">
                           <span className="app-nav-icon"><Icon size={18} /></span>
-                          {item.isNew ? <span className="app-nav-new-dot" aria-hidden="true" /> : null}
                         </span>
                         {!isSidebarCollapsed ? <span className="app-nav-item__label">{label}</span> : null}
                         {!isSidebarCollapsed && item.rightSection ? (

@@ -3,7 +3,6 @@ BEFORE UPDATE ON audit_log
 BEGIN
   SELECT RAISE(ABORT, 'audit rows are immutable');
 END;
-
 CREATE TRIGGER audit_archive_items_pending_only
 BEFORE INSERT ON audit_archive_items
 WHEN NOT EXISTS (
@@ -56,11 +55,4 @@ WHEN OLD.status = 'pending' AND NEW.status = 'ready'
   )
 BEGIN
   SELECT RAISE(ABORT, 'audit archive item count mismatch');
-END;
-
-CREATE TRIGGER audit_archives_ready_delete_forbidden
-BEFORE DELETE ON audit_archives
-WHEN OLD.status = 'ready'
-BEGIN
-  SELECT RAISE(ABORT, 'ready audit archives cannot be deleted');
 END;

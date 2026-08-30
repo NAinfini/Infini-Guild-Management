@@ -9,6 +9,8 @@ import { useKeyedPending } from "@portal/hooks/useKeyedPending";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
+import { RecoverableImage } from "../../shared/RecoverableImage";
+import { GalleryLikeButton } from "./GalleryLikeButton";
 import type { GalleryItem } from "./shared";
 
 type GalleryGridProps = {
@@ -17,6 +19,7 @@ type GalleryGridProps = {
   isError: boolean;
   isExternalView: boolean;
   canModerate: boolean;
+  canLike: boolean;
   selectedIds: string[];
   emptyTitle: string;
   emptyDescription?: string;
@@ -32,8 +35,9 @@ type GalleryGridProps = {
   onResetFilters: () => void;
   onAddMedia: () => void;
   onToggleSelect: (id: string) => void;
-  onDelete: (id: string) => Promise<boolean>;
-  onOpenLightbox: (id: string) => void;
+  onDelete: (item: GalleryItem) => Promise<boolean>;
+  onToggleLike: (id: string, liked: boolean) => Promise<boolean>;
+  onOpenLightbox: (id: string, trigger: HTMLButtonElement) => void;
   resolveImageUrl: (mediaId: string, variant?: "view" | "full") => string;
   formatDateTime: (iso: string) => string;
   actionDeleteLabel: string;
@@ -80,6 +84,7 @@ export function GalleryGrid({
   isError,
   isExternalView,
   canModerate,
+  canLike,
   selectedIds,
   emptyTitle,
   emptyDescription,
@@ -96,6 +101,7 @@ export function GalleryGrid({
   onAddMedia,
   onToggleSelect,
   onDelete,
+  onToggleLike,
   onOpenLightbox,
   resolveImageUrl,
   formatDateTime,
@@ -104,7 +110,7 @@ export function GalleryGrid({
   const { t } = useTranslation("gallery");
   const { pendingKeys, runPending } = useKeyedPending();
   const getOpenLabel = (item: GalleryItem) => {
-    const name = item.caption ?? item.id;
+    const name = item.title || item.id;
     if (isExternalView) {
       return t(item.type === "image" ? "aria.openImage" : "aria.openVideo", { name });
     }
@@ -188,18 +194,20 @@ export function GalleryGrid({
             <div className="gallery-card__inner">
               <button
                 type="button"
-                onClick={() => onOpenLightbox(item.id)}
+                onClick={(event) => onOpenLightbox(item.id, event.currentTarget)}
                 className="gallery-preview-button"
                 aria-label={getOpenLabel(item)}
               >
                 <div className="gallery-preview-media">
                   {item.type === "image" ? (
-                    <img
-                      src={resolveImageUrl(item.media_id)}
-                      alt={item.caption ?? item.id}
+                    <RecoverableImage
+                      source={resolveImageUrl(item.media_id)}
+                      alt={item.title || item.id}
                       loading="lazy"
                       decoding="async"
                       className="gallery-preview-img"
+                      fallbackClassName="gallery-preview-image-fallback"
+                      failureLabel={t("common:media.imageUnavailable")}
                     />
                   ) : (
                     <>
@@ -209,54 +217,70 @@ export function GalleryGrid({
                       </span>
                     </>
                   )}
-                  {!isExternalView ? (
+                  <span className="gallery-preview-copy">
                     <span className="gallery-preview-uploader">
                       {item.uploaded_by_name ?? item.uploaded_by}
                     </span>
-                  ) : null}
+                    <strong className="gallery-preview-title">{item.title || item.id}</strong>
+                    {item.description ? (
+                      <span className="gallery-preview-description">{item.description}</span>
+                    ) : null}
+                  </span>
                 </div>
               </button>
               <div className="gallery-card__footer">
                 <div className="gallery-card__meta">
-                  <p className="gallery-card__caption" title={item.caption ?? "-"}>
-                    {item.caption ?? "-"}
-                  </p>
                   <time className="gallery-card__date" dateTime={item.created_at}>
                     {formatDateTime(item.created_at)}
                   </time>
                 </div>
-                {canModerate ? (
-                  <div className="gallery-card__actions">
-                    <label className="gallery-card__select-target">
-                      <Checkbox
-                        checked={selectedIds.includes(item.id)}
-                        onCheckedChange={() => onToggleSelect(item.id)}
-                        aria-label={t("aria.selectItem", { id: item.id })}
-                      />
-                    </label>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={(
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="icon-lg"
-                            className="gallery-card__delete"
-                            aria-label={actionDeleteLabel}
-                            loading={pendingKeys.has(`delete:gallery:${item.id}`)}
-                          />
-                        )}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void runPending(`delete:gallery:${item.id}`, () => onDelete(item.id));
-                        }}
-                      >
-                        <TrashIcon size={14} />
-                      </TooltipTrigger>
-                      <TooltipContent>{actionDeleteLabel}</TooltipContent>
-                    </Tooltip>
-                  </div>
-                ) : null}
+                <div className="gallery-card__actions">
+                  <GalleryLikeButton
+                    liked={item.liked_by_viewer}
+                    likeCount={item.like_count}
+                    canLike={canLike}
+                    loading={pendingKeys.has(`like:gallery:${item.id}`)}
+                    className="gallery-like-button--card"
+                    onToggle={() => {
+                      void runPending(
+                        `like:gallery:${item.id}`,
+                        () => onToggleLike(item.id, item.liked_by_viewer),
+                      );
+                    }}
+                  />
+                  {canModerate ? (
+                    <>
+                      <label className="gallery-card__select-target">
+                        <Checkbox
+                          checked={selectedIds.includes(item.id)}
+                          onCheckedChange={() => onToggleSelect(item.id)}
+                          aria-label={t("aria.selectItem", { id: item.id })}
+                        />
+                      </label>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={(
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="icon-lg"
+                              className="gallery-card__delete"
+                              aria-label={actionDeleteLabel}
+                              loading={pendingKeys.has(`delete:gallery:${item.id}`)}
+                            />
+                          )}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void runPending(`delete:gallery:${item.id}`, () => onDelete(item));
+                          }}
+                        >
+                          <TrashIcon size={14} />
+                        </TooltipTrigger>
+                        <TooltipContent>{actionDeleteLabel}</TooltipContent>
+                      </Tooltip>
+                    </>
+                  ) : null}
+                </div>
               </div>
             </div>
           </Card>

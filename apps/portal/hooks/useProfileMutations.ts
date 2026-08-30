@@ -11,16 +11,27 @@ import { logout as requestLogout } from "../services/AuthService";
 import {
   deleteProfileAudio,
   deleteProfileImage,
-  updateMyProfile,
+  updateOwnProfile,
 } from "../services/UserService";
+import type { ProfileAudioUploadResult, ProfileImageUploadResult } from "../services/UserService";
 import { useAuthStore } from "../stores/auth";
 import { notifySuccess } from "../utils/notifications";
 import { transitionSession } from "../session-transition";
 
 type UseProfileMutationsParams = {
   form: ProfileFormStateController;
-  imageUploader: UseMediaUploadState<unknown>;
-  audioUploader: UseMediaUploadState<unknown>;
+  imageUploader: UseMediaUploadState<ProfileImageUploadResult>;
+  audioUploader: UseMediaUploadState<ProfileAudioUploadResult>;
+};
+
+type MyProfileDetailCache = {
+  user: User;
+  profile: MemberProfile;
+  badges: UserBadge[];
+  edit_revisions?: {
+    user_revision_token: string;
+    profile_revision_token: string;
+  };
 };
 
 export function useProfileMutations({ form, imageUploader, audioUploader }: UseProfileMutationsParams) {
@@ -38,6 +49,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   const saveProfileMutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Missing user session");
+      if (!form.profileRevisionToken) throw new Error("Missing profile revision token");
       /* 连同这次送出去的草稿快照一起回传：服务端会规范化字段（称号 HTML 要过
          白名单清洗），acceptServerProfile 靠它区分「该校准」和「用户刚改过、
          不能覆盖」的字段。 */
@@ -51,7 +63,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
         imageList: form.imageList,
         availabilityData: form.availabilityData,
       };
-      const profile = await updateMyProfile(user.id, {
+      const { profile, profileRevisionToken } = await updateOwnProfile(user.id, {
         display_name: submitted.displayName,
         bio: submitted.bio || null,
         title_html: submitted.titleHtml || null,
@@ -60,26 +72,28 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
         video_urls: submitted.videoList,
         images: submitted.imageList,
         availability: submitted.availabilityData,
-      });
-      return { profile, submitted };
+      }, form.profileRevisionToken);
+      return { profile, submitted, profileRevisionToken };
     },
-    onSuccess: ({ profile: updatedProfile, submitted }) => {
-      form.acceptServerProfile(updatedProfile, submitted.displayName, submitted);
+    onSuccess: ({ profile: updatedProfile, submitted, profileRevisionToken }) => {
+      form.acceptServerProfile(updatedProfile, submitted.displayName, submitted, profileRevisionToken);
       if (user && sessionScope) {
         setSession({ ...user, display_name: submitted.displayName }, updatedProfile, sessionScope);
       } else {
         setProfile(updatedProfile);
       }
-      queryClient.setQueryData<{
-        user: User;
-        profile: MemberProfile;
-        badges: UserBadge[];
-      }>(queryKeys.myProfile.detail(user?.id), (current) => (
+      queryClient.setQueryData<MyProfileDetailCache>(queryKeys.myProfile.detail(user?.id), (current) => (
         current
           ? {
               ...current,
               user: { ...current.user, display_name: submitted.displayName },
               profile: updatedProfile,
+              edit_revisions: current.edit_revisions
+                ? {
+                    ...current.edit_revisions,
+                    profile_revision_token: profileRevisionToken,
+                  }
+                : current.edit_revisions,
             }
           : current
       ));
@@ -97,10 +111,11 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   const removeImageMutation = useMutation({
     mutationFn: (mediaId: string) => {
       if (!user) throw new Error("Missing user session");
-      return deleteProfileImage(user.id, mediaId);
+      if (!form.profileRevisionToken) throw new Error("Missing profile revision token");
+      return deleteProfileImage(user.id, mediaId, form.profileRevisionToken);
     },
-    onSuccess: async (_data, mediaId) => {
-      form.setImageList((current) => current.filter((item) => item !== mediaId));
+    onSuccess: async (result, mediaId) => {
+      form.acceptOwnImageRemoval(mediaId, result.profileRevisionToken);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
       notifySuccess(t("message.imageRemoved"));
     },
@@ -116,9 +131,11 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   const removeAudioMutation = useMutation({
     mutationFn: () => {
       if (!user) throw new Error("Missing user session");
-      return deleteProfileAudio(user.id);
+      if (!form.profileRevisionToken) throw new Error("Missing profile revision token");
+      return deleteProfileAudio(user.id, form.profileRevisionToken);
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      form.acceptOwnMediaRevision(result.profileRevisionToken);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
       notifySuccess(t("message.audioRemoved"));
     },
@@ -148,6 +165,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     try {
       const uploaded = await imageUploader.upload();
       if (!uploaded) return;
+      form.acceptOwnImageUpload(uploaded.media_ids, uploaded.profileRevisionToken);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
       notifySuccess(t("message.imagesUploaded"));
     } catch (error) {
@@ -160,6 +178,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     try {
       const uploaded = await audioUploader.upload();
       if (!uploaded) return;
+      form.acceptOwnMediaRevision(uploaded.profileRevisionToken);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
       notifySuccess(t("message.audioUploaded"));
     } catch (error) {

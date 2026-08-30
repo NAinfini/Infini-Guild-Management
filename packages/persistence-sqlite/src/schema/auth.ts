@@ -100,7 +100,7 @@ export const inviteLinks = sqliteTable(
   "invite_links",
   {
     id: text("id").primaryKey(),
-    tokenDigest: text("token_digest").notNull(),
+    code: text("code").notNull(),
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -114,29 +114,19 @@ export const inviteLinks = sqliteTable(
     revokedAt: text("revoked_at"),
   },
   (table) => [
-    uniqueIndex("ux_invite_links_token_digest").on(table.tokenDigest),
+    uniqueIndex("ux_invite_links_code_nocase").on(sql`${table.code} COLLATE NOCASE`),
     index("idx_invite_links_created").on(table.createdAt, table.id),
     index("idx_invite_links_status").on(table.revokedAt, table.expiresAt, table.usedCount, table.maxUses),
     index("idx_invite_links_role").on(table.roleId),
     check("invite_links_max_uses_positive", sql`${table.maxUses} > 0`),
     check(
+      "invite_links_code_valid",
+      sql`length(${table.code}) = 10 AND ${table.code} NOT GLOB '*[^A-Z0-9]*'`,
+    ),
+    check(
       "invite_links_used_count_valid",
       sql`${table.usedCount} >= 0 AND ${table.usedCount} <= ${table.maxUses}`,
     ),
-  ],
-);
-
-export const loginFailures = sqliteTable(
-  "login_failures",
-  {
-    loginName: text("login_name").primaryKey(),
-    failCount: integer("fail_count").notNull().default(0),
-    lockedUntil: text("locked_until"),
-    lastFailedAt: text("last_failed_at").notNull().default(nowUtc),
-  },
-  (table) => [
-    index("idx_login_failures_last_failed").on(table.lastFailedAt),
-    check("login_failures_count_nonnegative", sql`${table.failCount} >= 0`),
   ],
 );
 
@@ -195,7 +185,10 @@ export const oauthChallenges = sqliteTable(
     authRevision: integer("auth_revision"),
   },
   (table) => [
-    index("idx_oauth_challenges_expiry").on(table.expiresAt),
+    index("idx_oauth_challenges_cleanup_expiry").on(table.expiresAt, table.stateDigest),
+    index("idx_oauth_challenges_cleanup_consumed")
+      .on(table.consumedAt, table.stateDigest)
+      .where(sql`${table.consumedAt} IS NOT NULL`),
     check("oauth_challenges_provider_valid", sql`${table.provider} IN ('google', 'discord', 'kook', 'wechat')`),
     check("oauth_challenges_purpose_valid", sql`${table.purpose} IN ('login', 'link')`),
     check(
@@ -234,6 +227,10 @@ export const emailVerificationChallenges = sqliteTable(
   (table) => [
     index("idx_email_verification_challenges_user").on(table.userId, table.expiresAt),
     index("idx_email_verification_challenges_user_last_sent").on(table.userId, table.lastSentAt),
+    index("idx_email_verification_cleanup_expiry").on(table.expiresAt, table.tokenDigest),
+    index("idx_email_verification_cleanup_consumed")
+      .on(table.consumedAt, table.tokenDigest)
+      .where(sql`${table.consumedAt} IS NOT NULL`),
     check("email_verification_challenges_sent_count", sql`${table.sentCount} >= 1`),
   ],
 );

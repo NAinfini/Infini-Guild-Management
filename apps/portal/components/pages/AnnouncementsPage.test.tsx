@@ -1,14 +1,17 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { ApiRequestError } from "../../api/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AnnouncementsPage } from "./AnnouncementsPage";
 
 const controller = vi.hoisted(() => ({
   search: "",
+  setSearch: vi.fn(),
   statusFilter: undefined as string | undefined,
-  pinnedFilter: false,
+  setStatusFilter: vi.fn(),
+  categoryFilter: undefined as string | undefined,
+  setCategoryFilter: vi.fn(),
+  categoryOptions: ["announcement", "event", "war", "important"],
   sortOrder: "updated_desc" as "updated_desc" | "updated_asc",
   setSortOrder: vi.fn(),
   canEdit: true,
@@ -17,23 +20,57 @@ const controller = vi.hoisted(() => ({
   handleCreateByStatus: vi.fn(),
   handleCloseEditor: vi.fn(),
   setSelectedId: vi.fn(async () => true),
-  selectedId: "announcement-1" as string | null,
+  selectedId: null as string | null,
   isCreating: false,
+  isBusy: false,
+  savePending: false,
+  deletePending: false,
+  isDirty: false,
   isPublishReady: true,
+  title: "",
+  setTitle: vi.fn(),
+  category: "announcement",
+  setCategory: vi.fn(),
+  bodyJson: "{}",
+  setBodyJson: vi.fn(),
+  pinned: false,
+  setPinned: vi.fn(),
+  scheduleEnabled: false,
+  setScheduleEnabled: vi.fn(),
+  publishAt: "",
+  setPublishAt: vi.fn(),
+  draftEnabled: false,
+  setDraftEnabled: vi.fn(),
+  archived: false,
+  setArchived: vi.fn(),
+  handleFinish: vi.fn(),
+  handleDelete: vi.fn(),
+  handleUploadAnnouncementImages: vi.fn(),
   attachments: [],
   attachmentUploading: false,
   attachmentMaxBytes: 10 * 1024 * 1024,
   attachmentQuota: 5,
   handleUploadAnnouncementAttachment: vi.fn(),
   handleRemoveAnnouncementAttachment: vi.fn(),
-  rows: [],
-  listQuery: { isError: false, isLoading: false },
-  detailQuery: { isError: false, isLoading: false },
-}));
-const responsive = vi.hoisted(() => ({ mobile: false }));
-
-vi.mock("../../hooks/useMediaQuery", () => ({
-  useMediaQuery: () => responsive.mobile,
+  rows: [
+    {
+      id: "announcement-1",
+      title: "Weekly briefing",
+      category: "announcement",
+      view_count: 4,
+    },
+  ],
+  pinnedRows: [
+    { id: "pinned-1", title: "Pinned one", excerpt: "Pinned one summary", category: "announcement", view_count: 1, author: { display_name: "Author" }, publish_at: null, created_at: "2026-01-01T00:00:00.000Z", preview_media_id: null },
+    { id: "pinned-2", title: "Pinned two", excerpt: "Pinned two summary", category: "event", view_count: 2, author: { display_name: "Author" }, publish_at: null, created_at: "2026-01-01T00:00:00.000Z", preview_media_id: null },
+    { id: "pinned-3", title: "Pinned three", excerpt: "Pinned three summary", category: "war", view_count: 3, author: { display_name: "Author" }, publish_at: null, created_at: "2026-01-01T00:00:00.000Z", preview_media_id: null },
+  ],
+  listHasMore: false,
+  listLoadingMore: false,
+  onLoadMoreList: vi.fn(),
+  selected: null as { id: string } | null,
+  listQuery: { isError: false, isLoading: false, isFetching: false, refetch: vi.fn() },
+  detailQuery: { isError: false, isLoading: false, isFetching: false, error: null as unknown, refetch: vi.fn() },
 }));
 
 vi.mock("../../hooks/useAnnouncementsController", () => ({
@@ -49,43 +86,52 @@ vi.mock("../../context/PageHeaderContext", () => ({
 }));
 
 vi.mock("../feature/announcements/AnnouncementFiltersCard", () => ({
-  AnnouncementFiltersCard: ({
-    sortOrder,
-    onSortOrderChange,
-  }: {
-    sortOrder: string;
-    onSortOrderChange: (value: "updated_desc" | "updated_asc") => void;
-  }) => (
-    <div data-testid="announcement-filters" data-sort={sortOrder}>
-      <button type="button" onClick={() => onSortOrderChange("updated_desc")}>
-        sort newest
-      </button>
-    </div>
+  AnnouncementFiltersCard: ({ sortOrder }: { sortOrder: string }) => (
+    <div data-testid="announcement-filters" data-sort-order={sortOrder} />
   ),
 }));
 
 vi.mock("../feature/announcements/AnnouncementListCard", () => ({
   AnnouncementListCard: ({
+    rows,
     emptyText,
     onSelect,
-    selectedId,
   }: {
+    rows: Array<{ id: string; title: string }>;
     emptyText: ReactNode;
     onSelect: (id: string) => void;
-    selectedId: string | null;
   }) => (
-    <div data-testid="announcement-list">
-      {emptyText}
-      <button type="button" onClick={() => onSelect("announcement-2")}>open announcement</button>
-      {selectedId ? (
-        <button type="button" onClick={() => onSelect(selectedId)}>open selected announcement</button>
-      ) : null}
-    </div>
+    <section data-testid="announcement-list">
+      {rows.length === 0 ? emptyText : rows.map((row) => (
+        <button key={row.id} type="button" onClick={() => onSelect(row.id)}>
+          {row.title}
+        </button>
+      ))}
+    </section>
   ),
 }));
 
 vi.mock("../feature/announcements/AnnouncementDetailCard", () => ({
-  AnnouncementDetailCard: () => <div data-testid="announcement-detail" />,
+  AnnouncementDetailCard: ({
+    navigation,
+    selectedId,
+    category,
+  }: {
+    navigation: ReactNode;
+    selectedId: string | null;
+    category: string;
+  }) => (
+    <section data-testid="announcement-detail" data-selected-id={selectedId ?? ""}>
+      {navigation}
+      <span>{category}</span>
+    </section>
+  ),
+}));
+
+vi.mock("@portal/components/shared/ContentPreviewCard", () => ({
+  ContentPreviewCard: ({ title, onOpen }: { title: string; onOpen: () => void }) => (
+    <button type="button" data-testid="pinned-announcement" onClick={onOpen}>{title}</button>
+  ),
 }));
 
 vi.mock("../layout/PageLayout", () => ({
@@ -115,155 +161,201 @@ function renderPage() {
   return render(<AnnouncementsPage />);
 }
 
-describe("AnnouncementsPage empty state", () => {
+describe("AnnouncementsPage", () => {
   beforeEach(() => {
     controller.search = "";
     controller.statusFilter = undefined;
-    controller.pinnedFilter = false;
+    controller.categoryFilter = undefined;
     controller.sortOrder = "updated_desc";
-    controller.setSortOrder.mockReset();
     controller.canEdit = true;
     controller.canCreate = true;
-    controller.resetFilters.mockReset();
-    controller.handleCreateByStatus.mockReset();
-    controller.handleCloseEditor.mockReset();
-    controller.setSelectedId.mockReset();
-    controller.setSelectedId.mockResolvedValue(true);
-    controller.selectedId = "announcement-1";
+    controller.selectedId = null;
+    controller.selected = null;
     controller.isCreating = false;
-    controller.detailQuery.isLoading = false;
-    responsive.mobile = false;
+    controller.isBusy = false;
+    controller.category = "announcement";
+    controller.listQuery = { isError: false, isLoading: false, isFetching: false, refetch: vi.fn() };
+    controller.detailQuery = { isError: false, isLoading: false, isFetching: false, error: null, refetch: vi.fn() };
+    controller.rows = [{ id: "announcement-1", title: "Weekly briefing", category: "announcement", view_count: 4 }];
+    controller.pinnedRows = [
+      { id: "pinned-1", title: "Pinned one", excerpt: "Pinned one summary", category: "announcement", view_count: 1, author: { display_name: "Author" }, publish_at: null, created_at: "2026-01-01T00:00:00.000Z", preview_media_id: null },
+      { id: "pinned-2", title: "Pinned two", excerpt: "Pinned two summary", category: "event", view_count: 2, author: { display_name: "Author" }, publish_at: null, created_at: "2026-01-01T00:00:00.000Z", preview_media_id: null },
+      { id: "pinned-3", title: "Pinned three", excerpt: "Pinned three summary", category: "war", view_count: 3, author: { display_name: "Author" }, publish_at: null, created_at: "2026-01-01T00:00:00.000Z", preview_media_id: null },
+    ];
+    for (const value of Object.values(controller)) {
+      if (typeof value === "function") value.mockReset?.();
+    }
+    controller.setSelectedId.mockResolvedValue(true);
   });
 
-  it("offers creation when the resource is globally empty", () => {
+  it("renders the catalog with three pinned previews and a category rail", () => {
     renderPage();
 
-    const emptyState = screen.getByText("empty").closest(".empty-state");
-    expect(emptyState).not.toBeNull();
-    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", {
-      name: "action.newAnnouncement",
-    }));
+    expect(screen.getByTestId("page-layout")).toHaveAttribute("data-workspace-mode", "scroll");
+    expect(screen.getByTestId("page-toolbar")).toContainElement(screen.getByTestId("announcement-filters"));
+    expect(screen.getAllByTestId("pinned-announcement")).toHaveLength(3);
+    expect(screen.getByTestId("announcement-list")).toBeInTheDocument();
+    expect(screen.queryByTestId("announcement-detail")).not.toBeInTheDocument();
+    expect(document.querySelector(".content-pinned-section")).toHaveAttribute("data-slot", "card");
 
-    expect(controller.handleCreateByStatus).toHaveBeenCalledOnce();
+    const rail = document.querySelector<HTMLElement>(".content-category-rail");
+    expect(rail).not.toBeNull();
+    expect(within(rail as HTMLElement).getByRole("button", { name: /^category\.all/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(rail as HTMLElement).getByRole("button", { name: "category.event" })).toBeInTheDocument();
   });
 
-  it("offers filter reset instead of creation when filters hide all results", () => {
+  it("sizes the pinned grid from its item count and hides it when empty", () => {
+    const pinnedRows = [...controller.pinnedRows];
+
+    for (const count of [1, 2, 3]) {
+      controller.pinnedRows = pinnedRows.slice(0, count);
+      const { container, unmount } = renderPage();
+
+      expect(container.querySelector(".content-pinned-grid")).toHaveAttribute("data-count", String(count));
+      unmount();
+    }
+
+    controller.pinnedRows = [];
+    const { container } = renderPage();
+    expect(container.querySelector(".content-pinned-section")).not.toBeInTheDocument();
+    controller.pinnedRows = pinnedRows;
+  });
+
+  it("does not repeat a pinned announcement in the catalog list", () => {
+    controller.rows = [
+      { id: "pinned-1", title: "Pinned one", category: "announcement", view_count: 1 },
+      { id: "announcement-1", title: "Weekly briefing", category: "announcement", view_count: 4 },
+    ];
+
+    renderPage();
+
+    expect(within(screen.getByTestId("announcement-list")).queryByText("Pinned one")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("announcement-list")).getByText("Weekly briefing")).toBeInTheDocument();
+  });
+
+  it("hides the pinned section while filtering and keeps matching pinned announcements in the results", () => {
+    controller.search = "Pinned";
+    controller.rows = [
+      { id: "pinned-1", title: "Pinned one", category: "announcement", view_count: 1 },
+    ];
+
+    renderPage();
+
+    expect(screen.queryByTestId("pinned-announcement")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("announcement-list")).getByText("Pinned one")).toBeInTheDocument();
+  });
+
+  it("opens a pinned item and changes the category filter from the catalog", () => {
+    renderPage();
+
+    fireEvent.click(screen.getAllByTestId("pinned-announcement")[1]!);
+    expect(controller.setSelectedId).toHaveBeenCalledWith("pinned-2");
+
+    const rail = document.querySelector<HTMLElement>(".content-category-rail");
+    fireEvent.click(within(rail as HTMLElement).getByRole("button", { name: "category.event" }));
+    expect(controller.setCategoryFilter).toHaveBeenCalledWith("event");
+  });
+
+  it("offers filter reset, rather than creation, when the catalog is empty because of a filter", () => {
+    controller.rows = [];
     controller.search = "missing";
     renderPage();
 
     const emptyState = screen.getByText("empty.filtered").closest(".empty-state");
     expect(emptyState).not.toBeNull();
-    expect(within(emptyState as HTMLElement).queryByRole("button", {
-      name: "action.newAnnouncement",
-    })).not.toBeInTheDocument();
-    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", {
-      name: "action.resetFilters",
-    }));
-
+    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", { name: "action.resetFilters" }));
     expect(controller.resetFilters).toHaveBeenCalledOnce();
   });
 
-  it("does not expose creation to a user who can edit but cannot create", () => {
-    controller.canCreate = false;
+  it("renders an independent detail page and returns to the catalog", () => {
+    controller.selectedId = "announcement-1";
+    controller.selected = { id: "announcement-1" };
     renderPage();
 
-    const emptyState = screen.getByText("empty").closest(".empty-state");
-    expect(emptyState).not.toBeNull();
-    expect(within(emptyState as HTMLElement).queryByRole("button", {
-      name: "action.newAnnouncement",
-    })).not.toBeInTheDocument();
-  });
-
-  it("uses a list-first mobile flow and opens one detail task at a time", async () => {
-    responsive.mobile = true;
-    renderPage();
-
-    expect(screen.getByTestId("announcement-list")).toBeInTheDocument();
-    expect(screen.queryByTestId("announcement-detail")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "open announcement" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("announcement-detail")).toBeInTheDocument();
-    });
+    expect(screen.getByTestId("announcement-detail")).toHaveAttribute("data-selected-id", "announcement-1");
     expect(screen.queryByTestId("announcement-list")).not.toBeInTheDocument();
-    expect(controller.setSelectedId).toHaveBeenCalledWith("announcement-2");
+    expect(screen.queryByTestId("announcement-filters")).not.toBeInTheDocument();
+    expect(screen.getByTestId("announcement-detail")).toContainElement(
+      screen.getByRole("button", { name: "action.backToList" }),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "action.backToList" }));
-    await waitFor(() => {
-      expect(screen.getByTestId("announcement-list")).toBeInTheDocument();
-    });
-    expect(controller.handleCloseEditor).toHaveBeenCalledOnce();
+    expect(controller.setSelectedId).toHaveBeenCalledWith(null);
   });
 
-  it("opens a preselected announcement on the first mobile click without restarting selection", () => {
-    responsive.mobile = true;
-    controller.detailQuery.isLoading = true;
-    const page = renderPage();
+  it("shows visible and announced progress while a detail mutation is pending", () => {
+    controller.selectedId = "announcement-1";
+    controller.selected = { id: "announcement-1" };
+    controller.isBusy = true;
 
-    fireEvent.click(screen.getByRole("button", { name: "open selected announcement" }));
-
-    expect(screen.getByTestId("announcement-detail")).toBeInTheDocument();
-    expect(screen.queryByTestId("announcement-list")).not.toBeInTheDocument();
-    expect(controller.setSelectedId).not.toHaveBeenCalled();
-
-    controller.detailQuery.isLoading = false;
-    page.rerender(<AnnouncementsPage />);
-    expect(screen.getByTestId("announcement-detail")).toBeInTheDocument();
-    expect(screen.queryByTestId("announcement-list")).not.toBeInTheDocument();
-  });
-
-  it("wires announcement sort and treats a non-default sort as an active filter", () => {
-    controller.sortOrder = "updated_asc";
     renderPage();
 
-    expect(screen.getByTestId("announcement-filters")).toHaveAttribute(
-      "data-sort",
-      "updated_asc",
-    );
-    expect(screen.getByText("empty.filtered")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "sort newest" }));
-    const filteredEmptyState = screen.getByText("empty.filtered").closest(".empty-state");
-    expect(filteredEmptyState).not.toBeNull();
-    fireEvent.click(
-      within(filteredEmptyState as HTMLElement).getByRole("button", {
-        name: "action.resetFilters",
-      }),
-    );
-
-    expect(controller.setSortOrder).toHaveBeenCalledWith("updated_desc");
-    expect(controller.resetFilters).toHaveBeenCalledOnce();
+    const status = screen.getByRole("status", { name: "status.updating" });
+    expect(status.querySelector("span")).not.toBeNull();
   });
 
-  it("uses the shared toolbar and contained desktop workspace", () => {
-    const desktop = renderPage();
+  it("keeps cached detail content visible and retries a refresh failure", () => {
+    const refetch = vi.fn();
+    controller.selectedId = "announcement-1";
+    controller.selected = { id: "announcement-1" };
+    controller.detailQuery = {
+      isError: true,
+      isLoading: false,
+      isFetching: false,
+      error: new Error("refresh failed"),
+      refetch,
+    };
 
-    expect(screen.getByTestId("page-layout")).toHaveAttribute("data-workspace-mode", "contained");
-    expect(screen.getByTestId("page-toolbar")).toContainElement(screen.getByTestId("announcement-filters"));
-    expect(screen.getByTestId("page-workspace")).not.toContainElement(screen.getByTestId("announcement-filters"));
-
-    const detailColumn = document.querySelector(".announcements-page-column--detail");
-    expect(detailColumn).not.toBeNull();
-    expect(detailColumn).toContainElement(screen.getByTestId("announcement-detail"));
-
-    desktop.unmount();
-    responsive.mobile = true;
     renderPage();
-    expect(screen.getByTestId("page-layout")).toHaveAttribute("data-workspace-mode", "scroll");
-    expect(screen.getByTestId("page-toolbar")).toContainElement(screen.getByTestId("announcement-filters"));
+
+    expect(screen.getByTestId("announcement-detail")).toBeInTheDocument();
+    expect(screen.getByText("common:loadError")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "common:action.retry" }));
+    expect(refetch).toHaveBeenCalledOnce();
   });
 
-  it("lets the desktop master-detail grid fill the shared workspace", () => {
-    const css = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/AnnouncementsPage.css"),
-      "utf8",
-    );
-    expect(css).not.toContain("--page-layout-max-width");
-    expect(css).not.toContain("100dvh");
-    expect(css).toMatch(/\.announcements-page-grid\s*\{[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\)[\s\S]*?flex:\s*1 1 auto/);
-    expect(css).toMatch(
-      /\.announcements-detail-card\s*\{[\s\S]*?flex:\s*1 1 auto[\s\S]*?block-size:\s*100%/,
-    );
+  it("uses the same detail page for a new announcement with the default category", () => {
+    controller.isCreating = true;
+    renderPage();
+
+    expect(screen.getByTestId("announcement-detail")).toHaveAttribute("data-selected-id", "new");
+    expect(screen.getByTestId("announcement-detail")).toHaveTextContent("announcement");
+  });
+
+  it("returns to the catalog instead of presenting a missing detail as empty content", () => {
+    controller.selectedId = "missing-announcement";
+    controller.detailQuery = {
+      isError: true,
+      isLoading: false,
+      isFetching: false,
+      error: new ApiRequestError("Missing", { status: 404 }),
+      refetch: vi.fn(),
+    };
+
+    renderPage();
+
+    expect(screen.getByText("common:notFound.title")).toBeInTheDocument();
+    expect(screen.queryByTestId("announcement-detail")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "action.backToList" }));
+    expect(controller.setSelectedId).toHaveBeenCalledWith(null);
+  });
+
+  it("offers detail retry without replacing a transport failure with an empty state", () => {
+    const refetch = vi.fn();
+    controller.selectedId = "announcement-1";
+    controller.detailQuery = {
+      isError: true,
+      isLoading: false,
+      isFetching: false,
+      error: new Error("offline"),
+      refetch,
+    };
+
+    renderPage();
+
+    expect(screen.getByText("common:loadError")).toBeInTheDocument();
+    expect(screen.queryByTestId("announcement-detail")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "common:action.retry" }));
+    expect(refetch).toHaveBeenCalledOnce();
   });
 });

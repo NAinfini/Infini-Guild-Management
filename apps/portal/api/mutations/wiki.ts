@@ -2,10 +2,12 @@ import {
   batchUpdateWikiCategoriesSchema,
   createWikiArticleSchema,
   createWikiCategorySchema,
+  deleteWikiCategorySchema,
   updateWikiArticleSchema,
-  wikiCategorySchema,
+  wikiCategoryCatalogSchema,
   type BatchUpdateWikiCategoryItem,
   type WikiArticle,
+  type WikiCategoryCatalog,
   type WikiCategory,
 } from "@guild/shared";
 import type { z } from "zod";
@@ -26,22 +28,28 @@ export function createWikiCategory(payload: CreateWikiCategoryPayload): Promise<
 
 /**
  * 一次提交多行分类改动，服务端整批落库或整批不落库，返回落库之后的完整目录。
- * 任何一行不合法（父级不存在、两层嵌套、id 不存在）都会整批回退——不要在这里
+ * 任何一行不合法（id 不存在、名称或顺序无效）都会整批回退——不要在这里
  * 剔掉出问题的那一行再重发，那会把冲突吞掉，用户看到的顺序就不是库里的顺序。
  */
 export async function batchUpdateWikiCategories(
+  expectedRevisionToken: string,
   updates: BatchUpdateWikiCategoryItem[],
-): Promise<WikiCategory[]> {
-  const bodyJson = batchUpdateWikiCategoriesSchema.parse({ updates });
-  return wikiCategorySchema.array().parse(await apiRequest("/api/wiki/categories/batch", {
+): Promise<WikiCategoryCatalog> {
+  const bodyJson = batchUpdateWikiCategoriesSchema.parse({
+    expected_revision_token: expectedRevisionToken,
+    updates,
+  });
+  return wikiCategoryCatalogSchema.parse(await apiRequest("/api/wiki/categories/batch", {
     method: "PATCH",
     bodyJson,
   }));
 }
 
-export function deleteWikiCategory(id: string): Promise<{ ok: true }> {
+export function deleteWikiCategory(id: string, expectedRevisionToken: string): Promise<{ ok: true }> {
+  const bodyJson = deleteWikiCategorySchema.parse({ expected_revision_token: expectedRevisionToken });
   return apiRequest<{ ok: true }>(`/api/wiki/categories/${id}`, {
     method: "DELETE",
+    bodyJson,
   });
 }
 
@@ -53,7 +61,7 @@ export function createWikiArticle(payload: CreateWikiArticlePayload): Promise<Wi
   });
 }
 
-export function updateWikiArticle(id: string, payload: UpdateWikiArticlePayload, ifMatch?: string): Promise<WikiArticle> {
+export function updateWikiArticle(id: string, payload: UpdateWikiArticlePayload, ifMatch: string): Promise<WikiArticle> {
   const bodyJson = updateWikiArticleSchema.parse(payload);
   return apiRequest<WikiArticle>(`/api/wiki/articles/${id}`, {
     method: "PATCH",
@@ -62,15 +70,24 @@ export function updateWikiArticle(id: string, payload: UpdateWikiArticlePayload,
   });
 }
 
-export function deleteWikiArticle(id: string): Promise<{ ok: true }> {
+export function deleteWikiArticle(id: string, ifMatch: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/wiki/articles/${id}/permanent`, {
     method: "DELETE",
+    ifMatch,
   });
 }
 
-export function restoreWikiArticleRevision(articleId: string, revision: number): Promise<WikiArticle> {
+export function archiveWikiArticle(id: string, ifMatch: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/wiki/articles/${id}`, {
+    method: "DELETE",
+    ifMatch,
+  });
+}
+
+export function restoreWikiArticleRevision(articleId: string, revision: number, ifMatch: string): Promise<WikiArticle> {
   return apiRequest<WikiArticle>(`/api/wiki/articles/${articleId}/revisions/${revision}/restore`, {
     method: "POST",
+    ifMatch,
   });
 }
 

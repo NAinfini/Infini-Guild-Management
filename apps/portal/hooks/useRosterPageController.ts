@@ -7,6 +7,7 @@ import { useEffectivePermissions } from "./useEffectivePermissions";
 import { queryKeys } from "../api/query-keys";
 import { fetchAllUsersListWithOptions } from "../services/UserService";
 import { useAuthStore } from "../stores/auth";
+import { viewerIdentity } from "../session-storage";
 import { useClassCatalog } from "./data/useClassData";
 import { resolveClassCatalogItem } from "../utils/class-catalog";
 import { resolveMediaUrl } from "../utils/media";
@@ -17,6 +18,7 @@ export type RosterEntry = { user: User; profile: MemberProfile; badges?: UserBad
 const ROSTER_FILTERS_KEY = "roster.filters";
 const ROSTER_AUDIO_MUTED_KEY = "roster.audio.muted";
 const ROSTER_AUDIO_VOLUME_KEY = "roster.audio.volume";
+const ROSTER_PAGE_SIZE = 24;
 
 const ROSTER_SORT_MODES = ["power", "display_name", "class"] as const;
 
@@ -91,7 +93,7 @@ export function useRosterPageController() {
   const debouncedSearch = debouncedSearchRaw.trim().toLowerCase();
   const [classFilter, setClassFilter] = useState<string[]>(() => readStoredClassFilter());
   const [sortMode, setSortMode] = useState<RosterSortMode>(() => readStoredSortMode());
-  const [visibleCount, setVisibleCount] = useState(20);
+  const [page, setPage] = useState(1);
   const [audioMuted, setAudioMutedState] = useState(() => readStoredBoolean(ROSTER_AUDIO_MUTED_KEY, false));
   const [audioVolume, setAudioVolumeState] = useState(() => readStoredVolume(ROSTER_AUDIO_VOLUME_KEY, 20));
   const hoverAudioDebounceRef = useRef<number | null>(null);
@@ -101,7 +103,10 @@ export function useRosterPageController() {
   selectedUserIdRef.current = selectedUserId;
 
   const usersQuery = useQuery({
-    queryKey: queryKeys.users.roster(usePublicRosterProjection ? "external" : "default"),
+    queryKey: queryKeys.users.directory(
+      viewerIdentity(sessionUser?.id),
+      usePublicRosterProjection ? "public" : "internal",
+    ),
     queryFn: () => fetchAllUsersListWithOptions({ externalView: usePublicRosterProjection }),
     staleTime: 10 * 60_000,
   });
@@ -140,7 +145,7 @@ export function useRosterPageController() {
   }, []);
 
   useEffect(() => {
-    setVisibleCount(20);
+    setPage(1);
     if (selectedUserIdRef.current) {
       closeMemberProfile();
     }
@@ -150,7 +155,7 @@ export function useRosterPageController() {
   }, [debouncedSearch, classFilter]);
 
   useEffect(() => {
-    setVisibleCount(20);
+    setPage(1);
   }, [sortMode]);
 
   useEffect(() => {
@@ -197,6 +202,14 @@ export function useRosterPageController() {
       return right.profile.power - left.profile.power;
     });
   }, [classCatalog, displayRows, debouncedSearch, classFilter, sortMode]);
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / ROSTER_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * ROSTER_PAGE_SIZE;
+  const pageRows = sortedRows.slice(pageStart, pageStart + ROSTER_PAGE_SIZE);
+
+  useEffect(() => {
+    if (page !== currentPage) setPage(currentPage);
+  }, [currentPage, page]);
 
   useEffect(() => {
     if (selectedUserId && usersQuery.data && !selected) {
@@ -268,8 +281,10 @@ export function useRosterPageController() {
     setClassFilter,
     sortMode,
     setSortMode,
-    visibleCount,
-    setVisibleCount,
+    currentPage,
+    pageCount,
+    pageRows,
+    setPage,
     audioMuted,
     setAudioMutedState,
     audioVolume,

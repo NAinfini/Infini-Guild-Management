@@ -143,3 +143,118 @@ describe("player table presentation", () => {
     });
   });
 });
+
+describe("war overview presentation", () => {
+  it("keeps the actual outcome separate from an objective margin", () => {
+    const { result } = renderHook(() =>
+      useGuildWarAnalyticsComputed({
+        analyticsMode: "wars",
+        analyticsSelectedMetrics: ["damage"] as AnalyticsMetricKey[],
+        analyticsAggregation: "total",
+        analyticsMinParticipation: 0,
+        analyticsTopN: 10,
+        analyticsSelectedTeams: [],
+        analyticsTeamAggregation: "total",
+        analyticsSelectedUsers: [],
+        analyticsOnlyParticipated: false,
+        analyticsNormEnabled: false,
+        analyticsShowDeviation: false,
+        analyticsShowContribution: false,
+        analyticsWarDetails: [],
+        analyticsWars: [{
+          id: "war-loss",
+          war_name: "Objective lead, match lost",
+          enemy_name: "Rivals",
+          created_at: "2026-07-01T00:00:00.000Z",
+          result: "loss",
+          own_stats: { kills: 12 },
+          enemy_stats: { kills: 8 },
+        }] as never,
+        analyticsWarStat: "kills",
+        analyticsRows: [],
+        analyticsAbsences: [],
+        warNormContext: new Map(),
+        referenceDuration: 30,
+        chartPalette: ["#111111", "#222222", "#333333", "#444444"],
+        getMetricLabelKey: (metric) => `metric.${metric}`,
+        metricValueFromWarMember: (row, metric) => row.stats?.[metric] ?? 0,
+        metricValueOrNullFromWarMember: (row, metric) => row.stats?.[metric] ?? null,
+        normalizeMetricValue: (rawValue) => rawValue,
+      }),
+    );
+
+    expect(result.current.analyticsTableRows[0]).toMatchObject({
+      result_id: "loss",
+      margin: 4,
+    });
+    expect((result.current.analyticsChartOption as { series: Array<{ name: string }> }).series)
+      .toEqual([
+        expect.objectContaining({ name: "analytics.wars.own" }),
+        expect.objectContaining({ name: "analytics.wars.enemy" }),
+      ]);
+  });
+});
+
+describe("radar profile normalization", () => {
+  it("keeps total aggregation inside the radar scale", () => {
+    const warDetails = [
+      {
+        ...WAR_DETAILS[0]!,
+        member_stats: [
+          { user_id: "u1", display_name: "Ann", avatar_media_id: "avatar1234567890abcde", stats: { damage: 100 } },
+          { user_id: "u2", display_name: "Ben", avatar_media_id: null, stats: { damage: 80 } },
+        ],
+        teams: [],
+      },
+      {
+        ...WAR_DETAILS[0]!,
+        id: "war-2",
+        war_name: "War Two",
+        created_at: "2026-07-08T00:00:00.000Z",
+        member_stats: [
+          { user_id: "u1", display_name: "Ann", avatar_media_id: "avatar1234567890abcde", stats: { damage: 100 } },
+          { user_id: "u2", display_name: "Ben", avatar_media_id: null, stats: { damage: 80 } },
+        ],
+        teams: [],
+      },
+    ];
+    const { result } = renderHook(() =>
+      useGuildWarAnalyticsComputed({
+        analyticsMode: "radar",
+        analyticsSelectedMetrics: ["damage"] as AnalyticsMetricKey[],
+        analyticsAggregation: "total",
+        analyticsMinParticipation: 0,
+        analyticsTopN: 10,
+        analyticsSelectedTeams: [],
+        analyticsTeamAggregation: "total",
+        analyticsSelectedUsers: ["u1", "u2"],
+        analyticsOnlyParticipated: false,
+        analyticsNormEnabled: false,
+        analyticsShowDeviation: false,
+        analyticsShowContribution: false,
+        analyticsWarDetails: warDetails,
+        analyticsWars: [],
+        analyticsWarStat: "score",
+        analyticsRows: [],
+        analyticsAbsences: [],
+        warNormContext: new Map(),
+        referenceDuration: 30,
+        chartPalette: ["#111111", "#222222", "#333333", "#444444"],
+        getMetricLabelKey: (metric) => `metric.${metric}`,
+        metricValueFromWarMember: (row, metric) => row.stats?.[metric] ?? 0,
+        metricValueOrNullFromWarMember: (row, metric) => row.stats?.[metric] ?? null,
+        normalizeMetricValue: (rawValue) => rawValue,
+      }),
+    );
+
+    const option = result.current.analyticsRadarOption as {
+      series: Array<{ data: Array<{ name: string; value: number[] }> }>;
+    };
+    expect(option.series[0]?.data).toEqual([
+      { name: "Ann", value: [100] },
+      { name: "Ben", value: [80] },
+    ]);
+    expect(result.current.analyticsUserIdToAvatarMediaId.get("u1"))
+      .toBe("avatar1234567890abcde");
+  });
+});

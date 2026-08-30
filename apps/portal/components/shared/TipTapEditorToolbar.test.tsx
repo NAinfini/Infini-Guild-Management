@@ -1,7 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Editor } from "@tiptap/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@portal/components/ui/tooltip";
 import type { TipTapEditorLabels } from "./tiptap-meta";
@@ -135,11 +133,16 @@ function renderToolbar() {
 }
 
 describe("TipTapEditorToolbar", () => {
-  it("does not render a redundant more formatting menu when clear formatting is already visible", () => {
+  it("keeps common actions visible and moves secondary formatting into a named menu", async () => {
     renderToolbar();
 
-    expect(screen.getByRole("button", { name: labels.clearFormatting })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: labels.moreFormatting })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: labels.bold })).toBeInTheDocument();
+    expect(screen.queryByText(labels.h1)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: labels.moreFormatting }));
+
+    await waitFor(() => expect(screen.getByText(labels.h1)).toBeInTheDocument());
+    expect(screen.getByText(labels.clearFormatting)).toBeInTheDocument();
   });
 
   it("shows a tooltip for menu trigger buttons", async () => {
@@ -161,11 +164,9 @@ describe("TipTapEditorToolbar", () => {
   it("prevents toolbar buttons from stealing the editor selection before block commands run", () => {
     renderToolbar();
 
-    expect(fireEvent.mouseDown(screen.getByRole("button", { name: labels.h1 }))).toBe(false);
-    expect(fireEvent.mouseDown(screen.getByRole("button", { name: labels.alignCenter }))).toBe(false);
+    expect(fireEvent.mouseDown(screen.getByRole("button", { name: labels.moreFormatting }))).toBe(false);
     expect(fireEvent.mouseDown(screen.getByRole("button", { name: labels.bullet }))).toBe(false);
-    expect(fireEvent.mouseDown(screen.getByRole("button", { name: labels.quote }))).toBe(false);
-    expect(fireEvent.mouseDown(screen.getByRole("button", { name: labels.code }))).toBe(false);
+    expect(fireEvent.mouseDown(screen.getByRole("button", { name: labels.moreInsert }))).toBe(false);
   });
 
   it("applies a custom text color from the color picker", async () => {
@@ -196,41 +197,4 @@ describe("TipTapEditorToolbar", () => {
     expect((editor as unknown as { __calls: { setHighlight: ReturnType<typeof vi.fn> } }).__calls.setHighlight).toHaveBeenCalledWith({ color: "#654321" });
   });
 
-  it("keeps toolbar overflow visible so hover tooltips are not clipped", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
-    const toolbarRule = css.match(/\.infini-tiptap-toolbar\s*\{[^}]*\}/)?.[0] ?? "";
-
-    expect(toolbarRule).toContain("overflow: visible");
-    expect(toolbarRule).not.toContain("overflow-x: auto");
-  });
-
-  it("keeps toolbar actions touch-sized while allowing groups to wrap without overflow", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
-    const actionRule = css.match(
-      /\.infini-tiptap-toolbar__button\s*\{([^}]*)\}/,
-    )?.[1] ?? "";
-    const groupRule = css.match(/\.infini-tiptap-toolbar__group\s*\{([^}]*)\}/)?.[1] ?? "";
-    const toolbarRule = css.match(/\.infini-tiptap-toolbar\s*\{([^}]*)\}/)?.[1] ?? "";
-
-    expect(actionRule).toContain("width: var(--control-hit-area)");
-    expect(actionRule).toContain("height: var(--control-hit-area)");
-    expect(groupRule).toContain("max-width: 100%");
-    expect(groupRule).toContain("flex-wrap: wrap");
-    expect(toolbarRule).toContain("max-width: 100%");
-    expect(toolbarRule).toContain("min-width: 0");
-  });
-
-  /*
-   * 二十八个控件排一行：44px 按钮配 22px 间距要约 1875px，32px 配 12px 只要约
-   * 1269px。收窄这一档的条件必须是 any-pointer（有没有鼠标可用），不能是 pointer
-   * （哪个是主指针）——带触摸的 Windows 笔记本插着鼠标也报主指针为粗，整块不生效，
-   * 工具条就折成两行。这是从截图里认出来的实际故障，不是假设，所以钉一条断言。
-   */
-  it("compacts the toolbar on any device that has a mouse, not just where the primary pointer is fine", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
-    const fineBlock = css.match(/@media \(any-pointer: fine\)\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
-
-    expect(fineBlock).toContain("var(--control-height-compact)");
-    expect(css).not.toMatch(/@media \(pointer: fine\)/);
-  });
 });

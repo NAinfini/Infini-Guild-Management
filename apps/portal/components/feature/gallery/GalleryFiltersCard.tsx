@@ -1,8 +1,17 @@
-import { CalendarOffIcon } from "@portal/components/icons";
+import { SearchIcon, XIcon } from "@portal/components/icons";
 import { Button } from "@portal/components/ui/button";
-import { Input } from "@portal/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@portal/components/ui/input-group";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
-import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
+import {
+  ContentFilterGroup,
+  ContentFilterOption,
+  ContentFilterToolbar,
+} from "@portal/components/shared/ContentFilterToolbar";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import { useTranslation } from "react-i18next";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
@@ -37,10 +46,10 @@ type FilterOption = {
 
 function GalleryFilterRadioOption({ option }: { option: FilterOption }) {
   return (
-    <label className="gallery-filter-radio">
+    <ContentFilterOption>
       <RadioGroupItem value={option.value} />
       <span>{option.label}</span>
-    </label>
+    </ContentFilterOption>
   );
 }
 
@@ -87,13 +96,22 @@ export function GalleryFiltersCard({
   };
 
   const primary = (
-    <Input
-      className="gallery-filters__search"
-      value={search}
-      onChange={(event) => onSearchChange(event.currentTarget.value)}
-      placeholder={t("filter.searchPlaceholder")}
-      aria-label={t("aria.searchCaption")}
-    />
+    <InputGroup className="gallery-filters__search">
+      <InputGroupAddon><SearchIcon size={16} aria-hidden="true" /></InputGroupAddon>
+      <InputGroupInput
+        value={search}
+        onChange={(event) => onSearchChange(event.currentTarget.value)}
+        placeholder={t("filter.searchPlaceholder")}
+        aria-label={t("aria.searchTitle")}
+      />
+      {search ? (
+        <InputGroupAddon align="inline-end">
+          <InputGroupButton aria-label={t("common:action.clear")} onClick={() => onSearchChange("")} size="icon-xs">
+            <XIcon size={14} aria-hidden="true" />
+          </InputGroupButton>
+        </InputGroupAddon>
+      ) : null}
+    </InputGroup>
   );
   const filters = (
     <div className="gallery-filters__controls">
@@ -102,7 +120,7 @@ export function GalleryFiltersCard({
           value={typeFilter ?? "all"}
           onValueChange={(value) => onTypeFilterChange(value === "all" ? undefined : value as "image" | "video")}
           aria-label={t("aria.filterByType")}
-          className="gallery-filter-options"
+          className="content-filter-toolbar__option-list content-filter-toolbar__option-list--columns"
         >
           <GalleryFilterRadioOption option={{ value: "all", label: t("filter.all") }} />
           <GalleryFilterRadioOption option={{ value: "image", label: t("type.image") }} />
@@ -114,14 +132,14 @@ export function GalleryFiltersCard({
           value={sortOrder}
           onValueChange={(value) => onSortOrderChange(value as "desc" | "asc")}
           aria-label={t("filter.sort")}
-          className="gallery-filter-options"
+          className="content-filter-toolbar__option-list content-filter-toolbar__option-list--columns"
         >
           <GalleryFilterRadioOption option={{ value: "desc", label: t("sort.newest") }} />
           <GalleryFilterRadioOption option={{ value: "asc", label: t("sort.oldest") }} />
         </RadioGroup>
       </ContentFilterGroup>
       <ContentFilterGroup label={t("filter.dateRange")}>
-        <div className="gallery-filter-date-fields">
+        <div className="content-filter-toolbar__date-fields">
           <NativeDateTimeInput
             value={dateFrom}
             onChange={(event) => onDateFromChange(event.currentTarget.value)}
@@ -165,17 +183,6 @@ export function GalleryFiltersCard({
       className="gallery-filters"
       search={primary}
       filterControls={filters}
-      filterActions={(
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onClearDates}
-          disabled={!dateFrom && !dateTo}
-        >
-          <CalendarOffIcon size={15} aria-hidden="true" />
-          {t("filter.clearDates")}
-        </Button>
-      )}
       actions={actions}
       filterLabel={t("common:filter.toggle")}
       activeFilterCount={activeFilterCount}

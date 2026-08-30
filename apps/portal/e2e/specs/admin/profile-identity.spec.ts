@@ -1,4 +1,5 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
+import { profileMutationHeaders } from "../../support/api";
 import { expect, readJson, test, type Flow } from "../../support/test";
 import { field, topDialog } from "../../support/ui";
 
@@ -46,6 +47,7 @@ test.beforeEach(async ({ page, api }) => {
 
 test.afterEach(async ({ api }) => {
   const response = await api.patch(`/api/users/${userId}/profile`, {
+    headers: await profileMutationHeaders(api, userId),
     data: {
       power: original.power,
       classes: original.classes,
@@ -86,7 +88,13 @@ function classPills(page: Page): Locator {
   return page.locator(".profile-class__pill");
 }
 
-test("战力与简介：改完出现保存条，一次提交两个字段都落库", async ({ page, flow, api }) => {
+test("战力与简介：改完出现保存条，一次提交两个字段都落库", async ({ page, flow, api }, testInfo) => {
+  await page.route(`**/api/users/${userId}/profile`, async (route) => {
+    const response = await route.fetch();
+    const headers = response.headers();
+    delete headers.etag;
+    await route.fulfill({ response, headers });
+  });
   await expect(saveButton(page), "刚进来没有任何改动，不该有保存条").toHaveCount(0);
 
   const nextPower = original.power + 1234;
@@ -99,6 +107,20 @@ test("战力与简介：改完出现保存条，一次提交两个字段都落�
   const saved = await readProfile(api);
   expect(saved.power, "战力必须真的落库；只弹一个成功提示不算存上").toBe(nextPower);
   expect(saved.bio, "同一次提交里的另一个字段也要落库").toBe(nextBio);
+
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    const repeatedBio = `${nextBio} ${viewport.width}`;
+    await field(page, "Bio").fill(repeatedBio);
+    const saveBounds = await saveButton(page).boundingBox();
+    const toastBounds = await page.locator('[data-slot="toast"]').filter({ hasText: "Profile saved" }).last().boundingBox();
+    expect(saveBounds).not.toBeNull();
+    expect(toastBounds).not.toBeNull();
+    expect(toastBounds!.y + toastBounds!.height, "成功提示不能遮住下一次保存按钮").toBeLessThan(saveBounds!.y);
+    await page.screenshot({ path: testInfo.outputPath(`save-feedback-${viewport.width}.png`) });
+    await save(page, flow);
+    expect((await readProfile(api)).bio, "缺少响应 ETag 时也应采纳 JSON 版本号，允许再次保存").toBe(repeatedBio);
+  }
 });
 
 test("称号：清除、纯文本输入、沙盒生成样式，三条路都能落库", async ({ page, flow, api }) => {
@@ -109,6 +131,7 @@ test("称号：清除、纯文本输入、沙盒生成样式，三条路都能�
    */
   const seeded = `E2E Seed ${Date.now()}`;
   const prepared = await api.patch(`/api/users/${userId}/profile`, {
+    headers: await profileMutationHeaders(api, userId),
     data: { title_html: `<span style="font-weight: 700">${seeded}</span>` },
   });
   expect(prepared.ok(), `预置带样式称号返回 ${prepared.status()}`).toBe(true);
@@ -162,8 +185,9 @@ test("职业编辑器：添加一个再删掉，两次保存的结果都对得�
   await expect(classPills(page)).toHaveCount(original.classes.length);
   await page.locator("button.profile-class__add").click();
   /* 选中即添加：这个下拉没有确认按钮，onChange 里直接就把职业挂上去了。 */
-  await field(page, "Select class").click();
-  await page.getByRole("option", { name: addition.label, exact: true }).click();
+  const option = page.getByRole("option", { name: addition.label, exact: true });
+  await expect(option).toBeVisible();
+  await option.click();
   await expect(classPills(page)).toHaveCount(original.classes.length + 1);
 
   await save(page, flow);

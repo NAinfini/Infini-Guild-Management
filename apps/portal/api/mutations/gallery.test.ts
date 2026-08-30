@@ -16,7 +16,7 @@ vi.mock("../../utils/upload-media", () => ({
   appendImageUploadVariants: mocks.appendImageUploadVariants,
 }));
 
-import { uploadGalleryImages } from "./gallery";
+import { deleteGalleryItem, updateGalleryItem, uploadGalleryImages } from "./gallery";
 
 describe("uploadGalleryImages", () => {
   beforeEach(() => {
@@ -32,7 +32,7 @@ describe("uploadGalleryImages", () => {
     mocks.convertImagesForUpload.mockResolvedValue(variants);
     mocks.apiRequest.mockResolvedValue({ data: [] });
 
-    await uploadGalleryImages([source], ["Guild night"], { signal: controller.signal });
+    await uploadGalleryImages([source], [{ title: "Guild night", description: "A clear night" }], { signal: controller.signal });
 
     expect(mocks.appendImageUploadVariants).toHaveBeenCalledWith(expect.any(FormData), variants);
     expect(mocks.apiRequest).toHaveBeenCalledWith(
@@ -54,5 +54,31 @@ describe("uploadGalleryImages", () => {
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(mocks.convertImagesForUpload).not.toHaveBeenCalled();
     expect(mocks.apiRequest).not.toHaveBeenCalled();
+  });
+
+  it("sends the captured item ETag with a delete", async () => {
+    mocks.apiRequest.mockResolvedValue({ ok: true });
+
+    await deleteGalleryItem("gallery-1", '"gallery-gallery-1-revision-1"');
+
+    expect(mocks.apiRequest).toHaveBeenCalledWith("/api/gallery/gallery-1", {
+      method: "DELETE",
+      ifMatch: '"gallery-gallery-1-revision-1"',
+    });
+  });
+
+  it("validates metadata and sends the captured item ETag with an update", async () => {
+    mocks.apiRequest.mockResolvedValue({});
+
+    await updateGalleryItem("gallery-1", {
+      title: "  Guild night  ",
+      description: "  A clear night  ",
+    }, '"gallery-gallery-1-revision-1"');
+
+    expect(mocks.apiRequest).toHaveBeenCalledWith("/api/gallery/gallery-1", {
+      method: "PATCH",
+      bodyJson: { title: "Guild night", description: "A clear night" },
+      ifMatch: '"gallery-gallery-1-revision-1"',
+    });
   });
 });

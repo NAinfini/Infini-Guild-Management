@@ -73,7 +73,7 @@ describe("useRosterPageController", () => {
       queryKey: readonly unknown[];
       queryFn: () => Promise<unknown>;
     };
-    expect(rosterQuery.queryKey).toEqual(["users", "roster", "external"]);
+    expect(rosterQuery.queryKey).toEqual(["users", "directory", "anonymous", "public"]);
 
     await rosterQuery.queryFn();
     expect(fetchAllUsersListWithOptionsMock).toHaveBeenCalledWith({ externalView: true });
@@ -90,6 +90,48 @@ describe("useRosterPageController", () => {
 
     expect(result.current.selected?.profile.bio).toBe("refetched bio");
     expect(result.current.selected?.profile.power).toBe(99);
+  });
+
+  it("sorts all rows before splitting them into 24-member pages", async () => {
+    queryState.data = {
+      data: Array.from({ length: 51 }, (_, index) => ({
+        user: {
+          id: `user-${index}`,
+          display_name: `Member ${String(50 - index).padStart(2, "0")}`,
+          role: "member",
+          is_active: true,
+        } as User,
+        profile: {
+          user_id: `user-${index}`,
+          bio: null,
+          power: index,
+          classes: ["warrior"],
+          notes: null,
+        } as MemberProfile,
+        badges: [],
+      })),
+    };
+
+    const { result } = renderHook(() => useRosterPageController());
+
+    expect(result.current.sortedRows).toHaveLength(51);
+    expect(result.current.sortedRows.map((entry) => entry.profile.power)).toEqual(
+      Array.from({ length: 51 }, (_, index) => 50 - index),
+    );
+    expect(result.current.currentPage).toBe(1);
+    expect(result.current.pageCount).toBe(3);
+    expect(result.current.pageRows).toHaveLength(24);
+
+    act(() => result.current.setPage(3));
+    expect(result.current.currentPage).toBe(3);
+    expect(result.current.pageRows.map((entry) => entry.profile.power)).toEqual([2, 1, 0]);
+
+    act(() => result.current.setSortMode("display_name"));
+    await waitFor(() => expect(result.current.currentPage).toBe(1));
+    expect(result.current.sortedRows.map((entry) => entry.user.display_name)).toEqual(
+      Array.from({ length: 51 }, (_, index) => `Member ${String(index).padStart(2, "0")}`),
+    );
+    expect(result.current.pageRows).toHaveLength(24);
   });
 
   it("restores and persists roster audio preferences without a UI-library storage hook", async () => {

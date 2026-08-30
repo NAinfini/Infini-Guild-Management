@@ -200,7 +200,5 @@
   "account.exit.title": "Sign out",
   "account.exit.description": "Signs out of this device only. Your profile and history remain.",
   "account.validation.currentPasswordRequired": "Please enter your current password.",
-  "account.validation.passwordMinLength": "Password must be at least 8 characters.",
-  "account.validation.passwordMismatch": "New passwords do not match.",
   "aria.selectClass": "Select class"
 }

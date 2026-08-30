@@ -8,6 +8,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/t
 import { usePreferencesStore } from "../../stores/preferences";
 import { PortalThemeProvider, useTheme } from "../ThemeProvider";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
 function Probe() {
   const { theme, accent, setTheme, setAccent, toggleTheme } = useTheme();
 

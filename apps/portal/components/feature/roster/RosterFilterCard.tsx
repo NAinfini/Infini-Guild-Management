@@ -1,9 +1,10 @@
-import { SearchIcon } from "@portal/components/icons";
+import { SearchIcon, XIcon } from "@portal/components/icons";
 import { Button } from "@portal/components/ui/button";
 import { Checkbox } from "@portal/components/ui/checkbox";
 import {
   InputGroup,
   InputGroupAddon,
+  InputGroupButton,
   InputGroupInput,
 } from "@portal/components/ui/input-group";
 import {
@@ -14,7 +15,11 @@ import {
   PopoverTrigger,
 } from "@portal/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
-import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
+import {
+  ContentFilterGroup,
+  ContentFilterOption,
+  ContentFilterToolbar,
+} from "@portal/components/shared/ContentFilterToolbar";
 import { useTranslation } from "react-i18next";
 import { useId, useState } from "react";
 import { VolumeOutlined, VolumeMutedOutlined } from "../../../utils/icons";
@@ -158,51 +163,46 @@ export function RosterFilterCard({
             aria-label={t("search.aria.displayNameOnly")}
             onChange={(event) => onSearchChange(event.currentTarget.value)}
           />
+          {search ? (
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton aria-label={t("common:action.clear")} onClick={() => onSearchChange("")} size="icon-xs">
+                <XIcon size={14} aria-hidden="true" />
+              </InputGroupButton>
+            </InputGroupAddon>
+          ) : null}
         </InputGroup>
       )}
       filterControls={(
         <div className="roster-filter-controls">
-          <ContentFilterGroup label={t("filter.class.aria")}>
-            <div className="roster-filter-options" role="group" aria-label={t("filter.class.aria")}>
-              {classData.map((item) => (
-                <div
-                  key={item.value}
-                  className="roster-filter-option"
-                  onClick={(event) => {
-                    if ((event.target as Element).closest('[data-slot="checkbox"]')) return;
-                    setClassChecked(item.value, !classFilter.includes(item.value));
-                  }}
-                >
-                  <Checkbox
-                    checked={classFilter.includes(item.value)}
-                    onCheckedChange={(checked) => setClassChecked(item.value, checked)}
-                    aria-label={item.label}
-                  />
-                  <span>{item.label}</span>
-                </div>
-              ))}
-            </div>
-          </ContentFilterGroup>
+          {classData.length > 0 ? (
+            <ContentFilterGroup label={t("filter.class.aria")}>
+              <div className="content-filter-toolbar__option-list content-filter-toolbar__option-list--columns" role="group" aria-label={t("filter.class.aria")}>
+                {classData.map((item) => (
+                  <ContentFilterOption key={item.value}>
+                    <Checkbox
+                      checked={classFilter.includes(item.value)}
+                      onCheckedChange={(checked) => setClassChecked(item.value, checked)}
+                    />
+                    <span>{item.label}</span>
+                  </ContentFilterOption>
+                ))}
+              </div>
+            </ContentFilterGroup>
+          ) : null}
           <ContentFilterGroup label={t("sort.aria")}>
             <RadioGroup
               value={sortMode}
               aria-label={t("sort.aria")}
+              className="content-filter-toolbar__option-list content-filter-toolbar__option-list--columns"
               onValueChange={(value) => {
                 if ((SORT_MODES as readonly string[]).includes(value)) onSortModeChange(value as RosterSortMode);
               }}
             >
               {sortData.map((item) => (
-                <div
-                  key={item.value}
-                  className="roster-filter-option"
-                  onClick={(event) => {
-                    if ((event.target as Element).closest('[data-slot="radio-group-item"]')) return;
-                    onSortModeChange(item.value as RosterSortMode);
-                  }}
-                >
-                  <RadioGroupItem value={item.value} aria-label={item.label} />
+                <ContentFilterOption key={item.value}>
+                  <RadioGroupItem value={item.value} />
                   <span>{item.label}</span>
-                </div>
+                </ContentFilterOption>
               ))}
             </RadioGroup>
           </ContentFilterGroup>

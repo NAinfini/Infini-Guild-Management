@@ -350,13 +350,13 @@
   padding-top: 2px;
 }
 
-.event-card__status-tooltip > span:last-child {
+.event-card__status-tooltip > span:last-of-type {
   display: grid;
   gap: 2px;
 }
 
 .event-card__status-tooltip strong {
-  color: var(--background);
+  color: var(--text-primary);
 }
 
 @media (max-width: 30rem) {

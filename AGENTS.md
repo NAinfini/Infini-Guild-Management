@@ -21,7 +21,7 @@ This file defines the stable working contract for coding agents in this reposito
 - `apps/vps/`: Node SQLite/filesystem/WebSocket/scheduler/static adapters and the VPS runtime.
 - `apps/portal/`: the SPA. `router.tsx` owns routing; `components/layout/route-metadata.ts` owns navigation; services/hooks own orchestration.
 - `packages/persistence-sqlite/src/migrations/generated/0000_core.sql`: the released, frozen core schema assembled from Drizzle plus named invariant SQL.
-- `SETUP.md` and `SETUP.zh.md`: deployment, migration, bootstrap, backup, and recovery procedures.
+- `docs/SETUP.md` and `docs/SETUP.zh.md`: deployment, migration, bootstrap, backup, and recovery procedures.
 
 Use `rg --files` and targeted symbol search before editing. Do not maintain a second exhaustive file list.
 
@@ -67,7 +67,7 @@ Use the narrowest validation that covers a change. `release:check` is local-only
 - Protected mutations write their audit row in the same SQL transaction as the business change. Blob bytes may be staged first; attachment and lifecycle state are database-owned.
 - Mutations require an allowed `Origin` and `X-Requested-With: XMLHttpRequest`. Keep body limits, rate limits, ETags, security headers, session resolution, and feature gates centralized.
 - Authorization comes from D1 roles and their permission rows. Role management is dynamic, and the database preserves the final active user whose role grants `admin.roles.manage`.
-- Login locking is persistent and progressive. Locked requests must be rejected before account lookup or PBKDF2 work; lock inspection/reset is permission-gated and audited.
+- Login credential failures are generic. Source-wide and source/login-pair request throttles run before account lookup or PBKDF2 work; there is no persistent account cooldown or administrator lock-reset path.
 
 ## Portal
 
@@ -76,7 +76,7 @@ Use the narrowest validation that covers a change. `release:check` is local-only
 - `router.tsx` owns route access and feature guards. Do not create a second navigation registry.
 - Base UI primitives own keyboard, focus, dialog, menu, selection, and form behavior; source-owned shadcn/ui compositions under `components/ui/` provide the styled boundary. Consume semantic theme tokens and preserve dark/light themes, reduced motion, keyboard focus, and responsive task parity.
 - Keep English and Chinese UI resources synchronized for every user-facing change.
-- Follow `DESIGN.md`; source CSS wins if exact values drift.
+- Follow `docs/DESIGN.md`; source CSS wins if exact values drift.
 
 ## Static game rules
 
@@ -121,7 +121,7 @@ Do not add a dynamic game-rules table or a second translation/precision model.
 
 ## Delivery
 
-- Keep `README.md`/`README.zh.md` and `SETUP.md`/`SETUP.zh.md` synchronized.
-- Update `CHANGELOG.md` under `Unreleased` for notable security, data, or operational behavior.
+- Keep `README.md`/`docs/README.zh.md` and `docs/SETUP.md`/`docs/SETUP.zh.md` synchronized.
+- Update `docs/CHANGELOG.md` under `Unreleased` for notable security, data, or operational behavior.
 - Before handoff, run `git diff --check`, relevant focused tests, both runtime typechecks, secret/config checks, and the release gate when preparing a release.
 - Confirm no production identifiers, local databases, generated private SQL, secrets, or runtime state are tracked.

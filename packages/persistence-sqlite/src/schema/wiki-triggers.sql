@@ -2,28 +2,14 @@ CREATE TRIGGER wiki_categories_parent_depth_insert
 BEFORE INSERT ON wiki_categories
 WHEN NEW.parent_id IS NOT NULL
 BEGIN
-  SELECT CASE
-    WHEN NOT EXISTS (SELECT 1 FROM wiki_categories WHERE id = NEW.parent_id)
-      THEN RAISE(ABORT, 'wiki parent category does not exist')
-    WHEN EXISTS (SELECT 1 FROM wiki_categories WHERE id = NEW.parent_id AND parent_id IS NOT NULL)
-      THEN RAISE(ABORT, 'wiki categories support one child level')
-  END;
+  SELECT RAISE(ABORT, 'wiki categories are flat');
 END;
 
 CREATE TRIGGER wiki_categories_parent_depth_update
 BEFORE UPDATE OF parent_id ON wiki_categories
-WHEN NEW.parent_id IS NOT OLD.parent_id
+WHEN NEW.parent_id IS NOT NULL
 BEGIN
-  SELECT CASE
-    WHEN NEW.parent_id = NEW.id
-      THEN RAISE(ABORT, 'wiki category cannot parent itself')
-    WHEN NEW.parent_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM wiki_categories WHERE id = NEW.parent_id)
-      THEN RAISE(ABORT, 'wiki parent category does not exist')
-    WHEN NEW.parent_id IS NOT NULL AND EXISTS (SELECT 1 FROM wiki_categories WHERE id = NEW.parent_id AND parent_id IS NOT NULL)
-      THEN RAISE(ABORT, 'wiki categories support one child level')
-    WHEN NEW.parent_id IS NOT NULL AND EXISTS (SELECT 1 FROM wiki_categories WHERE parent_id = NEW.id)
-      THEN RAISE(ABORT, 'wiki category with children cannot become a child')
-  END;
+  SELECT RAISE(ABORT, 'wiki categories are flat');
 END;
 
 CREATE TRIGGER wiki_revisions_snapshot_matches_article

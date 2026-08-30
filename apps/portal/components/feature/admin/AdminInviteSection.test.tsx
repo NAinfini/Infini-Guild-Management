@@ -24,7 +24,7 @@ vi.mock("../../../hooks/useEffectivePermissions", () => ({
 
 const revokedInvite: InviteLink = {
   id: "invite-1",
-  code: "R3v0k3d123",
+  code: "A1B2C3D4E5",
   created_by: "admin-1",
   role_id: "raid-lead",
   role_name: "Raid Lead",
@@ -51,9 +51,8 @@ const roles = [{
 const activeInvite: InviteLink = {
   ...revokedInvite,
   id: "invite-2",
-  code: "A8t1v3C0d3",
   used_count: 2,
-  expires_at: "2026-08-28T00:00:00.000Z",
+  expires_at: "9999-12-31T23:59:59.999Z",
   revoked_at: null,
 };
 
@@ -123,22 +122,14 @@ describe("AdminInviteSection", () => {
     expect(getToolbarCreateButton()).toBeVisible();
     await user.click(screen.getByRole("button", { name: "common:filter.toggle (1)" }));
     const filterDialog = await screen.findByRole("dialog", { name: /common:filter\.toggle/ });
+    expect(within(filterDialog).getByRole("radiogroup", { name: "invite.filter.status" })).toBeInTheDocument();
     expect(within(filterDialog).getByRole("radio", { name: "invite.segActive" })).toBeInTheDocument();
     expect(within(filterDialog).getByRole("radio", { name: "invite.segExpired" })).toBeInTheDocument();
     expect(within(filterDialog).getByRole("radio", { name: "invite.segRevoked" })).toBeInTheDocument();
   });
 
   it("uses the inactive status reason for disabled actions", async () => {
-    const user = userEvent.setup();
     renderSection();
-
-    const copyButton = screen.getByRole("button", { name: "invite.copy" });
-
-    expect(copyButton).toBeDisabled();
-    expect(copyButton.parentElement).toHaveAttribute("data-disabled-tooltip-target");
-
-    await user.hover(copyButton.parentElement!);
-    expect(await screen.findByText("invite.tooltip.revoked")).toBeInTheDocument();
 
     // 撤销/删除收进了行尾的 ⋮ 菜单，置灰的撤销项同样要带上原因。
     fireEvent.click(screen.getByRole("button", { name: "invite.table.actions" }));
@@ -202,16 +193,20 @@ describe("AdminInviteSection", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     act(() => {
-      const successCallback = onCreateInvite.mock.calls[0]?.[1] as (() => void) | undefined;
-      successCallback?.();
+      const successCallback = onCreateInvite.mock.calls[0]?.[1] as ((invite: InviteLink) => void) | undefined;
+      successCallback?.({
+        ...activeInvite,
+        code: "F6G7H8J9K0",
+      });
     });
 
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-
-    await user.click(getToolbarCreateButton());
-    expect(within(screen.getByRole("dialog")).getByLabelText("invite.aria.role")).toHaveValue("");
+    expect(within(screen.getByRole("dialog")).getByText("invite.createdCodeNotice")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByLabelText("invite.createdLink"))
+      .toHaveValue(`${window.location.origin}/register/F6G7H8J9K0`);
+    expect(within(screen.getByRole("dialog")).getByLabelText("invite.createdCode"))
+      .toHaveTextContent("F6G7H8J9K0");
+    await user.click(within(screen.getByRole("dialog")).getAllByRole("button", { name: "common:action.close" }).at(-1)!);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("loads the next server page without client-side pagination", async () => {
@@ -239,19 +234,15 @@ describe("AdminInviteSection", () => {
 
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     const card = screen.getByRole("article", { name: "invite.cardAria" });
-    expect(within(card).getByText("A8t1v3C0d3")).toBeInTheDocument();
+    expect(within(card).getByText("Raid Lead")).toBeInTheDocument();
     expect(within(card).getByText("2/5")).toBeInTheDocument();
     expect(within(card).getByText("invite.status.active")).toBeInTheDocument();
     expect(within(card).getByText("invite.table.expires")).toBeInTheDocument();
     expect(within(card).getByText("invite.table.created")).toBeInTheDocument();
     expect(card.querySelectorAll("time")).toHaveLength(2);
 
-    const copyButton = within(card).getByRole("button", { name: "invite.copy" });
-    expect(copyButton).toBeEnabled();
     expect(within(card).getByRole("button", { name: "invite.revoke" })).toBeEnabled();
     expect(within(card).getByRole("button", { name: "invite.delete" })).toBeEnabled();
-    copyButton.focus();
-    expect(copyButton).toHaveFocus();
   });
 
   it.each([
@@ -265,7 +256,6 @@ describe("AdminInviteSection", () => {
     const otherInvite: InviteLink = {
       ...activeInvite,
       id: "invite-3",
-      code: "0th3rC0d35",
     };
     renderSection({
       inviteVisibility: "active",

@@ -9,6 +9,7 @@ export default [
       "**/dist/**",
       "**/coverage/**",
       "**/.wrangler/**",
+      "**/backups/**",
       "apps/cloudflare/tmp/**",
       "apps/portal/public/**",
     ],

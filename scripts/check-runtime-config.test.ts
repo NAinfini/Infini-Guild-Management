@@ -33,15 +33,23 @@ function cloudflareConfig(): Record<string, unknown> {
     }],
     r2_buckets: [{ binding: "BLOBS", bucket_name: "guild-blobs", remote: false }],
     durable_objects: {
-      bindings: [{ name: "NOTIFICATIONS", class_name: "CloudflareNotificationDurableObject" }],
+      bindings: [
+        { name: "NOTIFICATIONS", class_name: "CloudflareNotificationDurableObject" },
+        { name: "AUTH_LOGIN_RATE_LIMITER", class_name: "AuthRateLimitDO" },
+      ],
     },
-    migrations: [{ tag: "notifications-v1", new_sqlite_classes: ["CloudflareNotificationDurableObject"] }],
+    migrations: [
+      { tag: "notifications-v1", new_sqlite_classes: ["CloudflareNotificationDurableObject"] },
+      { tag: "auth-login-rate-limit-v1", new_sqlite_classes: ["AuthRateLimitDO"] },
+    ],
     ratelimits: Object.entries(RATE_LIMIT_EXPECTATIONS).map(([name, expected], index) => ({
       name,
       namespace_id: `namespace-${index}`,
       simple: { limit: expected.maxRequests, period: expected.windowMs / 1000 },
     })),
-    triggers: { crons: ["*/15 * * * *", "0 0 * * *"] },
+    triggers: {
+      crons: ["*/15 * * * *", "7,37 * * * *", "12 * * * *", "42 * * * *", "27 0 * * *"],
+    },
     vars: {
       IG_PUBLIC_URL: "https://guild.example",
       IG_ALLOWED_ORIGINS: "https://admin.guild.example",
@@ -54,8 +62,6 @@ function cloudflareConfig(): Record<string, unknown> {
 function vpsConfig(): Record<string, string> {
   return {
     IG_PUBLIC_URL: "https://guild.example",
-    IG_INVITE_TOKEN_SECRET: "i".repeat(32),
-    IG_AUDIT_DOWNLOAD_SECRET: "a".repeat(32),
     IG_PBKDF2_ITERATIONS: "10000",
     IG_DATABASE_PATH: "data/infini-guild.sqlite",
     IG_BLOB_PATH: "data/blobs",
@@ -72,6 +78,17 @@ describe("dual-runtime config preflight", () => {
       const config = parseJsonc(readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8"));
       const database = config.d1_databases.find((entry: { binding?: string }) => entry.binding === "DB");
       expect(database.migrations_dir).toBe("../../packages/persistence-sqlite/src/migrations/generated");
+      expect(config.durable_objects.bindings).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          name: "AUTH_LOGIN_RATE_LIMITER",
+          class_name: "AuthRateLimitDO",
+        }),
+      ]));
+      expect(config.migrations).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          new_sqlite_classes: expect.arrayContaining(["AuthRateLimitDO"]),
+        }),
+      ]));
       for (const [name, expected] of Object.entries(RATE_LIMIT_EXPECTATIONS)) {
         expect(config.ratelimits).toContainEqual(expect.objectContaining({
           name,
@@ -120,16 +137,26 @@ describe("dual-runtime config preflight", () => {
     expect(validateCloudflareConfig(insecureRemoteCloudflare)).toContainEqual(expect.stringContaining("HTTPS"));
   });
 
-  it("requires every Cloudflare binding including the read limiter and keeps secrets out of vars", () => {
+  it("requires every Cloudflare binding including the read limiter", () => {
     const config = cloudflareConfig();
     config.ratelimits = (config.ratelimits as unknown[]).filter(
       (entry) => (entry as { name: string }).name !== "READ_RATE_LIMITER",
     );
-    (config.vars as Record<string, string>).IG_INVITE_TOKEN_SECRET = "x".repeat(32);
+    expect(validateCloudflareConfig(config)).toContainEqual(expect.stringContaining("READ_RATE_LIMITER"));
+  });
+
+  it("requires the strong authentication rate-limit Durable Object and its migration", () => {
+    const config = cloudflareConfig();
+    (config.durable_objects as { bindings: Array<{ name: string }> }).bindings = (config.durable_objects as {
+      bindings: Array<{ name: string }>;
+    }).bindings.filter((entry) => entry.name !== "AUTH_LOGIN_RATE_LIMITER");
+    config.migrations = (config.migrations as Array<{ new_sqlite_classes: string[] }>).filter(
+      (entry) => !entry.new_sqlite_classes.includes("AuthRateLimitDO"),
+    );
 
     expect(validateCloudflareConfig(config)).toEqual(expect.arrayContaining([
-      expect.stringContaining("READ_RATE_LIMITER"),
-      expect.stringContaining("IG_INVITE_TOKEN_SECRET"),
+      expect.stringContaining("AUTH_LOGIN_RATE_LIMITER"),
+      expect.stringContaining("AuthRateLimitDO"),
     ]));
   });
 
@@ -197,7 +224,7 @@ describe("dual-runtime config preflight", () => {
     expect(validateCloudflareConfig(config)).toContainEqual(expect.stringContaining("migrations_dir"));
   });
 
-  it("enforces the shared PBKDF2 floor/default and 10M ceiling", () => {
+  it("enforces the 10k PBKDF2 floor and 10M ceiling", () => {
     for (const iterations of ["9999", "10000001", "not-a-number"]) {
       const cloudflare = cloudflareConfig();
       (cloudflare.vars as Record<string, string>).IG_PBKDF2_ITERATIONS = iterations;
@@ -208,13 +235,38 @@ describe("dual-runtime config preflight", () => {
     expect(validateVpsConfig({ ...vpsConfig(), IG_PBKDF2_ITERATIONS: "10000000" })).toEqual([]);
   });
 
-  it("rejects missing VPS storage paths and short production secrets", () => {
+  it("validates optional maintenance metadata identically for both runtimes", () => {
+    const cloudflare = cloudflareConfig();
+    (cloudflare.vars as Record<string, string>).IG_MAINTENANCE_REASON = "Database maintenance";
+    (cloudflare.vars as Record<string, string>).IG_MAINTENANCE_UNTIL = "2026-08-30T12:00:00.000Z";
+    expect(validateCloudflareConfig(cloudflare)).toEqual([]);
+
+    const vps = {
+      ...vpsConfig(),
+      IG_MAINTENANCE_REASON: "Database maintenance",
+      IG_MAINTENANCE_UNTIL: "2026-08-30T12:00:00.000Z",
+    };
+    expect(validateVpsConfig(vps)).toEqual([]);
+
+    for (const invalid of ["2026-08-30T12:00:00Z", "2026-08-30T12:00:00.000+00:00", "not-a-date"]) {
+      const invalidCloudflare = cloudflareConfig();
+      (invalidCloudflare.vars as Record<string, string>).IG_MAINTENANCE_UNTIL = invalid;
+      expect(validateCloudflareConfig(invalidCloudflare)).toContainEqual(expect.stringContaining("IG_MAINTENANCE_UNTIL"));
+      expect(validateVpsConfig({ ...vpsConfig(), IG_MAINTENANCE_UNTIL: invalid }))
+        .toContainEqual(expect.stringContaining("IG_MAINTENANCE_UNTIL"));
+    }
+
+    const tooLong = "x".repeat(501);
+    const invalidCloudflare = cloudflareConfig();
+    (invalidCloudflare.vars as Record<string, string>).IG_MAINTENANCE_REASON = tooLong;
+    expect(validateCloudflareConfig(invalidCloudflare)).toContainEqual(expect.stringContaining("IG_MAINTENANCE_REASON"));
+    expect(validateVpsConfig({ ...vpsConfig(), IG_MAINTENANCE_REASON: tooLong }))
+      .toContainEqual(expect.stringContaining("IG_MAINTENANCE_REASON"));
+  });
+
+  it("rejects missing VPS storage paths", () => {
     const config = vpsConfig();
     delete config.IG_BLOB_PATH;
-    config.IG_INVITE_TOKEN_SECRET = "short";
-    expect(validateVpsConfig(config)).toEqual(expect.arrayContaining([
-      expect.stringContaining("IG_BLOB_PATH"),
-      expect.stringContaining("IG_INVITE_TOKEN_SECRET"),
-    ]));
+    expect(validateVpsConfig(config)).toContainEqual(expect.stringContaining("IG_BLOB_PATH"));
   });
 });

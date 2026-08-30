@@ -10,7 +10,7 @@ import {
 import type { BlobInventory, BlobStore, DeferredTasks, RateLimiter, SqlExecutor } from "@guild/kernel";
 import { LIMITS } from "@guild/shared/config/limits";
 import { serve } from "@hono/node-server";
-import { mkdirSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { IncomingMessage, type Server } from "node:http";
 import type { Duplex } from "node:stream";
 import path from "node:path";
@@ -21,6 +21,7 @@ import {
   NodeRateLimiter,
   NodeSqlExecutor,
 } from "../adapters/public.js";
+import { ensurePrivateDirectory } from "../adapters/private-filesystem.js";
 import { resolveVpsClientAddress } from "./client-address.js";
 import { VpsAdminOperationsRuntime } from "./admin-operations-realtime.js";
 import type { VpsRuntimeConfig } from "./config.js";
@@ -200,7 +201,10 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
   async handleHttp(request: Request, incoming: IncomingMessage): Promise<Response> {
     if (this.currentState !== "running") return unavailable();
     const operation = this.config.maintenanceMode
-      ? Promise.resolve(maintenanceResponse(withPublicOrigin(request, this.config.application.publicUrl)))
+      ? Promise.resolve(maintenanceResponse(
+        withPublicOrigin(request, this.config.application.publicUrl),
+        this.config.maintenance,
+      ))
       : this.dispatchHttp(request, incoming);
     this.activeRequests.add(operation);
     try {
@@ -344,6 +348,11 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
           ? new CloudflareRestEmailSender(this.config.cloudflareEmail.accountId, this.config.cloudflareEmail.apiToken)
           : null,
         readRateLimiter: rateLimiter(LIMITS.rateLimit.reads.maxRequests, LIMITS.rateLimit.reads.windowMs, 50_000),
+        contentViewRateLimiter: rateLimiter(
+          LIMITS.rateLimit.contentViews.maxRequests,
+          LIMITS.rateLimit.contentViews.windowMs,
+          50_000,
+        ),
         expensiveReadRateLimiter: rateLimiter(
           LIMITS.rateLimit.expensiveReads.maxRequests,
           LIMITS.rateLimit.expensiveReads.windowMs,
@@ -674,8 +683,8 @@ function defaultDependencies(): VpsServerRuntimeDependencies {
   return {
     prepareFilesystem: (config, signal) => {
       signal.throwIfAborted();
-      mkdirSync(path.dirname(config.databasePath), { recursive: true });
-      mkdirSync(config.blobPath, { recursive: true });
+      ensurePrivateDirectory(path.dirname(config.databasePath));
+      ensurePrivateDirectory(config.blobPath);
       realpathSync(config.staticPath);
       signal.throwIfAborted();
     },

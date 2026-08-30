@@ -1,5 +1,6 @@
 import { DEFAULT_SITE_OAUTH_SETTINGS } from "@guild/shared";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CompletePasswordResetPage } from "./CompletePasswordResetPage";
 import { VerifyEmailPage } from "./VerifyEmailPage";
@@ -23,6 +24,7 @@ vi.mock("@tanstack/react-router", () => ({
     [key: string]: unknown;
   }) => <a href={to} {...props}>{children}</a>,
   useNavigate: () => mocks.navigate,
+  useSearch: () => ({}),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -98,6 +100,29 @@ describe("auth lifecycle page frames", () => {
     expect(screen.queryByRole("link", { name: "button.visitorAccess" })).not.toBeInTheDocument();
     expect(screen.getByTestId("visual-theme-scene")).toHaveClass("login-page__scene");
     expect(screen.getByTestId("public-site-header")).toHaveAttribute("data-show-navigation", "false");
+  });
+
+  it("associates password reset validation errors with their fields", async () => {
+    const user = userEvent.setup();
+    renderPage(<CompletePasswordResetPage />);
+
+    await user.type(screen.getByLabelText("field.confirmPassword"), "Different!");
+    await user.click(screen.getByRole("button", { name: "reset.submit" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("field.loginName")).toHaveAttribute(
+        "aria-describedby",
+        "reset-login-name-error",
+      );
+      expect(screen.getByLabelText("field.password")).toHaveAttribute(
+        "aria-describedby",
+        "reset-password-requirements reset-password-error",
+      );
+      expect(screen.getByLabelText("field.confirmPassword")).toHaveAttribute(
+        "aria-describedby",
+        "reset-confirm-password-error",
+      );
+    });
   });
 
   it("explains a missing verification token and prevents an invalid submission", () => {

@@ -1,12 +1,17 @@
-import { INVITE_CODE_LENGTH, INVITE_CODE_PATTERN } from "@guild/shared";
+import { inviteCodeSchema, INVITE_CODE_LENGTH } from "@guild/shared";
 
 const encoder = new TextEncoder();
 const PASSWORD_PREFIX = "pbkdf2-sha256";
 const PASSWORD_KEY_BITS = 256;
 const PASSWORD_SALT_BYTES = 16;
+const PASSWORD_VERIFICATION_ITERATIONS_MIN = 10_000;
 const PASSWORD_ITERATIONS_MAX = 10_000_000;
+const DUMMY_PASSWORD_SALT = new Uint8Array(PASSWORD_SALT_BYTES);
+const DUMMY_PASSWORD_HASH = new Uint8Array(PASSWORD_KEY_BITS / 8);
+const INVITE_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const INVITE_CODE_RANDOM_LIMIT = Math.floor(256 / INVITE_CODE_ALPHABET.length) * INVITE_CODE_ALPHABET.length;
 
-/** Cloudflare-safe production floor/default. Deployments may raise this through runtime configuration. */
+/** Default and minimum cost for every newly written password hash. */
 export const PASSWORD_HASH_ITERATIONS = 10_000;
 
 function base64Url(bytes: Uint8Array): string {
@@ -40,11 +45,32 @@ function constantTimeEqual(left: Uint8Array, right: Uint8Array): boolean {
   return difference === 0;
 }
 
+type ParsedPasswordHash = Readonly<{
+  iterations: number;
+  salt: Uint8Array;
+  expected: Uint8Array;
+}>;
+
+function parsePasswordHash(encoded: string): ParsedPasswordHash | null {
+  try {
+    const match = /^pbkdf2-sha256\$(\d+)\$([A-Za-z0-9_-]+)\$([A-Za-z0-9_-]+)$/.exec(encoded);
+    if (!match) return null;
+    const iterations = Number(match[1]);
+    if (!Number.isInteger(iterations)
+      || iterations < PASSWORD_VERIFICATION_ITERATIONS_MIN
+      || iterations > PASSWORD_ITERATIONS_MAX) return null;
+    const salt = fromBase64Url(match[2]!);
+    const expected = fromBase64Url(match[3]!);
+    return salt.length === PASSWORD_SALT_BYTES && expected.length === PASSWORD_KEY_BITS / 8
+      ? { iterations, salt, expected }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function readPasswordHashIterations(encoded: string): number | null {
-  const match = /^pbkdf2-sha256\$(\d+)\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/.exec(encoded);
-  if (!match) return null;
-  const iterations = Number(match[1]);
-  return Number.isInteger(iterations) && iterations > 0 ? iterations : null;
+  return parsePasswordHash(encoded)?.iterations ?? null;
 }
 
 export function requireSafePasswordIterations(iterations: number): number {
@@ -65,18 +91,30 @@ export async function createPasswordHash(
 }
 
 export async function verifyPassword(password: string, encoded: string): Promise<boolean> {
-  try {
-    const match = /^pbkdf2-sha256\$(\d+)\$([A-Za-z0-9_-]+)\$([A-Za-z0-9_-]+)$/.exec(encoded);
-    if (!match) return false;
-    const iterations = Number(match[1]);
-    if (!Number.isInteger(iterations) || iterations < PASSWORD_HASH_ITERATIONS || iterations > PASSWORD_ITERATIONS_MAX) return false;
-    const salt = fromBase64Url(match[2]!);
-    const expected = fromBase64Url(match[3]!);
-    if (salt.length !== PASSWORD_SALT_BYTES || expected.length !== PASSWORD_KEY_BITS / 8) return false;
-    return constantTimeEqual(await derive(password, salt, iterations), expected);
-  } catch {
-    return false;
-  }
+  const parsed = parsePasswordHash(encoded);
+  return parsed !== null
+    && constantTimeEqual(await derive(password, parsed.salt, parsed.iterations), parsed.expected);
+}
+
+export async function verifyPasswordWithinBudget(
+  password: string,
+  encoded: string,
+  iterationBudget = PASSWORD_HASH_ITERATIONS,
+): Promise<Readonly<{ valid: boolean; iterations: number | null }>> {
+  requireSafePasswordIterations(iterationBudget);
+  const parsed = parsePasswordHash(encoded);
+  const candidate = parsed !== null && parsed.iterations <= iterationBudget
+    ? parsed
+    : { iterations: iterationBudget, salt: DUMMY_PASSWORD_SALT, expected: DUMMY_PASSWORD_HASH };
+  const valid = constantTimeEqual(
+    await derive(password, candidate.salt, candidate.iterations),
+    candidate.expected,
+  );
+  await derive(password, DUMMY_PASSWORD_SALT, iterationBudget - candidate.iterations + 1);
+  return {
+    valid: parsed === candidate && valid,
+    iterations: parsed === candidate ? candidate.iterations : null,
+  };
 }
 
 export function createOpaqueToken(byteLength = 32): string {
@@ -87,47 +125,20 @@ export async function digestToken(token: string): Promise<string> {
   return base64Url(new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(token))));
 }
 
-export type InviteTokenCodec = {
-  encode(id: string): Promise<string>;
-  normalize(token: string): string | null;
-};
-
-const INVITE_CODE_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-const INVITE_CODE_RADIX = BigInt(INVITE_CODE_ALPHABET.length);
-
-function encodeInviteCode(bytes: Uint8Array): string {
-  let value = 0n;
-  for (const byte of bytes) value = (value << 8n) | BigInt(byte);
-
+export function createInviteCode(): string {
   let code = "";
-  for (let index = 0; index < INVITE_CODE_LENGTH; index += 1) {
-    code = INVITE_CODE_ALPHABET[Number(value % INVITE_CODE_RADIX)]! + code;
-    value /= INVITE_CODE_RADIX;
+  while (code.length < INVITE_CODE_LENGTH) {
+    const bytes = crypto.getRandomValues(new Uint8Array(INVITE_CODE_LENGTH));
+    for (const byte of bytes) {
+      if (byte >= INVITE_CODE_RANDOM_LIMIT) continue;
+      code += INVITE_CODE_ALPHABET[byte % INVITE_CODE_ALPHABET.length];
+      if (code.length === INVITE_CODE_LENGTH) break;
+    }
   }
   return code;
 }
 
-export function createInviteTokenCodec(secret: string): InviteTokenCodec {
-  if (encoder.encode(secret).byteLength < 32) throw new Error("Invite token secret must contain at least 32 bytes");
-  const key = crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-
-  async function signature(id: string): Promise<Uint8Array> {
-    return new Uint8Array(await crypto.subtle.sign("HMAC", await key, encoder.encode(id)));
-  }
-
-  return {
-    async encode(id) {
-      return encodeInviteCode(await signature(id));
-    },
-    normalize(token) {
-      const code = token.trim();
-      return INVITE_CODE_PATTERN.test(code) ? code : null;
-    },
-  };
+export function normalizeInviteCode(value: string): string | null {
+  const parsed = inviteCodeSchema.safeParse(value.trim().toUpperCase());
+  return parsed.success ? parsed.data : null;
 }

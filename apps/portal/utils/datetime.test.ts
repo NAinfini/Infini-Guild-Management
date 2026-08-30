@@ -12,6 +12,8 @@ import {
   formatTimeZoneAbbreviation,
   fromDateTimeLocalValue,
   isIsoDate,
+  localDayEndIso,
+  localDayStartIso,
   localClockToUtc,
   localDateKey,
   parseClockMinutes,
@@ -42,6 +44,22 @@ describe("localDateKey", () => {
 
   it("falls back to the placeholder instead of printing Invalid Date", () => {
     expect(localDateKey("not-a-date")).toBe(EMPTY_TIME_TEXT);
+  });
+});
+
+describe("local calendar-day boundaries", () => {
+  it("converts date controls to the viewer's real local-day instants", () => {
+    expect(localDayStartIso("2026-08-13"))
+      .toBe(new Date(2026, 7, 13, 0, 0, 0, 0).toISOString());
+    expect(localDayEndIso("2026-08-13"))
+      .toBe(new Date(new Date(2026, 7, 14, 0, 0, 0, 0).getTime() - 1).toISOString());
+  });
+
+  it("does not invent boundaries for empty or invalid calendar dates", () => {
+    for (const value of ["", "2026-08", "2026-02-30", "not-a-date"]) {
+      expect(localDayStartIso(value)).toBeUndefined();
+      expect(localDayEndIso(value)).toBeUndefined();
+    }
   });
 });
 

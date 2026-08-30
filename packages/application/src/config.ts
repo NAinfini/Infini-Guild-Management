@@ -7,10 +7,6 @@ export type ApplicationEnvironment = Readonly<Record<string, string | undefined>
 export function readApplicationConfig(environment: ApplicationEnvironment): ApplicationConfig {
   const publicUrl = required(environment, "IG_PUBLIC_URL");
   const publicOrigin = rootOrigin(publicUrl, "IG_PUBLIC_URL");
-  const inviteTokenSecret = requiredSecret(environment, "IG_INVITE_TOKEN_SECRET");
-  const auditDownloadSecret = new TextEncoder().encode(
-    requiredSecret(environment, "IG_AUDIT_DOWNLOAD_SECRET"),
-  );
   const sessionCookieName = optional(environment, "IG_SESSION_COOKIE_NAME");
   const passwordIterations = requireSafePasswordIterations(integer(
     environment.IG_PBKDF2_ITERATIONS,
@@ -25,8 +21,6 @@ export function readApplicationConfig(environment: ApplicationEnvironment): Appl
     publicUrl: publicOrigin,
     allowedOrigins: Object.freeze(allowedOrigins),
     ...(sessionCookieName ? { sessionCookieName } : {}),
-    inviteTokenSecret,
-    auditDownloadSecret,
     passwordIterations,
     oauth: oauthConfig(environment),
     emailFrom: optional(environment, "IG_EMAIL_FROM") ?? null,
@@ -64,14 +58,6 @@ function required(environment: ApplicationEnvironment, key: string): string {
 function optional(environment: ApplicationEnvironment, key: string): string | undefined {
   const value = environment[key]?.trim();
   return value ? value : undefined;
-}
-
-function requiredSecret(environment: ApplicationEnvironment, key: string): string {
-  const value = required(environment, key);
-  if (new TextEncoder().encode(value).byteLength < 32) {
-    throw new TypeError(`${key} must contain at least 32 UTF-8 bytes`);
-  }
-  return value;
 }
 
 function commaSeparated(value: string | undefined): string[] {

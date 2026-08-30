@@ -1,13 +1,16 @@
 import {
-  findRichTextProblem,
   LIMITS,
+  MAX_OFFSET_PAGE,
   type AuditChange,
   type BatchUpdateWikiCategoryItem,
+  type BatchUpdateWikiCategoriesInput,
   type PaginatedResponse,
   type WikiArticle,
+  type WikiCategoryCatalog,
   type WikiCategory,
   type WikiRevision,
   type WikiRevisionListItem,
+  wikiArticleEtag,
 } from "@guild/shared";
 import type { DeferredTasks, NotificationPublisher, RequestContext } from "@guild/kernel";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
@@ -21,13 +24,8 @@ import {
   type MediaService,
 } from "../media/public.js";
 import { assertPortableLikeSearch } from "../../portable-search.js";
-
-const ARTICLE_MANAGE_PERMISSIONS = [
-  PERMISSION_ID.WIKI_ARTICLES_CREATE,
-  PERMISSION_ID.WIKI_ARTICLES_EDIT,
-  PERMISSION_ID.WIKI_ARTICLES_ARCHIVE,
-  PERMISSION_ID.WIKI_ARTICLES_DELETE,
-] as const;
+import { createContentExcerpt, extractTipTapText } from "@guild/shared/utils/tiptap-text";
+import { contentReadScopes, type ContentReadScope } from "../../content-read-scope.js";
 
 export type WikiSort = "curated" | "updated_desc" | "updated_asc";
 export type WikiCategoryRecord = WikiCategory & Readonly<{ revisionToken: string }>;
@@ -52,7 +50,7 @@ export type WikiArticleListQuery = Readonly<{
   pinned?: boolean;
   search?: string;
   sort: WikiSort;
-  canReadArchived: boolean;
+  readScope: ContentReadScope;
 }>;
 
 export interface WikiStore {
@@ -76,7 +74,8 @@ export interface WikiStore {
     audit: AuditEventWrite;
   }>): Promise<boolean>;
   listArticles(query: WikiArticleListQuery): Promise<PaginatedResponse<WikiArticle>>;
-  getArticleBySlug(slug: string, canReadArchived: boolean): Promise<WikiArticleRecord | null>;
+  getArticleBySlug(slug: string, readScope: ContentReadScope): Promise<WikiArticleRecord | null>;
+  incrementArticleView(slug: string, readScope: ContentReadScope): Promise<number | null>;
   getArticleById(id: string, includeDeleted?: boolean): Promise<WikiArticleRecord | null>;
   createArticle(input: Readonly<{
     record: WikiArticleRecord;
@@ -100,9 +99,10 @@ export type CreateWikiCategoryInput = Readonly<{
   name: string;
   slug?: string;
   sort_order: number;
-  parent_id?: string | null;
 }>;
-export type UpdateWikiCategoryInput = Partial<CreateWikiCategoryInput>;
+export type UpdateWikiCategoryInput = Partial<CreateWikiCategoryInput> & Readonly<{
+  expected_revision_token: string;
+}>;
 export type CreateWikiArticleInput = Readonly<{
   title: string;
   slug?: string;
@@ -121,22 +121,19 @@ export class WikiService {
     private readonly deferred: DeferredTasks,
   ) {}
 
-  async listCategories(): Promise<readonly WikiCategory[]> {
-    return (await this.store.listCategories()).records.map(withoutCategoryRevision);
+  async listCategories(): Promise<WikiCategoryCatalog> {
+    return categoryCatalog(await this.store.listCategories());
   }
 
   async createCategory(context: RequestContext, input: CreateWikiCategoryInput): Promise<WikiCategory> {
     context.authorization.require(PERMISSION_ID.WIKI_CATEGORIES_MANAGE);
     const tree = await this.store.listCategories();
-    const parentId = input.parent_id ?? null;
-    assertCategoryParent(tree.records, "new", parentId);
     const name = normalizeName(input.name, "Category name", 120);
     const record: WikiCategoryRecord = {
       id: nanoid(),
       name,
       slug: slugify(input.slug ?? name),
       sort_order: input.sort_order,
-      parent_id: parentId,
       created_at: context.now,
       updated_at: context.now,
       revisionToken: crypto.randomUUID(),
@@ -149,13 +146,6 @@ export class WikiService {
       context: [
         { field: "slug", value: { type: "code", value: record.slug } },
         { field: "sort_order", value: { type: "number", value: record.sort_order } },
-        ...(parentId === null ? [] : [{
-          field: "parent_id" as const,
-          value: {
-            type: "reference" as const,
-            value: { id: parentId, label: tree.records.find(({ id }) => id === parentId)?.name ?? null },
-          },
-        }]),
       ],
     });
     const outcome = await this.store.createCategory({
@@ -173,21 +163,22 @@ export class WikiService {
   async updateCategory(context: RequestContext, id: string, input: UpdateWikiCategoryInput): Promise<WikiCategory> {
     context.authorization.require(PERMISSION_ID.WIKI_CATEGORIES_MANAGE);
     const tree = await this.store.listCategories();
+    if (input.expected_revision_token !== tree.stateToken) throw conflict("Wiki category tree changed");
     const existing = tree.records.find((category) => category.id === id);
     if (!existing) throw notFound("Wiki category not found");
-    const projected = applyCategoryPatch(existing, input, context.now);
-    assertProjectedCategoryTree(tree.records.map((category) => category.id === id ? projected : category));
+    const { expected_revision_token: expectedStateToken, ...patch } = input;
+    const projected = applyCategoryPatch(existing, patch, context.now);
     if (sameCategory(existing, projected)) return withoutCategoryRevision(existing);
     const audit = createAuditEvent(context, {
       subjectType: "wiki_category",
       subjectId: id,
       subjectLabel: projected.name,
       action: "update",
-      changes: categoryChanges(existing, projected, categoryLabelMap(tree.records)),
+      changes: categoryChanges(existing, projected),
     });
     if (!await this.store.updateCategories({
       records: [projected],
-      expectedStateToken: tree.stateToken,
+      expectedStateToken,
       stateToken: crypto.randomUUID(),
       audit,
     })) throw conflict("Wiki category tree changed");
@@ -197,14 +188,16 @@ export class WikiService {
 
   async batchUpdateCategories(
     context: RequestContext,
-    updates: readonly BatchUpdateWikiCategoryItem[],
-  ): Promise<readonly WikiCategory[]> {
+    input: BatchUpdateWikiCategoriesInput,
+  ): Promise<WikiCategoryCatalog> {
     context.authorization.require(PERMISSION_ID.WIKI_CATEGORIES_MANAGE);
+    const { expected_revision_token: expectedStateToken, updates } = input;
     if (updates.length < 1 || updates.length > LIMITS.content.wikiCategoryBatch.max
       || new Set(updates.map(({ id }) => id)).size !== updates.length) {
       throw validation(`Category batch must contain 1 to ${LIMITS.content.wikiCategoryBatch.max} unique rows`);
     }
     const tree = await this.store.listCategories();
+    if (expectedStateToken !== tree.stateToken) throw conflict("Wiki category tree changed");
     const updateById = new Map(updates.map((update) => [update.id, update]));
     for (const id of updateById.keys()) {
       if (!tree.records.some((category) => category.id === id)) throw notFound(`Wiki category not found: ${id}`);
@@ -213,12 +206,12 @@ export class WikiService {
       const update = updateById.get(category.id);
       return update ? applyCategoryPatch(category, update, context.now) : category;
     });
-    assertProjectedCategoryTree(projected);
     const changedRecords = projected.filter((category) => {
       const existing = tree.records.find(({ id }) => id === category.id)!;
       return !sameCategory(existing, category);
     });
-    if (changedRecords.length === 0) return projected.map(withoutCategoryRevision);
+    if (changedRecords.length === 0) return categoryCatalog(tree);
+    const stateToken = crypto.randomUUID();
     const audit = createAuditEvent(context, {
       subjectType: "wiki_category",
       subjectId: context.requestId,
@@ -235,7 +228,7 @@ export class WikiService {
             })),
           },
         },
-        // Renaming, re-parenting, and reordering all land here, so the log names which of them happened.
+        // Renaming and reordering land here, so the log names which of them happened.
         {
           field: "changed_sections",
           value: {
@@ -248,20 +241,27 @@ export class WikiService {
     });
     if (!await this.store.updateCategories({
       records: changedRecords,
-      expectedStateToken: tree.stateToken,
-      stateToken: crypto.randomUUID(),
+      expectedStateToken,
+      stateToken,
       audit,
     })) throw conflict("Wiki category tree changed");
     this.publish("categories", "categories_updated", context.now);
-    return projected.map(withoutCategoryRevision);
+    return {
+      categories: projected.map(withoutCategoryRevision),
+      revision_token: stateToken,
+    };
   }
 
-  async deleteCategory(context: RequestContext, id: string): Promise<Readonly<{ ok: true }>> {
+  async deleteCategory(
+    context: RequestContext,
+    id: string,
+    expectedStateToken: string,
+  ): Promise<Readonly<{ ok: true }>> {
     context.authorization.require(PERMISSION_ID.WIKI_CATEGORIES_MANAGE);
     const tree = await this.store.listCategories();
+    if (expectedStateToken !== tree.stateToken) throw conflict("Wiki category tree changed");
     const existing = tree.records.find((category) => category.id === id);
     if (!existing) throw notFound("Wiki category not found");
-    if (tree.records.some((category) => category.parent_id === id)) throw conflict("Category still has children");
     const audit = createAuditEvent(context, {
       subjectType: "wiki_category",
       subjectId: id,
@@ -270,20 +270,11 @@ export class WikiService {
       context: [
         { field: "slug", value: { type: "code", value: existing.slug } },
         { field: "sort_order", value: { type: "number", value: existing.sort_order } },
-        { field: "parent_id", value: existing.parent_id === null
-          ? { type: "null", value: null }
-          : {
-              type: "reference",
-              value: {
-                id: existing.parent_id,
-                label: tree.records.find(({ id: categoryId }) => categoryId === existing.parent_id)?.name ?? null,
-              },
-            } },
       ],
     });
     if (!await this.store.deleteCategory({
       id,
-      expectedStateToken: tree.stateToken,
+      expectedStateToken,
       stateToken: crypto.randomUUID(),
       audit,
     })) throw conflict("Wiki category changed or is still in use");
@@ -291,21 +282,27 @@ export class WikiService {
     return { ok: true };
   }
 
-  listArticles(context: RequestContext, query: Omit<WikiArticleListQuery, "canReadArchived">): Promise<PaginatedResponse<WikiArticle>> {
+  listArticles(context: RequestContext, query: Omit<WikiArticleListQuery, "readScope">): Promise<PaginatedResponse<WikiArticle>> {
     assertPagination(query.page, query.limit);
     if (query.categoryIds.length > 100) throw validation("Maximum 100 category filters");
     assertPortableLikeSearch(query.search?.toLowerCase(), "Wiki search");
-    const canReadArchived = canManageArticles(context);
-    if (query.archived === true && !canReadArchived) {
+    const readScope = contentReadScopes(context).wikiArticle;
+    if (query.archived === true && readScope.kind === "public") {
       throw new AppError({ code: "FORBIDDEN", status: 403, message: "Archived wiki articles require management permission" });
     }
-    return this.store.listArticles({ ...query, canReadArchived });
+    return this.store.listArticles({ ...query, readScope });
   }
 
   async getArticleBySlug(context: RequestContext, slug: string): Promise<WikiArticle> {
-    const record = await this.store.getArticleBySlug(slug, canManageArticles(context));
+    const record = await this.store.getArticleBySlug(slug, contentReadScopes(context).wikiArticle);
     if (!record) throw notFound("Wiki article not found");
     return withoutArticleRevision(record);
+  }
+
+  async recordArticleView(context: RequestContext, slug: string): Promise<Readonly<{ view_count: number }>> {
+    const viewCount = await this.store.incrementArticleView(slug, contentReadScopes(context).wikiArticle);
+    if (viewCount === null) throw notFound("Wiki article not found");
+    return { view_count: viewCount };
   }
 
   async createArticle(context: RequestContext, input: CreateWikiArticleInput, requestOrigin: string): Promise<WikiArticle> {
@@ -322,6 +319,9 @@ export class WikiService {
       body_json: bodyJson,
       sort_order: input.sort_order,
       pinned: input.pinned,
+      view_count: 0,
+      excerpt: articleExcerpt(bodyJson),
+      preview_media_id: mediaIds[0] ?? null,
       archived_at: null,
       deletedAt: null,
       created_by: actor.userId,
@@ -367,13 +367,13 @@ export class WikiService {
     id: string,
     input: UpdateWikiArticleInput,
     requestOrigin: string,
-    ifMatch?: string,
+    ifMatch: string,
   ): Promise<WikiArticle> {
     const actor = context.authorization.require(PERMISSION_ID.WIKI_ARTICLES_EDIT);
     if (input.archived_at !== undefined) context.authorization.require(PERMISSION_ID.WIKI_ARTICLES_ARCHIVE);
     const existing = await this.store.getArticleById(id);
     if (!existing) throw notFound("Wiki article not found");
-    if (ifMatch && ifMatch !== "*" && ifMatch !== wikiArticleEtag(existing)) throw conflict("Wiki article changed");
+    if (ifMatch !== wikiArticleEtag(existing)) throw conflict("Wiki article changed");
     const title = input.title === undefined ? existing.title : normalizeName(input.title, "Article title", 200);
     const bodyJson = input.body_json === undefined
       ? existing.body_json
@@ -385,6 +385,7 @@ export class WikiService {
       slug: input.slug === undefined ? existing.slug : slugify(input.slug),
       category_id: input.category_id ?? existing.category_id,
       body_json: bodyJson,
+      excerpt: articleExcerpt(bodyJson),
       sort_order: input.sort_order ?? existing.sort_order,
       pinned: input.pinned ?? existing.pinned,
       archived_at: input.archived_at === undefined ? existing.archived_at : input.archived_at,
@@ -425,10 +426,11 @@ export class WikiService {
     return withoutArticleRevision(record);
   }
 
-  async archiveArticle(context: RequestContext, id: string): Promise<Readonly<{ ok: true }>> {
+  async archiveArticle(context: RequestContext, id: string, ifMatch: string): Promise<Readonly<{ ok: true }>> {
     const actor = context.authorization.require(PERMISSION_ID.WIKI_ARTICLES_ARCHIVE);
     const existing = await this.store.getArticleById(id);
     if (!existing) throw notFound("Wiki article not found");
+    if (ifMatch !== wikiArticleEtag(existing)) throw conflict("Wiki article changed");
     if (existing.archived_at) return { ok: true };
     const record: WikiArticleRecord = {
       ...existing,
@@ -465,10 +467,11 @@ export class WikiService {
     return { ok: true };
   }
 
-  async deleteArticle(context: RequestContext, id: string): Promise<Readonly<{ ok: true }>> {
+  async deleteArticle(context: RequestContext, id: string, ifMatch: string): Promise<Readonly<{ ok: true }>> {
     const actor = context.authorization.require(PERMISSION_ID.WIKI_ARTICLES_DELETE);
     const existing = await this.store.getArticleById(id);
     if (!existing) throw notFound("Wiki article not found");
+    if (ifMatch !== wikiArticleEtag(existing)) throw conflict("Wiki article changed");
     const categoryLabels = await this.categoryLabels([existing.category_id]);
     const audit = createAuditEvent(context, {
       subjectType: "wiki_article",
@@ -531,7 +534,12 @@ export class WikiService {
     return record;
   }
 
-  async restoreRevision(context: RequestContext, articleId: string, revisionNumber: number): Promise<WikiArticle> {
+  async restoreRevision(
+    context: RequestContext,
+    articleId: string,
+    revisionNumber: number,
+    ifMatch: string,
+  ): Promise<WikiArticle> {
     const actor = context.authorization.require(PERMISSION_ID.WIKI_ARTICLES_EDIT);
     const [existing, snapshot] = await Promise.all([
       this.store.getArticleById(articleId, true),
@@ -539,6 +547,7 @@ export class WikiService {
     ]);
     if (!existing) throw notFound("Wiki article not found");
     if (!snapshot) throw notFound("Wiki revision not found");
+    if (ifMatch !== wikiArticleEtag(existing)) throw conflict("Wiki article changed");
     if (snapshot.archived_at !== existing.archived_at) context.authorization.require(PERMISSION_ID.WIKI_ARTICLES_ARCHIVE);
     if (snapshot.deleted_at !== existing.deletedAt) context.authorization.require(PERMISSION_ID.WIKI_ARTICLES_DELETE);
     if (sameArticleSnapshot(existing, snapshot)) {
@@ -550,6 +559,7 @@ export class WikiService {
       slug: snapshot.slug,
       category_id: snapshot.category_id,
       body_json: snapshot.body_json,
+      excerpt: articleExcerpt(snapshot.body_json),
       sort_order: snapshot.sort_order,
       pinned: snapshot.pinned,
       archived_at: snapshot.archived_at,
@@ -623,10 +633,7 @@ export class WikiService {
   }
 
   private canonicalizeBody(value: string, requestOrigin: string): string {
-    const canonical = canonicalizeRichTextMedia(value, requestOrigin);
-    const problem = findRichTextProblem(JSON.parse(canonical) as unknown);
-    if (problem) throw validation(`Unsupported rich-text content: ${problem}`);
-    return canonical;
+    return canonicalizeRichTextMedia(value, requestOrigin);
   }
 
   private publish(id: string, hint: string, updatedAt: string): void {
@@ -647,7 +654,7 @@ export class WikiService {
 
 function applyCategoryPatch(
   existing: WikiCategoryRecord,
-  input: UpdateWikiCategoryInput | BatchUpdateWikiCategoryItem,
+  input: Partial<CreateWikiCategoryInput> | BatchUpdateWikiCategoryItem,
   now: string,
 ): WikiCategoryRecord {
   return {
@@ -655,27 +662,9 @@ function applyCategoryPatch(
     name: input.name === undefined ? existing.name : normalizeName(input.name, "Category name", 120),
     slug: "slug" in input && input.slug !== undefined ? slugify(input.slug) : existing.slug,
     sort_order: input.sort_order ?? existing.sort_order,
-    parent_id: input.parent_id === undefined ? existing.parent_id : input.parent_id,
     updated_at: monotonicTimestamp(now, existing.updated_at),
     revisionToken: crypto.randomUUID(),
   };
-}
-
-function assertCategoryParent(records: readonly WikiCategoryRecord[], id: string, parentId: string | null): void {
-  if (!parentId) return;
-  if (parentId === id) throw validation("Category cannot be its own parent");
-  const parent = records.find((category) => category.id === parentId);
-  if (!parent) throw notFound("Parent category not found");
-  if (parent.parent_id) throw validation("Wiki categories support one child level");
-}
-
-function assertProjectedCategoryTree(records: readonly WikiCategoryRecord[]): void {
-  for (const category of records) {
-    assertCategoryParent(records, category.id, category.parent_id);
-    if (category.parent_id && records.some((candidate) => candidate.parent_id === category.id)) {
-      throw validation("Category with children cannot become a child");
-    }
-  }
 }
 
 function revisionOf(record: WikiArticleRecord, actorUserId: string, restoredFrom: number | null): WikiRevisionRecord {
@@ -703,6 +692,10 @@ function normalizeName(value: string, label: string, max: number): string {
   const normalized = value.trim();
   if (!normalized || normalized.length > max) throw validation(`${label} is invalid`);
   return normalized;
+}
+
+function articleExcerpt(bodyJson: string): string {
+  return createContentExcerpt(extractTipTapText(bodyJson));
 }
 
 export function slugifyWiki(value: string): string {
@@ -742,8 +735,7 @@ function sameIds(left: readonly string[], right: readonly string[]): boolean {
 }
 
 function sameCategory(before: WikiCategoryRecord, after: WikiCategoryRecord): boolean {
-  return before.name === after.name && before.slug === after.slug && before.sort_order === after.sort_order
-    && before.parent_id === after.parent_id;
+  return before.name === after.name && before.slug === after.slug && before.sort_order === after.sort_order;
 }
 
 function categoryBatchSections(
@@ -757,7 +749,6 @@ function categoryBatchSections(
     if (!existing) continue;
     if (existing.name !== category.name) sections.add("name");
     if (existing.slug !== category.slug) sections.add("slug");
-    if (existing.parent_id !== category.parent_id) sections.add("parent_id");
     if (existing.sort_order !== category.sort_order) sections.add("sort_order");
   }
   return [...sections];
@@ -767,11 +758,7 @@ function categoryLabelMap(records: readonly WikiCategoryRecord[]): ReadonlyMap<s
   return new Map(records.map(({ id, name }) => [id, name]));
 }
 
-function categoryChanges(
-  before: WikiCategoryRecord,
-  after: WikiCategoryRecord,
-  labels: ReadonlyMap<string, string>,
-): AuditChange[] {
+function categoryChanges(before: WikiCategoryRecord, after: WikiCategoryRecord): AuditChange[] {
   const changes: AuditChange[] = [];
   if (before.name !== after.name) changes.push({
     field: "name",
@@ -787,15 +774,6 @@ function categoryChanges(
     field: "sort_order",
     before: { type: "number", value: before.sort_order },
     after: { type: "number", value: after.sort_order },
-  });
-  if (before.parent_id !== after.parent_id) changes.push({
-    field: "parent_id",
-    before: before.parent_id === null
-      ? { type: "null", value: null }
-      : { type: "reference", value: { id: before.parent_id, label: labels.get(before.parent_id) ?? null } },
-    after: after.parent_id === null
-      ? { type: "null", value: null }
-      : { type: "reference", value: { id: after.parent_id, label: labels.get(after.parent_id) ?? null } },
   });
   return changes;
 }
@@ -843,13 +821,18 @@ function articleChanges(
   return changes;
 }
 
-function canManageArticles(context: RequestContext): boolean {
-  return ARTICLE_MANAGE_PERMISSIONS.some((permission) => context.authorization.has(permission));
-}
-
 function withoutCategoryRevision(record: WikiCategoryRecord): WikiCategory {
   const { revisionToken: _revisionToken, ...category } = record;
   return category;
+}
+
+function categoryCatalog(
+  tree: Readonly<{ records: readonly WikiCategoryRecord[]; stateToken: string }>,
+): WikiCategoryCatalog {
+  return {
+    categories: tree.records.map(withoutCategoryRevision),
+    revision_token: tree.stateToken,
+  };
 }
 
 function withoutArticleRevision(record: WikiArticleRecord): WikiArticle {
@@ -863,12 +846,9 @@ function withoutArticleRevision(record: WikiArticleRecord): WikiArticle {
   return article;
 }
 
-export function wikiArticleEtag(record: Pick<WikiArticleRecord, "id" | "updated_at">): string {
-  return `"wiki-${record.id}-${record.updated_at}"`;
-}
-
 function assertPagination(page: number, limit: number): void {
-  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+  if (!Number.isInteger(page) || page < 1 || page > MAX_OFFSET_PAGE
+    || !Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw validation("Invalid wiki pagination");
   }
 }

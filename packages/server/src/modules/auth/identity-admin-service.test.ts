@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
+import {
+  createAuthorizationContext,
+  createRequestContext,
+  type DeferredTask,
+  type DeferredTasks,
+  type NotificationPublisher,
+} from "@guild/kernel";
 import {
   PERMISSIONS,
   PERMISSION_ID,
@@ -7,8 +13,10 @@ import {
 } from "@guild/shared/constants/roles";
 import type { AccountProvisioningStore, AuthStore, InviteRecord, ManagedUserTarget, RoleRecord } from "./auth-types";
 import { IdentityAdminService } from "./identity-admin-service";
-import { createInviteTokenCodec, createPasswordHash, digestToken } from "./crypto";
+import { createPasswordHash } from "./crypto";
 import type { AuditEventWrite } from "../audit/public.js";
+import type { MembersStore } from "../members/public.js";
+import { NotificationService } from "../notifications/public.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const target: ManagedUserTarget = {
@@ -46,6 +54,7 @@ const managerTarget: ManagedUserTarget = {
 };
 const invite: InviteRecord = {
   id: "invite-123",
+  code: "A1B2C3D4E5",
   createdBy: "admin",
   roleId: destination.id,
   roleName: destination.name,
@@ -76,14 +85,25 @@ function context(input: Readonly<{
   });
 }
 
+function permissionFlags(enabled: readonly Permission[] = []): Record<Permission, boolean> {
+  const enabledPermissions = new Set(enabled);
+  return Object.fromEntries(PERMISSIONS.map((permission) => [permission, enabledPermissions.has(permission)])) as Record<Permission, boolean>;
+}
+
 function service(
   store: Partial<AuthStore>,
   provisioning: Partial<AccountProvisioningStore> = {},
+  memberProfiles: Partial<Pick<MembersStore, "getMemberTarget" | "findMissingClassIds">> = {},
+  realtime: Readonly<{
+    notifications?: NotificationPublisher;
+    deferred?: DeferredTasks;
+  }> = {},
 ) {
   return new IdentityAdminService({
     store: store as AuthStore,
     provisioning: provisioning as AccountProvisioningStore,
-    inviteTokens: createInviteTokenCodec("0123456789abcdef0123456789abcdef"),
+    memberProfiles: memberProfiles as Pick<MembersStore, "getMemberTarget" | "findMissingClassIds">,
+    ...realtime,
   });
 }
 
@@ -96,10 +116,220 @@ describe("account provisioning boundary", () => {
     );
     const result = await value.createMember(
       context({ permissions: [PERMISSION_ID.ADMIN_USERS_EDIT] }),
-      { loginName: "new-member", displayName: "New Member", roleId: destination.id },
+      {
+        loginName: "new-member",
+        displayName: "New Member",
+        roleId: destination.id,
+        notes: "Initial officer note",
+      },
     );
     expect(result).toMatchObject({ ok: true, displayName: "New Member", temporaryLoginName: "new-member" });
     expect(createManagedUser).toHaveBeenCalledOnce();
+    expect(createManagedUser).toHaveBeenCalledWith(
+      expect.objectContaining({ notes: "Initial officer note" }),
+      expect.anything(),
+    );
+  });
+});
+
+describe("administrator member edit command", () => {
+  it("uses one guarded write for profile, role, and lifecycle changes", async () => {
+    const tasks: DeferredTask[] = [];
+    const publish = vi.fn().mockResolvedValue(undefined);
+    const updateManagedMember = vi.fn().mockResolvedValue("updated");
+    const memberTarget = {
+      userId: target.id,
+      display_name: target.displayName,
+      roleId: target.roleId,
+      roleLevel: target.roleLevel,
+      isActive: target.isActive,
+      deletedAt: target.deletedAt,
+      revisionToken: target.revisionToken,
+      roleRevisionToken: target.roleRevisionToken,
+      profileRevisionToken: "profile-v1",
+    };
+    const value = service({
+      findManagedUsers: vi.fn().mockResolvedValue([target]),
+      findRole: vi.fn(async (id: string) => id === target.roleId ? memberRole : destination),
+      countActiveRoleManagers: vi.fn().mockResolvedValue(2),
+      countActiveRoleManagersAmong: vi.fn().mockResolvedValue(0),
+    }, { updateManagedMember }, {
+      getMemberTarget: vi.fn().mockResolvedValue(memberTarget),
+      findMissingClassIds: vi.fn().mockResolvedValue([]),
+    }, {
+      notifications: new NotificationService({ publish }),
+      deferred: { defer: (task) => { tasks.push(task); } },
+    });
+
+    await value.updateMember(context({ permissions: [
+      PERMISSION_ID.ADMIN_USERS_EDIT,
+      PERMISSION_ID.ADMIN_USERS_ROLE,
+      PERMISSION_ID.ADMIN_USERS_ACTIVATE,
+    ] }), target.id, {
+      expectedUserRevisionToken: "user-v1",
+      expectedProfileRevisionToken: "profile-v1",
+      displayName: "RenamedMember",
+      profile: {
+        power: 42,
+        classes: ["guardian"],
+        titleHtml: "<b>Officer</b>",
+        bio: "Coordinates raids",
+        availability: null,
+        notes: "Private officer note",
+      },
+      roleId: destination.id,
+      isActive: false,
+    });
+
+    expect(updateManagedMember).toHaveBeenCalledWith(expect.objectContaining({
+      target,
+      destinationRole: destination,
+      active: false,
+      displayName: "RenamedMember",
+      profile: expect.objectContaining({
+        titleHtml: "<b>Officer</b>",
+      }),
+    }), expect.objectContaining({
+      subjectId: target.id,
+      action: "update",
+    }));
+    expect(updateManagedMember).toHaveBeenCalledTimes(1);
+    expect(updateManagedMember.mock.calls[0]![1].payload.changes).toContainEqual({
+      field: "display_name",
+      before: { type: "text", value: target.displayName },
+      after: { type: "text", value: "RenamedMember" },
+    });
+    expect(tasks).toHaveLength(1);
+    await tasks[0]!();
+    expect(publish).toHaveBeenCalledWith({
+      type: "authorization_refresh",
+      user_ids: [target.id],
+    });
+  });
+
+  it("rejects an A/B stale composite member save before the atomic writer", async () => {
+    const updateManagedMember = vi.fn();
+    const currentTarget = { ...target, revisionToken: "user-v2" };
+    const currentProfile = {
+      userId: target.id,
+      display_name: target.displayName,
+      roleId: target.roleId,
+      roleLevel: target.roleLevel,
+      isActive: target.isActive,
+      deletedAt: target.deletedAt,
+      revisionToken: currentTarget.revisionToken,
+      roleRevisionToken: target.roleRevisionToken,
+      profileRevisionToken: "profile-v1",
+    };
+    const value = service({
+      findManagedUsers: vi.fn().mockResolvedValue([currentTarget]),
+    }, { updateManagedMember }, {
+      getMemberTarget: vi.fn().mockResolvedValue(currentProfile),
+      findMissingClassIds: vi.fn().mockResolvedValue([]),
+    });
+
+    await expect(value.updateMember(
+      context({ permissions: [PERMISSION_ID.ADMIN_USERS_EDIT] }),
+      target.id,
+      {
+        expectedUserRevisionToken: "user-v1",
+        expectedProfileRevisionToken: "profile-v1",
+        profile: { power: 42, classes: [], titleHtml: null, bio: "A draft", availability: null, notes: null },
+      },
+    )).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    expect(updateManagedMember).not.toHaveBeenCalled();
+  });
+
+  it("rejects reserved display names and maps duplicate names from the atomic writer to conflicts", async () => {
+    const updateManagedMember = vi.fn().mockResolvedValue("display_name_taken");
+    const memberTarget = {
+      userId: target.id,
+      display_name: target.displayName,
+      roleId: target.roleId,
+      roleLevel: target.roleLevel,
+      isActive: target.isActive,
+      deletedAt: target.deletedAt,
+      revisionToken: target.revisionToken,
+      roleRevisionToken: target.roleRevisionToken,
+      profileRevisionToken: "profile-v1",
+    };
+    const value = service({
+      findManagedUsers: vi.fn().mockResolvedValue([target]),
+      countActiveRoleManagers: vi.fn().mockResolvedValue(2),
+      countActiveRoleManagersAmong: vi.fn().mockResolvedValue(0),
+    }, { updateManagedMember }, {
+      getMemberTarget: vi.fn().mockResolvedValue(memberTarget),
+    });
+    const request = context({ permissions: [PERMISSION_ID.ADMIN_USERS_EDIT] });
+
+    await expect(value.updateMember(request, target.id, {
+      expectedUserRevisionToken: "user-v1",
+      expectedProfileRevisionToken: "profile-v1",
+      displayName: "systemtest_reserved",
+    })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    expect(updateManagedMember).not.toHaveBeenCalled();
+
+    await expect(value.updateMember(request, target.id, {
+      expectedUserRevisionToken: "user-v1",
+      expectedProfileRevisionToken: "profile-v1",
+      displayName: "TakenName",
+    })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    expect(updateManagedMember).toHaveBeenCalledWith(expect.objectContaining({
+      displayName: "TakenName",
+    }), expect.anything());
+  });
+
+  it("rejects a role field before the atomic writer when the actor cannot assign roles", async () => {
+    const updateManagedMember = vi.fn();
+    const value = service({
+      findManagedUsers: vi.fn().mockResolvedValue([target]),
+      findRole: vi.fn().mockResolvedValue(destination),
+    }, { updateManagedMember });
+
+    await expect(value.updateMember(
+      context({ permissions: [PERMISSION_ID.ADMIN_USERS_EDIT] }),
+      target.id,
+      { expectedUserRevisionToken: "user-v1", expectedProfileRevisionToken: "profile-v1", roleId: destination.id },
+    )).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    expect(updateManagedMember).not.toHaveBeenCalled();
+  });
+
+  it("keeps the final active role manager before dispatching the composite command", async () => {
+    const updateManagedMember = vi.fn();
+    const value = service({
+      findManagedUsers: vi.fn().mockResolvedValue([managerTarget]),
+      findRole: vi.fn(async (id: string) => id === managerTarget.roleId ? {
+        ...destination,
+        id: managerTarget.roleId,
+        permissions: new Set([PERMISSION_ID.ADMIN_ROLES_MANAGE]),
+      } : memberRole),
+      countActiveRoleManagers: vi.fn().mockResolvedValue(1),
+      countActiveRoleManagersAmong: vi.fn().mockResolvedValue(1),
+    }, { updateManagedMember }, {
+      getMemberTarget: vi.fn().mockResolvedValue({
+        userId: managerTarget.id,
+        display_name: managerTarget.displayName,
+        roleId: managerTarget.roleId,
+        roleLevel: managerTarget.roleLevel,
+        isActive: managerTarget.isActive,
+        deletedAt: managerTarget.deletedAt,
+        revisionToken: managerTarget.revisionToken,
+        roleRevisionToken: managerTarget.roleRevisionToken,
+        profileRevisionToken: "profile-v1",
+      }),
+      findMissingClassIds: vi.fn().mockResolvedValue([]),
+    });
+
+    await expect(value.updateMember(context({ permissions: [
+      PERMISSION_ID.ADMIN_USERS_ROLE,
+      PERMISSION_ID.ADMIN_USERS_ACTIVATE,
+    ] }), managerTarget.id, {
+      expectedUserRevisionToken: "user-v1",
+      expectedProfileRevisionToken: "profile-v1",
+      roleId: memberRole.id,
+      isActive: false,
+    })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    expect(updateManagedMember).not.toHaveBeenCalled();
   });
 });
 
@@ -152,11 +382,11 @@ describe("administrator credential reset", () => {
   });
 });
 
-describe("invite search", () => {
-  it("creates and relists one stable ten-character public code", async () => {
+describe("invite codes", () => {
+  it("creates one 10-character code, returns it in invite lists, and keeps it out of audit data", async () => {
     let storedInvite = invite;
-    const createInvite = vi.fn(async (input: { id: string }, _audit: AuditEventWrite) => {
-      storedInvite = { ...invite, id: input.id };
+    const createInvite = vi.fn(async (input: { id: string; code: string }, _audit: AuditEventWrite) => {
+      storedInvite = { ...invite, id: input.id, code: input.code };
       return storedInvite;
     });
     const listInvites = vi.fn(async () => ({ data: [storedInvite], nextCursor: null, total: 1 }));
@@ -174,12 +404,13 @@ describe("invite search", () => {
     });
     const listed = await value.listInvites(request, { visibility: "active", limit: 50 });
 
-    expect(created.code).toMatch(/^[A-Za-z0-9]{10}$/);
-    expect(listed.data[0]?.code).toBe(created.code);
+    expect(created.code).toMatch(/^[A-Z0-9]{10}$/);
+    expect(listed.data[0]).toMatchObject({ code: created.code });
     expect(createInvite).toHaveBeenCalledWith(
-      expect.objectContaining({ tokenDigest: await digestToken(created.code) }),
+      expect.objectContaining({ code: created.code }),
       expect.anything(),
     );
+    expect(JSON.stringify(createInvite.mock.calls[0]![1].payload)).not.toContain(created.code);
     expect(createInvite.mock.calls[0]![1].payload.context).toEqual([
       { field: "role_id", value: { type: "reference", value: { id: destination.id, label: destination.name } } },
       { field: "role_name", value: { type: "text", value: destination.name } },
@@ -190,10 +421,9 @@ describe("invite search", () => {
     ]);
   });
 
-  it("uses a full invite code digest for an exact indexed lookup", async () => {
+  it("uses invite codes as a list lookup", async () => {
     const listInvites = vi.fn().mockResolvedValue({ data: [], nextCursor: null, total: 0 });
-    const inviteTokens = createInviteTokenCodec("0123456789abcdef0123456789abcdef");
-    const code = await inviteTokens.encode("invite-123");
+    const code = "A1B2C3D4E5";
     const value = service({ listInvites });
 
     await value.listInvites(
@@ -205,8 +435,7 @@ describe("invite search", () => {
       visibility: "active",
       limit: 50,
       cursor: null,
-      search: "",
-      exactTokenDigest: await digestToken(code),
+      search: code.toLowerCase(),
       now: NOW,
     });
   });
@@ -222,12 +451,12 @@ describe("invite search", () => {
     await expect(value.listInvites(request, {
       visibility: "active",
       limit: 50,
-      search: "not-a-valid-code".repeat(6),
+      search: "not-a-valid-invite-code".repeat(6),
     })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
     expect(listInvites).toHaveBeenCalledTimes(1);
   });
 
-  it("audits invite lifecycle state without exposing the public code", async () => {
+  it("audits invite lifecycle state without exposing its code", async () => {
     const revokeInvite = vi.fn().mockResolvedValue(true);
     const deleteInvite = vi.fn().mockResolvedValue(true);
     const value = service({
@@ -248,8 +477,7 @@ describe("invite search", () => {
     }]);
     expect(revokeAudit.payload.context.map(({ field }: { field: string }) => field))
       .toEqual(["role_id", "role_name", "max_uses", "used_count", "expires_at"]);
-    const publicCode = await createInviteTokenCodec("0123456789abcdef0123456789abcdef").encode(invite.id);
-    expect(JSON.stringify(revokeAudit.payload)).not.toContain(publicCode);
+    expect(JSON.stringify(revokeAudit.payload)).not.toContain(invite.code);
     expect(deleteInvite.mock.calls[0]![1].payload.context.at(-1)).toEqual({
       field: "status",
       value: { type: "code", value: "active" },
@@ -258,6 +486,32 @@ describe("invite search", () => {
 });
 
 describe("IdentityAdminService guarded writes", () => {
+  it("returns role snapshots from committed writes without a post-commit role read", async () => {
+    const created = { ...destination, id: "notice-editor", name: "Notice Editor", revisionToken: "role-create-revision" };
+    const createFindRole = vi.fn().mockRejectedValue(new Error("post-commit role read failed"));
+    const createRole = vi.fn().mockResolvedValue({ status: "created", role: created });
+    const creator = service({ findRole: createFindRole, createRole });
+
+    await expect(creator.createRole(
+      context({ permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+      { id: created.id, name: created.name, level: created.level },
+    )).resolves.toEqual(created);
+    expect(createFindRole).not.toHaveBeenCalled();
+
+    const existing = { ...destination, revisionToken: "role-before-revision" };
+    const updated = { ...existing, name: "Updated officer", revisionToken: "role-after-revision" };
+    const updateFindRole = vi.fn().mockResolvedValueOnce(existing).mockRejectedValue(new Error("post-commit role read failed"));
+    const updateRole = vi.fn().mockResolvedValue({ status: "updated", role: updated });
+    const editor = service({ findRole: updateFindRole, updateRole });
+
+    await expect(editor.updateRole(
+      context({ permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+      existing.id,
+      { expectedRevisionToken: existing.revisionToken, name: updated.name },
+    )).resolves.toEqual(updated);
+    expect(updateFindRole).toHaveBeenCalledOnce();
+  });
+
   it("maps a stale target or destination role to a 409", async () => {
     const value = service({
       findManagedUsers: async () => [target],
@@ -316,6 +570,229 @@ describe("IdentityAdminService guarded writes", () => {
       ] } },
       { field: "assigned_user_count", value: { type: "number", value: role.assignedUserCount } },
     ]);
+  });
+
+  it("rejects an A/B stale role editor before it can restore old permissions", async () => {
+    const updateRole = vi.fn();
+    const currentRole = { ...destination, revisionToken: "officer-v2" };
+    const value = service({ findRole: vi.fn().mockResolvedValue(currentRole), updateRole });
+
+    await expect(value.updateRole(
+      context({ permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+      currentRole.id,
+      { expectedRevisionToken: "officer-v1", color: "#336699", permissions: {} as Record<Permission, boolean> },
+    )).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    expect(updateRole).not.toHaveBeenCalled();
+  });
+
+  it("lets a role manager restore an unheld notification permission on self, peer, and lower roles", async () => {
+    const managerPermissions = new Set<Permission>([PERMISSION_ID.ADMIN_ROLES_MANAGE]);
+    const roles = [
+      {
+        ...destination,
+        id: "manager",
+        name: "Manager",
+        level: 500,
+        permissions: managerPermissions,
+        revisionToken: "manager-v1",
+      },
+      {
+        ...destination,
+        id: "peer-manager",
+        name: "Peer Manager",
+        level: 500,
+        permissions: managerPermissions,
+        revisionToken: "peer-manager-v1",
+      },
+      { ...destination, permissions: managerPermissions },
+    ];
+
+    for (const role of roles) {
+      const updateRole = vi.fn().mockResolvedValue({ status: "updated", role });
+      const value = service({ findRole: vi.fn().mockResolvedValue(role), updateRole });
+
+      await expect(value.updateRole(
+        context({ roleId: "manager", roleLevel: 500, permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+        role.id,
+        {
+          expectedRevisionToken: role.revisionToken,
+          name: role.name,
+          level: role.level,
+          color: role.color,
+          permissions: permissionFlags([
+            PERMISSION_ID.ADMIN_ROLES_MANAGE,
+            PERMISSION_ID.ADMIN_IMPORTANT_NOTICES_MANAGE,
+          ]),
+        },
+      )).resolves.toEqual(role);
+      expect(updateRole).toHaveBeenCalledWith(expect.objectContaining({
+        id: role.id,
+        permissionDelta: {
+          add: [PERMISSION_ID.ADMIN_IMPORTANT_NOTICES_MANAGE],
+          remove: [],
+        },
+      }), expect.anything());
+    }
+  });
+
+  it("requires role management and rejects higher-role permission edits", async () => {
+    const noManageFindRole = vi.fn();
+    const noManage = service({ findRole: noManageFindRole });
+    await expect(noManage.updateRole(
+      context(),
+      destination.id,
+      { expectedRevisionToken: destination.revisionToken, permissions: permissionFlags() },
+    )).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    expect(noManageFindRole).not.toHaveBeenCalled();
+
+    const higher = {
+      ...destination,
+      id: "higher-manager",
+      level: 501,
+      permissions: new Set<Permission>([PERMISSION_ID.ADMIN_ROLES_MANAGE]),
+    };
+    const updateRole = vi.fn();
+    const value = service({ findRole: vi.fn().mockResolvedValue(higher), updateRole });
+    await expect(value.updateRole(
+      context({ roleId: "manager", roleLevel: 500, permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+      higher.id,
+      {
+        expectedRevisionToken: higher.revisionToken,
+        permissions: permissionFlags([
+          PERMISSION_ID.ADMIN_ROLES_MANAGE,
+          PERMISSION_ID.ADMIN_IMPORTANT_NOTICES_MANAGE,
+        ]),
+      },
+    )).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    expect(updateRole).not.toHaveBeenCalled();
+  });
+
+  it("allows full peer-role edits and promotion of a lower role up to the actor's level", async () => {
+    const peer = {
+      ...destination,
+      id: "peer-manager",
+      name: "Peer Manager",
+      level: 500,
+      permissions: new Set<Permission>([PERMISSION_ID.ADMIN_ROLES_MANAGE]),
+      revisionToken: "peer-manager-v1",
+    };
+    for (const input of [
+      { name: "Renamed Peer" },
+      { color: "#336699" },
+      { level: 400 },
+    ]) {
+      const updateRole = vi.fn().mockResolvedValue({ status: "updated", role: peer });
+      const value = service({ findRole: vi.fn().mockResolvedValue(peer), updateRole });
+      await expect(value.updateRole(
+        context({ roleId: "manager", roleLevel: 500, permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+        peer.id,
+        { expectedRevisionToken: peer.revisionToken, ...input },
+      )).resolves.toEqual(peer);
+      expect(updateRole).toHaveBeenCalledWith(expect.objectContaining({ id: peer.id, ...input }), expect.anything());
+    }
+
+    const updateRole = vi.fn().mockResolvedValue({ status: "updated", role: destination });
+    const value = service({ findRole: vi.fn().mockResolvedValue(destination), updateRole });
+    await expect(value.updateRole(
+      context({ roleId: "manager", roleLevel: 500, permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+      destination.id,
+      { expectedRevisionToken: destination.revisionToken, level: 500 },
+    )).resolves.toEqual(destination);
+    expect(updateRole).toHaveBeenCalledWith(expect.objectContaining({ level: 500 }), expect.anything());
+  });
+
+  it("rejects raising any role above the actor's level", async () => {
+    const updateRole = vi.fn();
+    const ownRole = {
+      ...destination,
+      id: "manager",
+      name: "Manager",
+      level: 500,
+      permissions: new Set<Permission>([PERMISSION_ID.ADMIN_ROLES_MANAGE]),
+      revisionToken: "manager-v1",
+    };
+    for (const role of [ownRole, { ...ownRole, id: "peer-manager" }, destination]) {
+      const value = service({ findRole: vi.fn().mockResolvedValue(role), updateRole });
+      await expect(value.updateRole(
+        context({ roleId: "manager", roleLevel: 500, permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+        role.id,
+        { expectedRevisionToken: role.revisionToken, level: 501 },
+      )).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    }
+    expect(updateRole).not.toHaveBeenCalled();
+  });
+
+  it("keeps the last role manager guard when permissions are removed", async () => {
+    const updateRole = vi.fn().mockResolvedValue({ status: "last_role_manager" });
+    const managedRole = {
+      ...adminRole,
+      permissions: new Set<Permission>([PERMISSION_ID.ADMIN_ROLES_MANAGE]),
+    };
+    const value = service({ findRole: vi.fn().mockResolvedValue(managedRole), updateRole });
+
+    await expect(value.updateRole(
+      context({ permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+      managedRole.id,
+      {
+        expectedRevisionToken: managedRole.revisionToken,
+        permissions: permissionFlags(),
+      },
+    )).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      message: "At least one active role manager is required",
+    });
+    expect(updateRole).toHaveBeenCalledOnce();
+  });
+
+  it("lets a role manager create a lower role with unheld permissions, but not an equal or higher role", async () => {
+    const role = {
+      ...destination,
+      id: "notice-editor",
+      name: "Notice Editor",
+      level: 499,
+      permissions: new Set<Permission>([PERMISSION_ID.ADMIN_IMPORTANT_NOTICES_MANAGE]),
+    };
+    const createRole = vi.fn().mockResolvedValue({ status: "created", role });
+    const value = service({ findRole: vi.fn().mockResolvedValue(role), createRole });
+
+    await expect(value.createRole(
+      context({ roleId: "manager", roleLevel: 500, permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+      {
+        id: role.id,
+        name: role.name,
+        level: role.level,
+        permissions: permissionFlags([PERMISSION_ID.ADMIN_IMPORTANT_NOTICES_MANAGE]),
+      },
+    )).resolves.toEqual(role);
+    expect(createRole).toHaveBeenCalledWith(expect.objectContaining({
+      id: role.id,
+      permissions: [PERMISSION_ID.ADMIN_IMPORTANT_NOTICES_MANAGE],
+    }), expect.anything());
+
+    for (const level of [500, 501]) {
+      const rejectedCreate = vi.fn();
+      const rejected = service({ createRole: rejectedCreate });
+      await expect(rejected.createRole(
+        context({ roleId: "manager", roleLevel: 500, permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+        { id: `blocked-${level}`, name: "Blocked", level, permissions: permissionFlags() },
+      )).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+      expect(rejectedCreate).not.toHaveBeenCalled();
+    }
+  });
+
+  it("lets role viewers and role managers read the role catalog", async () => {
+    for (const permission of [PERMISSION_ID.ADMIN_ROLES_VIEW, PERMISSION_ID.ADMIN_ROLES_MANAGE]) {
+      const listRoles = vi.fn().mockResolvedValue([destination]);
+      const value = service({ listRoles });
+      await expect(value.listRoles(context({ permissions: [permission] }))).resolves.toEqual([destination]);
+      expect(listRoles).toHaveBeenCalledOnce();
+    }
+
+    const listRoles = vi.fn();
+    const value = service({ listRoles });
+    await expect(value.listRoles(context())).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    expect(listRoles).not.toHaveBeenCalled();
   });
 });
 

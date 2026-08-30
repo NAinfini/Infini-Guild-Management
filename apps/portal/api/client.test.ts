@@ -89,4 +89,21 @@ describe("apiRequest", () => {
 
     expect(new Headers(fetchMock.mock.calls[0]![1].headers).get("X-Requested-With")).toBe("XMLHttpRequest");
   });
+
+  it.each([apiRequest, apiDownload])("preserves caller cancellation without reporting a network failure (%#)", async (request) => {
+    const browserWindow = new EventTarget();
+    const dispatch = vi.spyOn(browserWindow, "dispatchEvent");
+    vi.stubGlobal("window", browserWindow);
+    const controller = new AbortController();
+    const cancelled = new DOMException("Upload cancelled", "AbortError");
+    vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal!.addEventListener("abort", () => reject(init.signal!.reason), { once: true });
+    })));
+
+    const result = request("/api/gallery/images", { signal: controller.signal });
+    controller.abort(cancelled);
+
+    await expect(result).rejects.toBe(cancelled);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
 });

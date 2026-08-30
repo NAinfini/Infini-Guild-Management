@@ -83,6 +83,25 @@ beforeEach(() => {
 });
 
 describe("AdminClassTagsSection", () => {
+  it("keeps cached tags visible after a failed refresh", async () => {
+    const user = userEvent.setup();
+    const refetch = vi.fn();
+    renderSection({
+      query: {
+        data: [HEALER_TAG, RAID_TAG],
+        isLoading: false,
+        isError: true,
+        isFetching: false,
+        refetch,
+      },
+    });
+
+    expect(screen.getByText("Healer")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("loadError");
+    await user.click(screen.getByRole("button", { name: "action.retry" }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
+
   it("keeps every class on one list and marks which ones are in the tag", () => {
     renderSection();
 
@@ -174,6 +193,6 @@ describe("AdminClassTagsSection", () => {
 
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(confirm.mock.calls[0]?.[0]?.description).toContain("3");
-    expect(remove).toHaveBeenCalledWith("healer");
+    expect(remove).toHaveBeenCalledWith("healer", HEALER_TAG.updated_at, HEALER_TAG.usage_count);
   });
 });

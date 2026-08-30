@@ -16,6 +16,7 @@ import { buildClassOptions } from "../utils/class-catalog";
 type UseProfileFormStateParams = {
   profile: MemberProfile | null | undefined;
   displayName?: string | null;
+  profileRevisionToken?: string | null;
 };
 
 /** 一次提交里会送出去的那几项草稿；acceptServerProfile 拿它判断哪些字段还没被改过。 */
@@ -30,11 +31,25 @@ export type ProfileDraftSnapshot = {
   availabilityData: MemberAvailability | null;
 };
 
-type ProfileDraftBaseline = ProfileDraftSnapshot & { identity: string };
+type ProfileDraftBaseline = ProfileDraftSnapshot & {
+  identity: string;
+  profileRevisionToken: string | null;
+};
 
-function buildProfileDraftBaseline(profile: MemberProfile, displayName: string | null | undefined): ProfileDraftBaseline {
+type ProfileServerSnapshot = Readonly<{
+  profile: MemberProfile;
+  displayName: string | null | undefined;
+  profileRevisionToken: string | null;
+}>;
+
+function buildProfileDraftBaseline(
+  profile: MemberProfile,
+  displayName: string | null | undefined,
+  profileRevisionToken: string | null | undefined,
+): ProfileDraftBaseline {
   return {
     identity: profile.user_id,
+    profileRevisionToken: profileRevisionToken ?? null,
     displayName: displayName ?? "",
     bio: profile.bio ?? "",
     titleHtml: profile.title_html ?? "",
@@ -48,6 +63,17 @@ function buildProfileDraftBaseline(profile: MemberProfile, displayName: string |
 
 function stringArraysEqual(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function isDraftDirty(draft: ProfileDraftSnapshot, baseline: ProfileDraftBaseline): boolean {
+  return draft.displayName !== baseline.displayName
+    || draft.bio !== baseline.bio
+    || draft.titleHtml !== baseline.titleHtml
+    || draft.power !== baseline.power
+    || !stringArraysEqual(draft.classList, baseline.classList)
+    || !stringArraysEqual(draft.videoList, baseline.videoList)
+    || !stringArraysEqual(draft.imageList, baseline.imageList)
+    || canonicalAvailability(draft.availabilityData) !== canonicalAvailability(baseline.availabilityData);
 }
 
 /**
@@ -69,32 +95,16 @@ function canonicalAvailability(value: MemberAvailability | null): string {
   )).join("|")}`;
 }
 
-function reconcileProfileImages(
-  draft: string[],
-  previousBaseline: string[],
-  nextBaseline: string[],
-): string[] {
-  if (stringArraysEqual(draft, previousBaseline)) {
-    return [...nextBaseline];
-  }
-
-  const serverKeys = new Set(nextBaseline);
-  const preservedDraft = draft.filter((key) => serverKeys.has(key));
-  const preservedKeys = new Set(preservedDraft);
-  return [
-    ...preservedDraft,
-    ...nextBaseline.filter((key) => !preservedKeys.has(key)),
-  ];
-}
-
 export type ProfileFormStateController = ReturnType<typeof useProfileFormState>;
 
-export function useProfileFormState({ profile, displayName }: UseProfileFormStateParams) {
+export function useProfileFormState({ profile, displayName, profileRevisionToken }: UseProfileFormStateParams) {
   const { t } = useTranslation("profile");
   const { showError } = useAppError();
   const classCatalog = useClassCatalog();
 
-  const initialBaseline = useRef(profile ? buildProfileDraftBaseline(profile, displayName) : null).current;
+  const initialBaseline = useRef(
+    profile ? buildProfileDraftBaseline(profile, displayName, profileRevisionToken) : null,
+  ).current;
   const [baseline, setBaseline] = useState<ProfileDraftBaseline | null>(initialBaseline);
   const baselineRef = useRef<ProfileDraftBaseline | null>(initialBaseline);
   const [draftDisplayName, setDisplayName] = useState(initialBaseline?.displayName ?? "");
@@ -111,39 +121,123 @@ export function useProfileFormState({ profile, displayName }: UseProfileFormStat
   const [availabilityData, setAvailabilityData] = useState<MemberAvailability | null>(
     initialBaseline?.availabilityData ?? null,
   );
+  const deferredProfileSnapshotRef = useRef<ProfileServerSnapshot | null>(null);
+  const supersededProfileRevisionTokensRef = useRef<string[]>([]);
+  const draftRef = useRef<ProfileDraftSnapshot | null>(null);
+  draftRef.current = {
+    displayName: draftDisplayName,
+    bio,
+    titleHtml,
+    power,
+    classList,
+    videoList,
+    imageList,
+    availabilityData,
+  };
+
+  const rememberSupersededProfileRevisions = useCallback((...tokens: Array<string | null | undefined>) => {
+    supersededProfileRevisionTokensRef.current = [
+      ...new Set([
+        ...tokens,
+        ...supersededProfileRevisionTokensRef.current,
+      ].filter((token): token is string => Boolean(token))),
+    ].slice(0, 4);
+  }, []);
+
+  const applyProfileSnapshot = useCallback((snapshot: ProfileServerSnapshot) => {
+    const nextBaseline = buildProfileDraftBaseline(
+      snapshot.profile,
+      snapshot.displayName,
+      snapshot.profileRevisionToken,
+    );
+    setDisplayName(nextBaseline.displayName);
+    setBio(nextBaseline.bio);
+    setTitleHtml(nextBaseline.titleHtml);
+    setPower(nextBaseline.power);
+    setClassList(nextBaseline.classList);
+    setVideoList(nextBaseline.videoList);
+    setImageList(nextBaseline.imageList);
+    setAvailabilityData(nextBaseline.availabilityData);
+    baselineRef.current = nextBaseline;
+    setBaseline(nextBaseline);
+  }, []);
+
   useEffect(() => {
     if (!profile) {
       return;
     }
 
-    const nextBaseline = buildProfileDraftBaseline(profile, displayName);
+    const nextSnapshot: ProfileServerSnapshot = {
+      profile,
+      displayName,
+      profileRevisionToken: profileRevisionToken ?? null,
+    };
+    const nextBaseline = buildProfileDraftBaseline(
+      nextSnapshot.profile,
+      nextSnapshot.displayName,
+      nextSnapshot.profileRevisionToken,
+    );
     const previousBaseline = baselineRef.current;
 
     if (!previousBaseline || previousBaseline.identity !== nextBaseline.identity) {
-      setDisplayName(nextBaseline.displayName);
-      setBio(nextBaseline.bio);
-      setTitleHtml(nextBaseline.titleHtml);
-      setPower(nextBaseline.power);
-      setClassList(nextBaseline.classList);
-      setVideoList(nextBaseline.videoList);
-      setImageList(nextBaseline.imageList);
-      setAvailabilityData(nextBaseline.availabilityData);
-    } else {
-      setDisplayName((current) => (
-        current === previousBaseline.displayName ? nextBaseline.displayName : current
-      ));
-      setImageList((current) =>
-        reconcileProfileImages(
-          current,
-          previousBaseline.imageList,
-          nextBaseline.imageList,
-        ),
-      );
+      deferredProfileSnapshotRef.current = null;
+      supersededProfileRevisionTokensRef.current = [];
+      applyProfileSnapshot(nextSnapshot);
+      return;
     }
 
-    baselineRef.current = nextBaseline;
-    setBaseline(nextBaseline);
-  }, [displayName, profile]);
+    if (
+      nextSnapshot.profileRevisionToken
+      && supersededProfileRevisionTokensRef.current.includes(nextSnapshot.profileRevisionToken)
+    ) return;
+
+    if (isDraftDirty(draftRef.current!, previousBaseline)) {
+      if (nextSnapshot.profileRevisionToken !== previousBaseline.profileRevisionToken) {
+        deferredProfileSnapshotRef.current = nextSnapshot;
+      }
+      return;
+    }
+
+    const snapshotToApply = deferredProfileSnapshotRef.current ?? nextSnapshot;
+    if (
+      snapshotToApply.profileRevisionToken
+      && supersededProfileRevisionTokensRef.current.includes(snapshotToApply.profileRevisionToken)
+    ) return;
+    if (snapshotToApply.profileRevisionToken !== previousBaseline.profileRevisionToken) {
+      rememberSupersededProfileRevisions(previousBaseline.profileRevisionToken);
+    }
+    deferredProfileSnapshotRef.current = null;
+    applyProfileSnapshot(snapshotToApply);
+  }, [applyProfileSnapshot, displayName, profile, profileRevisionToken, rememberSupersededProfileRevisions]);
+
+  useEffect(() => {
+    const deferredSnapshot = deferredProfileSnapshotRef.current;
+    const currentBaseline = baselineRef.current;
+    if (!deferredSnapshot || !currentBaseline || isDraftDirty(draftRef.current!, currentBaseline)) return;
+    if (
+      deferredSnapshot.profileRevisionToken
+      && supersededProfileRevisionTokensRef.current.includes(deferredSnapshot.profileRevisionToken)
+    ) {
+      deferredProfileSnapshotRef.current = null;
+      return;
+    }
+    if (deferredSnapshot.profileRevisionToken !== currentBaseline.profileRevisionToken) {
+      rememberSupersededProfileRevisions(currentBaseline.profileRevisionToken);
+    }
+    deferredProfileSnapshotRef.current = null;
+    applyProfileSnapshot(deferredSnapshot);
+  }, [
+    applyProfileSnapshot,
+    availabilityData,
+    bio,
+    classList,
+    draftDisplayName,
+    imageList,
+    power,
+    rememberSupersededProfileRevisions,
+    titleHtml,
+    videoList,
+  ]);
 
   /**
    * 保存成功后校准基线；`submitted` 是这次提交出去的那份草稿快照。
@@ -163,8 +257,21 @@ export function useProfileFormState({ profile, displayName }: UseProfileFormStat
     serverProfile: MemberProfile,
     serverDisplayName: string,
     submitted?: ProfileDraftSnapshot,
+    nextProfileRevisionToken?: string | null,
   ) => {
-    const nextBaseline = buildProfileDraftBaseline(serverProfile, serverDisplayName);
+    const previousBaseline = baselineRef.current;
+    const nextBaseline = buildProfileDraftBaseline(
+      serverProfile,
+      serverDisplayName,
+      nextProfileRevisionToken ?? previousBaseline?.profileRevisionToken,
+    );
+    if (nextBaseline.profileRevisionToken !== previousBaseline?.profileRevisionToken) {
+      rememberSupersededProfileRevisions(
+        previousBaseline?.profileRevisionToken,
+        deferredProfileSnapshotRef.current?.profileRevisionToken,
+      );
+    }
+    deferredProfileSnapshotRef.current = null;
     baselineRef.current = nextBaseline;
     setBaseline(nextBaseline);
     if (!submitted) return;
@@ -189,7 +296,74 @@ export function useProfileFormState({ profile, displayName }: UseProfileFormStat
         ? nextBaseline.availabilityData
         : current
     ));
-  }, []);
+  }, [rememberSupersededProfileRevisions]);
+
+  const acceptOwnMediaRevision = useCallback((
+    nextProfileRevisionToken: string,
+  ) => {
+    const current = baselineRef.current;
+    if (!current) return;
+    if (nextProfileRevisionToken !== current.profileRevisionToken) {
+      rememberSupersededProfileRevisions(
+        current.profileRevisionToken,
+        deferredProfileSnapshotRef.current?.profileRevisionToken,
+      );
+    }
+    deferredProfileSnapshotRef.current = null;
+    const nextBaseline: ProfileDraftBaseline = {
+      ...current,
+      profileRevisionToken: nextProfileRevisionToken,
+    };
+    baselineRef.current = nextBaseline;
+    setBaseline(nextBaseline);
+  }, [rememberSupersededProfileRevisions]);
+
+  const acceptOwnImageUpload = useCallback((
+    mediaIds: readonly string[],
+    nextProfileRevisionToken: string,
+  ) => {
+    const current = baselineRef.current;
+    if (!current) return;
+    if (nextProfileRevisionToken !== current.profileRevisionToken) {
+      rememberSupersededProfileRevisions(
+        current.profileRevisionToken,
+        deferredProfileSnapshotRef.current?.profileRevisionToken,
+      );
+    }
+    deferredProfileSnapshotRef.current = null;
+    const nextImages = [...new Set([...draftRef.current!.imageList, ...mediaIds])];
+    setImageList(nextImages);
+    const nextBaseline: ProfileDraftBaseline = {
+      ...current,
+      imageList: [...new Set([...current.imageList, ...mediaIds])],
+      profileRevisionToken: nextProfileRevisionToken,
+    };
+    baselineRef.current = nextBaseline;
+    setBaseline(nextBaseline);
+  }, [rememberSupersededProfileRevisions]);
+
+  const acceptOwnImageRemoval = useCallback((
+    mediaId: string,
+    nextProfileRevisionToken: string,
+  ) => {
+    const current = baselineRef.current;
+    if (!current) return;
+    if (nextProfileRevisionToken !== current.profileRevisionToken) {
+      rememberSupersededProfileRevisions(
+        current.profileRevisionToken,
+        deferredProfileSnapshotRef.current?.profileRevisionToken,
+      );
+    }
+    deferredProfileSnapshotRef.current = null;
+    setImageList((images) => images.filter((image) => image !== mediaId));
+    const nextBaseline: ProfileDraftBaseline = {
+      ...current,
+      imageList: current.imageList.filter((image) => image !== mediaId),
+      profileRevisionToken: nextProfileRevisionToken,
+    };
+    baselineRef.current = nextBaseline;
+    setBaseline(nextBaseline);
+  }, [rememberSupersededProfileRevisions]);
 
   const classOptions = useMemo(
     () => buildClassOptions(classCatalog),
@@ -350,7 +524,11 @@ export function useProfileFormState({ profile, displayName }: UseProfileFormStat
     activeNowEstimate,
     dirtySections,
     isDirty,
+    profileRevisionToken: baseline?.profileRevisionToken ?? null,
     acceptServerProfile,
+    acceptOwnMediaRevision,
+    acceptOwnImageUpload,
+    acceptOwnImageRemoval,
     addClass,
     removeClass,
     addVideoUrl,

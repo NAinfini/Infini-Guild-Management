@@ -21,12 +21,6 @@ function renderEditor(props: Parameters<typeof AvailabilityEditor>[0]) {
   return render(<AvailabilityEditor {...props} />);
 }
 
-function blockTexts(container: HTMLElement): string[] {
-  return Array.from(container.querySelectorAll(".availability-block")).map(
-    (node) => node.textContent ?? "",
-  );
-}
-
 function emptyDays(): DayBlocks {
   return {
     monday: [],
@@ -45,34 +39,27 @@ function lastLocalDays(onChange: ReturnType<typeof vi.fn>): DayBlocks {
 }
 
 describe("AvailabilityEditor", () => {
-  it("renders one row per weekday and marks empty days as empty", () => {
-    const { container } = renderEditor({ value: null, onChange: vi.fn() });
-
-    expect(container.querySelectorAll(".availability-day")).toHaveLength(7);
-    expect(container.querySelectorAll(".availability-day__empty")).toHaveLength(7);
-    expect(blockTexts(container)).toHaveLength(0);
-  });
-
   it("merges a preset into the days it covers instead of replacing them", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    const { container } = renderEditor({ value: null, onChange });
+    renderEditor({ value: null, onChange });
 
     await user.click(screen.getByText("availability.editor.preset.weeknights"));
     await user.click(screen.getByText("availability.editor.preset.lateNight"));
 
     const localDays = lastLocalDays(onChange);
     /* 工作日晚上铺周一到周五，深夜档铺全周：周一该有两条，周六只有一条。 */
-    expect(localDays.monday).toHaveLength(2);
-    expect(localDays.saturday).toHaveLength(1);
-    expect(blockTexts(container)).toContain("00:00–03:00");
-    expect(blockTexts(container)).toContain("20:00–24:00");
+    expect(localDays.monday).toEqual([
+      { start: "00:00", end: "03:00" },
+      { start: "20:00", end: "24:00" },
+    ]);
+    expect(localDays.saturday).toEqual([{ start: "00:00", end: "03:00" }]);
   });
 
   it("adds a block from the day picker with the default range", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    const { container } = renderEditor({ value: null, onChange });
+    renderEditor({ value: null, onChange });
 
     await user.click(
       screen.getByRole("button", {
@@ -82,14 +69,14 @@ describe("AvailabilityEditor", () => {
     /* 弹层带过渡动画，机器忙的时候挂载会晚一拍——用 find 而不是 get。 */
     await user.click(await screen.findByText("availability.editor.confirmAdd"));
 
-    expect(blockTexts(container)).toEqual(["20:00–24:00"]);
+    expect(screen.getByText("20:00–24:00")).toBeInTheDocument();
     expect(lastLocalDays(onChange).monday).toHaveLength(1);
   });
 
   it("survives a save/reload round trip for a block that ends at midnight", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    const { container, rerender } = renderEditor({ value: null, onChange });
+    const { rerender } = renderEditor({ value: null, onChange });
 
     await user.click(screen.getByText("availability.editor.preset.weeknights"));
     const payload = onChange.mock.calls.at(-1)?.[0].availability;
@@ -100,17 +87,17 @@ describe("AvailabilityEditor", () => {
       <AvailabilityEditor value={payload} onChange={onChange} />,
     );
 
-    expect(blockTexts(container).filter((text) => text === "20:00–24:00")).toHaveLength(5);
+    expect(screen.getAllByText("20:00–24:00")).toHaveLength(5);
   });
 
   it("removes a single block without touching the rest of the day", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    const { container } = renderEditor({ value: null, onChange });
+    renderEditor({ value: null, onChange });
 
     await user.click(screen.getByText("availability.editor.preset.lateNight"));
     await user.click(screen.getByText("availability.editor.preset.everyEvening"));
-    expect(blockTexts(container)).toHaveLength(14);
+    expect(lastLocalDays(onChange).monday).toHaveLength(2);
 
     await user.click(
       screen.getByRole("button", {
@@ -126,12 +113,11 @@ describe("AvailabilityEditor", () => {
   it("copies a day onto another day, merging with what is already there", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    const { container } = renderEditor({ value: null, onChange });
+    renderEditor({ value: null, onChange });
 
     await user.click(screen.getByText("availability.editor.preset.weekends"));
-    /* 周六是第六行；周末预设之后只有周六周日的「复制到…」是可点的。 */
-    const saturdayRow = container.querySelectorAll(".availability-day")[5] as HTMLElement;
-    await user.click(saturdayRow.querySelector(".availability-day__copy") as HTMLElement);
+    const copyButtons = screen.getAllByRole("button", { name: "availability.editor.copyTo" });
+    await user.click(copyButtons[5]!);
     /* jsdom 没有布局，floating-ui 会隐藏 portal 菜单；这里只验证菜单内容和复制行为。 */
     const target = await screen.findByRole("menuitem", { name: "availability.editor.dayMon", hidden: true });
     await user.click(target);

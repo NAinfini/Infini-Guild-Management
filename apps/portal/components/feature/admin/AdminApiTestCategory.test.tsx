@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { CategoryDef, EndpointResult } from "./AdminApiTestEngine";
 import { ApiTestCategory } from "./AdminApiTestCategory";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
 const category: CategoryDef = {
   key: "system",
   label: "System",

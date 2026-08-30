@@ -1,746 +1,622 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiRequestError } from "../../api/client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WikiPage } from "./WikiPage";
 
-const navigateMock = vi.hoisted(() => vi.fn());
-const paramsMock = vi.hoisted(() => ({ slug: "deleted-article" as string | undefined }));
-const routeSearchMock = vi.hoisted(() => ({ selection: undefined as "none" | undefined }));
-const confirmMock = vi.hoisted(() => vi.fn());
-const resetCategoryDraftsMock = vi.hoisted(() => vi.fn());
-const categoryEditorState = vi.hoisted(() => ({ isDirty: false }));
-const articleEditorState = vi.hoisted(() => ({
-  isDeleting: false,
-  isCreatingArticle: false,
-  isDirty: false,
-}));
-const mediaState = vi.hoisted(() => ({ isDesktop: true }));
-const wikiEditorMock = vi.hoisted(() => vi.fn());
-const categoryEditorMock = vi.hoisted(() => vi.fn());
-const startCreateArticleMock = vi.hoisted(() => vi.fn());
-const exitArticleEditorMock = vi.hoisted(() => vi.fn());
-const permissionState = vi.hoisted(() => ({
-  allowed: null as Set<string> | null,
-}));
-const serviceMocks = vi.hoisted(() => ({
-  fetchWikiArticleBySlug: vi.fn(),
-  fetchWikiArticles: vi.fn(),
-  fetchWikiCategories: vi.fn(),
-}));
-
-vi.mock("@tanstack/react-router", () => ({
-  useNavigate: () => navigateMock,
-  useParams: () => paramsMock,
-  useSearch: () => routeSearchMock,
-}));
-
-vi.mock("@portal/hooks/useMediaQuery", () => ({
-  useMediaQuery: (query: string) =>
-    query.includes("min-width: 1200px") ? mediaState.isDesktop : false,
-}));
-
-vi.mock("@portal/hooks/useConfirmDialog", () => ({
-  useConfirmDialog: () => confirmMock,
-}));
-
-vi.mock("../feature/wiki/WikiCategoryEditorCard", () => ({
-  WikiCategoryEditorCard: ({
-    onCreateCategory,
-    onCloseEditor,
-  }: {
-    onCreateCategory: () => void;
-    onCloseEditor: () => void;
-  }) => (
-    <div>
-      <button type="button" onClick={onCreateCategory}>categoryEditor.create</button>
-      <button type="button">articleEditor.save</button>
-      <button type="button" onClick={onCloseEditor}>editor.closeNoSave</button>
-    </div>
-  ),
-}));
-
-vi.mock("../../services/WikiService", () => ({
-  fetchWikiArticleBySlug: serviceMocks.fetchWikiArticleBySlug,
-  fetchWikiArticles: serviceMocks.fetchWikiArticles,
-  fetchWikiCategories: serviceMocks.fetchWikiCategories,
-}));
-
-vi.mock("../../hooks/useWikiArticleEditor", () => ({
-  useWikiArticleEditor: wikiEditorMock,
-}));
-
-vi.mock("../../hooks/useWikiCategoryEditor", () => ({
-  useWikiCategoryEditor: categoryEditorMock,
-}));
-
-vi.mock("../../hooks/useEffectivePermissions", () => ({
-  useEffectivePermissions: () => ({
-    canManage: (permissions: string[]) => (
-      permissionState.allowed === null
-      || permissions.some((permission) => permissionState.allowed?.has(permission))
-    ),
-  }),
-}));
-
-vi.mock("../../hooks/useExternalView", () => ({
-  useExternalView: () => false,
-}));
-
-vi.mock("../../hooks/useBeforeUnloadPrompt", () => ({
-  useBeforeUnloadPrompt: vi.fn(),
-}));
-
-vi.mock("../../hooks/useLoadWarningToast", () => ({
-  useLoadWarningToast: vi.fn(),
-}));
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, values?: { category?: string }) =>
-      key === "drawer.readerTitle"
-        ? `Wiki / ${values?.category ?? "Category"}`
-        : key,
-  }),
-}));
-
-vi.mock("@portal/components/shared/TipTapEditor", () => ({
-  TipTapEditor: () => <div data-testid="tiptap-editor" />,
-  buildTipTapEditorLabels: () => ({}),
-}));
-
-function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
-}
-
-function renderWikiPage() {
-  return render(<WikiPage />, { wrapper: createWrapper() });
-}
-
-describe("WikiPage", () => {
-  beforeEach(() => {
-    Object.defineProperty(HTMLElement.prototype, "getAnimations", {
-      configurable: true,
-      value: () => [],
-    });
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
-      new DOMRect(0, 0, 1200, 48),
-    );
-    navigateMock.mockReset();
-    confirmMock.mockReset();
-    confirmMock.mockResolvedValue(true);
-    resetCategoryDraftsMock.mockReset();
-    startCreateArticleMock.mockReset();
-    permissionState.allowed = null;
-    categoryEditorState.isDirty = false;
-    articleEditorState.isDeleting = false;
-    articleEditorState.isCreatingArticle = false;
-    articleEditorState.isDirty = false;
-    mediaState.isDesktop = true;
-    exitArticleEditorMock.mockReset();
-    paramsMock.slug = "deleted-article";
-    routeSearchMock.selection = undefined;
-    for (const mock of Object.values(serviceMocks)) {
-      mock.mockReset();
-    }
-
-    serviceMocks.fetchWikiCategories.mockResolvedValue([{ id: "category-1", name: "Guides", slug: "guides", sort_order: 0 }]);
-    serviceMocks.fetchWikiArticles.mockResolvedValue({
-      data: [
-        {
-          id: "article-1",
-          title: "Kept Article",
-          slug: "kept-article",
-          category_id: "category-1",
-          body_json: "{}",
-          sort_order: 0,
-          pinned: false,
-          archived_at: null,
-          created_by: "user-1",
-          updated_by: null,
-          updated_by_display_name: null,
-          created_at: "2026-01-01T00:00:00.000Z",
-          updated_at: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-      total: 1,
-      page: 1,
-      limit: 50,
-      total_pages: 1,
-    });
-    serviceMocks.fetchWikiArticleBySlug.mockResolvedValue({
-      id: "deleted-id",
-      title: "Deleted Article",
-      slug: "deleted-article",
-      category_id: "category-1",
+const controller = vi.hoisted(() => ({
+  search: "",
+  setSearch: vi.fn(),
+  sortOrder: "curated" as "curated" | "updated_desc" | "updated_asc",
+  setSortOrder: vi.fn(),
+  archivedMode: "active" as "active" | "archived" | "all",
+  setArchivedMode: vi.fn(),
+  selectedCategoryId: undefined as string | undefined,
+  setSelectedCategoryId: vi.fn(),
+  categoriesQuery: { isError: false },
+  articlesQuery: { isError: false, isLoading: false, isFetching: false, refetch: vi.fn() },
+  pinnedQuery: { isError: false },
+  detailQuery: { isError: false, isLoading: false, isFetching: false, error: null as unknown, refetch: vi.fn() },
+  categories: [{ id: "guides", name: "Guides", slug: "guides", sort_order: 0 }],
+  categoryOptions: [{ value: "guides", label: "Guides" }],
+  articles: [
+    {
+      id: "article-1",
+      title: "Raid guide",
+      slug: "raid-guide",
+      category_id: "guides",
       body_json: "{}",
       sort_order: 0,
       pinned: false,
       archived_at: null,
       created_by: "user-1",
       updated_by: null,
-      updated_by_display_name: null,
+      updated_by_display_name: "Guide Author",
       created_at: "2026-01-01T00:00:00.000Z",
-      updated_at: "2026-01-01T00:00:00.000Z",
-    });
-    categoryEditorMock.mockReturnValue({
-      categoryName: "",
-      categoryDrafts: [],
-      isCreating: false,
-      isSavingDrafts: false,
-      canSaveDrafts: false,
-      deletingCategoryId: null,
-      setCategoryName: vi.fn(),
-      createCategory: vi.fn(),
-      saveCategoryDrafts: vi.fn(),
-      setCategoryDraftName: vi.fn(),
-      moveCategory: vi.fn(),
-      deleteCategory: vi.fn(),
-      resetCategoryDrafts: resetCategoryDraftsMock,
-      get isDirty() {
-        return categoryEditorState.isDirty;
-      },
-    });
-    wikiEditorMock.mockReturnValue({
-      articleTitle: "",
-      setArticleTitle: vi.fn(),
-      articleBody: "{}",
-      setArticleBody: vi.fn(),
-      articleSortOrder: 0,
-      setArticleSortOrder: vi.fn(),
-      articleCategoryId: "category-1",
-      setArticleCategoryId: vi.fn(),
-      pinnedIntent: "none",
-      archiveIntent: "none",
-      get isCreatingArticle() {
-        return articleEditorState.isCreatingArticle;
-      },
-      get isDirty() {
-        return articleEditorState.isDirty;
-      },
-      isSaving: false,
-      isCreating: false,
-      get isDeleting() {
-        return articleEditorState.isDeleting;
-      },
-      canCreateArticle: true,
-      startCreateArticle: startCreateArticleMock,
-      exitEditor: exitArticleEditorMock,
-      createArticle: vi.fn(),
-      saveSelectedArticle: vi.fn(),
-      togglePinnedIntent: vi.fn(),
-      toggleArchiveIntent: vi.fn(),
-      uploadWikiArticleImage: vi.fn(),
-      deleteArticle: vi.fn(),
-    });
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("requests curated server order by default", async () => {
-    renderWikiPage();
-
-    await waitFor(() =>
-      expect(serviceMocks.fetchWikiArticles).toHaveBeenCalledWith(
-        expect.objectContaining({ sort: "curated" }),
-      ),
-    );
-  });
-
-  it("opens mobile deep links in the article pane and returns to the list", async () => {
-    mediaState.isDesktop = false;
-    paramsMock.slug = undefined;
-    routeSearchMock.selection = "none";
-    const rendered = renderWikiPage();
-
-    expect(screen.queryByRole("button", { name: "backToList" })).not.toBeInTheDocument();
-    paramsMock.slug = "deleted-article";
-    routeSearchMock.selection = undefined;
-    rendered.rerender(<WikiPage />);
-
-    const backButton = await screen.findByRole("button", { name: "backToList" });
-    fireEvent.click(backButton);
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "backToList" })).not.toBeInTheDocument();
-    });
-    expect(await screen.findByText("Kept Article")).toBeInTheDocument();
-  });
-
-  it("exits create mode when browser history selects an article", async () => {
-    startCreateArticleMock.mockImplementation(() => {
-      articleEditorState.isCreatingArticle = true;
-      articleEditorState.isDirty = true;
-    });
-    const rendered = renderWikiPage();
-
-    fireEvent.click(await screen.findByRole("button", { name: "articleEditor.create" }));
-    expect(startCreateArticleMock).toHaveBeenCalledOnce();
-
-    paramsMock.slug = "history-article";
-    routeSearchMock.selection = undefined;
-    rendered.rerender(<WikiPage />);
-
-    await waitFor(() => expect(exitArticleEditorMock).toHaveBeenCalledOnce());
-  });
-
-  it("clears the route instead of auto-selecting another article after article deletion", async () => {
-    renderWikiPage();
-
-    await waitFor(() => expect(wikiEditorMock).toHaveBeenCalled());
-    const latestCall = wikiEditorMock.mock.calls.at(-1)?.[0];
-
-    latestCall.onArticleCreated(null);
-
-    await waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: "/wiki",
-          replace: true,
-          viewTransition: false,
-        }),
-      ),
-    );
-    const deleteNavigation = navigateMock.mock.calls.at(-1)?.[0];
-    expect(deleteNavigation.search({ view: "external" })).toEqual({
-      selection: "none",
-      view: "external",
-    });
-    expect(navigateMock).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "/wiki/$slug",
-        params: { slug: "kept-article" },
-      }),
-    );
-  });
-
-  it("loads additional pages and replaces them when the pinned filter changes", async () => {
-    paramsMock.slug = undefined;
-    serviceMocks.fetchWikiArticleBySlug.mockResolvedValue(null);
-    const article = (id: string, title: string, pinned: boolean) => ({
-      id,
-      title,
-      slug: id,
-      category_id: "category-1",
+      updated_at: "2026-01-02T00:00:00.000Z",
+      preview_media_id: null,
+      view_count: 8,
+      excerpt: "Raid guide summary",
+    },
+  ],
+  pinnedArticles: [
+    {
+      id: "pinned-1",
+      title: "Pinned one",
+      slug: "pinned-one",
+      category_id: "guides",
       body_json: "{}",
       sort_order: 0,
-      pinned,
+      pinned: true,
       archived_at: null,
       created_by: "user-1",
       updated_by: null,
-      updated_by_display_name: null,
+      updated_by_display_name: "Guide Author",
       created_at: "2026-01-01T00:00:00.000Z",
-      updated_at: "2026-01-01T00:00:00.000Z",
-    });
-    serviceMocks.fetchWikiArticles.mockImplementation(
-      async ({ page, pinned }: { page: number; pinned?: boolean }) => {
-        if (pinned) {
-          return {
-            data: [article("pinned-article", "Pinned Article", true)],
-            total: 1,
-            page: 1,
-            limit: 50,
-            total_pages: 1,
-          };
-        }
-        return {
-          data: page === 1
-            ? [article("page-one", "Page One", false)]
-            : [article("page-two", "Page Two", false)],
-          total: 2,
-          page,
-          limit: 1,
-          total_pages: 2,
-        };
-      },
-    );
+      updated_at: "2026-01-02T00:00:00.000Z",
+      preview_media_id: null,
+      view_count: 1,
+      excerpt: "Pinned one summary",
+    },
+    {
+      id: "pinned-2",
+      title: "Pinned two",
+      slug: "pinned-two",
+      category_id: "guides",
+      body_json: "{}",
+      sort_order: 1,
+      pinned: true,
+      archived_at: null,
+      created_by: "user-1",
+      updated_by: null,
+      updated_by_display_name: "Guide Author",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-02T00:00:00.000Z",
+      preview_media_id: null,
+      view_count: 2,
+      excerpt: "Pinned two summary",
+    },
+    {
+      id: "pinned-3",
+      title: "Pinned three",
+      slug: "pinned-three",
+      category_id: "guides",
+      body_json: "{}",
+      sort_order: 2,
+      pinned: true,
+      archived_at: null,
+      created_by: "user-1",
+      updated_by: null,
+      updated_by_display_name: "Guide Author",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-02T00:00:00.000Z",
+      preview_media_id: null,
+      view_count: 3,
+      excerpt: "Pinned three summary",
+    },
+  ],
+  articlesHasMore: false,
+  articlesLoadingMore: false,
+  loadMoreArticles: vi.fn(),
+  selectedArticle: null as null | {
+    id: string;
+    title: string;
+    slug: string;
+    category_id: string;
+    body_json: string;
+    sort_order: number;
+    pinned: boolean;
+    archived_at: string | null;
+    created_by: string;
+    updated_by: string | null;
+    updated_by_display_name: string | null;
+    created_at: string;
+    updated_at: string;
+    preview_media_id: string | null;
+    view_count: number;
+    excerpt: string;
+  },
+  selectedSlug: null as string | null,
+  selectedCategory: null as null | { id: string; name: string; slug: string; sort_order: number },
+  canManageContent: true,
+  canViewNonPublicContent: true,
+  canCreateArticle: true,
+  canEditArticle: true,
+  canArchiveArticle: true,
+  canDeleteArticle: true,
+  canManageCategories: true,
+  isCreateRoute: false,
+  isEditorPaneVisible: false,
+  editorTab: "article" as "article" | "categories",
+  isHistoryOpen: false,
+  openHistory: vi.fn(),
+  closeHistory: vi.fn(),
+  articleEditor: {
+    isCreatingArticle: false,
+    articleTitle: "",
+    setArticleTitle: vi.fn(),
+    articleBody: "{}",
+    setArticleBody: vi.fn(),
+    articleCategoryId: "guides",
+    setArticleCategoryId: vi.fn(),
+    pinnedIntent: "none",
+    archiveIntent: "none",
+    isSaving: false,
+    isCreating: false,
+    isDeleting: false,
+    isArchiving: false,
+    canCreateArticle: true,
+    saveSelectedArticle: vi.fn(),
+    togglePinnedIntent: vi.fn(),
+    toggleArchiveIntent: vi.fn(),
+    createArticle: vi.fn(),
+    uploadWikiArticleImage: vi.fn(),
+    deleteArticle: vi.fn(),
+    archiveArticle: vi.fn(),
+  },
+  categoryEditor: {
+    categoryDrafts: [],
+    isCreating: false,
+    isSavingDrafts: false,
+    canSaveDrafts: false,
+    canRunDirectCommands: true,
+    deletingCategoryId: null,
+    createCategory: vi.fn(),
+    saveCategoryDrafts: vi.fn(),
+    setCategoryDraftName: vi.fn(),
+    moveCategory: vi.fn(),
+    deleteCategory: vi.fn(),
+  },
+  handleSelectArticle: vi.fn(),
+  handleStartCreateArticle: vi.fn(),
+  handleOpenArticleEditor: vi.fn(),
+  handleOpenCategoryEditor: vi.fn(),
+  handleExitArticleEditor: vi.fn(),
+  handleCloseCategoryEditorWithoutSave: vi.fn(),
+  handleDeleteCategory: vi.fn(),
+  handleBackToList: vi.fn(),
+}));
 
-    renderWikiPage();
+const defaultArticles = controller.articles.map((article) => ({ ...article }));
+const defaultPinnedArticles = controller.pinnedArticles.map((article) => ({ ...article }));
 
-    await screen.findByText("Page One");
-    fireEvent.click(screen.getByRole("button", { name: "action.loadMore" }));
-    await screen.findByText("Page Two");
+vi.mock("../../hooks/useWikiPageController", () => ({
+  useWikiPageController: () => controller,
+}));
 
-    fireEvent.click(screen.getByRole("button", { name: "common:filter.toggle" }));
-    const filterDialog = await screen.findByRole("dialog", { name: "common:filter.toggle" });
-    fireEvent.click(within(filterDialog).getByRole("switch", { name: "filter.showPinned" }));
+vi.mock("../../hooks/useConfirmDialog", () => ({
+  useConfirmDialog: () => vi.fn().mockResolvedValue(true),
+}));
 
-    await screen.findByText("Pinned Article");
-    expect(screen.queryByText("Page One")).not.toBeInTheDocument();
-    expect(screen.queryByText("Page Two")).not.toBeInTheDocument();
-  });
+vi.mock("../../hooks/useLoadWarningToast", () => ({
+  useLoadWarningToast: vi.fn(),
+}));
 
-  it("keeps category filters in the page toolbar instead of the article list card", async () => {
-    renderWikiPage();
+vi.mock("@portal/components/shared/ContentFilterToolbar", () => ({
+  ContentFilterGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  ContentFilterOption: ({ children }: { children: ReactNode }) => <label>{children}</label>,
+  ContentFilterToolbar: ({
+    className,
+    search,
+    filterControls,
+    onReset,
+  }: {
+    className?: string;
+    search: ReactNode;
+    filterControls: ReactNode;
+    onReset: () => void;
+  }) => (
+    <section data-testid="wiki-filters" className={className}>
+      {search}
+      {filterControls}
+      <button type="button" onClick={onReset}>toolbar reset filters</button>
+    </section>
+  ),
+}));
 
-    const filterToggle = await screen.findByRole("button", { name: "common:filter.toggle" });
-    fireEvent.click(filterToggle);
-    const filterDialog = await screen.findByRole("dialog", { name: "common:filter.toggle" });
-    const categoryFilter = within(filterDialog).getByRole("group", { name: "filter.categories" });
-    const articleListCard = document.querySelector(".wiki-article-list-card");
+vi.mock("@portal/components/shared/ContentPreviewCard", () => ({
+  ContentPreviewCard: ({ title, onOpen }: { title: string; onOpen: () => void }) => (
+    <button type="button" data-testid="pinned-wiki" onClick={onOpen}>{title}</button>
+  ),
+}));
 
-    expect(articleListCard).not.toBeNull();
-    expect(categoryFilter).toBeInTheDocument();
-    expect(within(articleListCard as HTMLElement).queryByRole("group", {
-      name: "filter.categories",
-    })).not.toBeInTheDocument();
-  });
+vi.mock("../feature/wiki/WikiArticleListCard", () => ({
+  WikiArticleListCard: ({
+    articles,
+    onSelectArticle,
+    onCreateArticle,
+    onOpenCategoryEditor,
+    hasActiveFilters,
+    resetFiltersLabel,
+    onResetFilters,
+  }: {
+    articles: Array<{ slug: string; title: string }>;
+    onSelectArticle: (slug: string) => void;
+    onCreateArticle: () => void;
+    onOpenCategoryEditor: () => void;
+    hasActiveFilters: boolean;
+    resetFiltersLabel: string;
+    onResetFilters: () => void;
+  }) => (
+    <section data-testid="wiki-list">
+      {articles.map((article) => (
+        <button key={article.slug} type="button" onClick={() => onSelectArticle(article.slug)}>
+          {article.title}
+        </button>
+      ))}
+      <button type="button" onClick={onCreateArticle}>articleEditor.create</button>
+      <button type="button" onClick={onOpenCategoryEditor}>editor.editCategories</button>
+      {hasActiveFilters ? <button type="button" onClick={onResetFilters}>{resetFiltersLabel}</button> : null}
+    </section>
+  ),
+}));
 
-  it("asks before closing a dirty category editor", async () => {
-    categoryEditorState.isDirty = true;
-    categoryEditorMock.mockImplementation(() => ({
-      categoryName: "",
-      categoryDrafts: [],
-      isCreating: false,
-      isSavingDrafts: false,
-      canSaveDrafts: false,
-      deletingCategoryId: null,
-      setCategoryName: vi.fn(),
-      createCategory: vi.fn(),
-      saveCategoryDrafts: vi.fn(),
-      resetCategoryDrafts: resetCategoryDraftsMock,
-      setCategoryDraftName: vi.fn(),
-      moveCategory: vi.fn(),
-      deleteCategory: vi.fn(),
-      isDirty: categoryEditorState.isDirty,
-    }));
-    confirmMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+vi.mock("../feature/wiki/WikiCategoryEditorCard", () => ({
+  WikiCategoryEditorCard: ({ navigation, onCloseEditor }: { navigation: ReactNode; onCloseEditor: () => void }) => (
+    <section data-testid="wiki-category-editor">
+      {navigation}
+      <button type="button" onClick={onCloseEditor}>editor.closeNoSave</button>
+    </section>
+  ),
+}));
 
-    renderWikiPage();
+vi.mock("../feature/wiki/WikiArticleEditorCard", () => ({
+  WikiArticleEditorCard: ({ navigation, isCreatingArticle }: { navigation: ReactNode; isCreatingArticle: boolean }) => (
+    <section data-testid="wiki-article-editor" data-creating={isCreatingArticle}>{navigation}</section>
+  ),
+}));
 
-    fireEvent.click(await screen.findByRole("button", { name: "editor.editCategories" }));
-    fireEvent.click(await screen.findByRole("button", { name: "editor.closeNoSave" }));
+vi.mock("@portal/components/shared/TipTapEditor", () => ({
+  TipTapEditor: () => <div data-testid="wiki-reader-content" />,
+}));
 
-    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1));
-    expect(resetCategoryDraftsMock).not.toHaveBeenCalled();
+vi.mock("../layout/PageLayout", () => ({
+  PageLayout: ({
+    children,
+    toolbar,
+    workspaceMode,
+  }: {
+    children: ReactNode;
+    toolbar?: ReactNode;
+    workspaceMode?: "scroll" | "contained";
+  }) => (
+    <div data-testid="page-layout" data-workspace-mode={workspaceMode}>
+      <div data-testid="page-toolbar">{toolbar}</div>
+      <div data-testid="page-workspace">{children}</div>
+    </div>
+  ),
+}));
 
-    fireEvent.click(screen.getByRole("button", { name: "editor.closeNoSave" }));
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+  }),
+}));
 
-    await waitFor(() => expect(resetCategoryDraftsMock).toHaveBeenCalledTimes(1));
-  });
+function renderPage() {
+  return render(<WikiPage />);
+}
 
-  it("creates categories beside Save without a separate empty name field", async () => {
-    renderWikiPage();
-
-    fireEvent.click(await screen.findByRole("button", { name: "editor.editCategories" }));
-    const create = await screen.findByRole("button", { name: "categoryEditor.create" });
-    const save = screen.getByRole("button", { name: "articleEditor.save" });
-
-    expect(create.parentElement).toBe(save.parentElement);
-    expect(screen.queryByLabelText("aria.categoryName")).not.toBeInTheDocument();
-  });
-
-  it("offers article creation when the resource is globally empty", async () => {
-    paramsMock.slug = undefined;
-    serviceMocks.fetchWikiArticleBySlug.mockResolvedValue(null);
-    serviceMocks.fetchWikiArticles.mockResolvedValue({
-      data: [],
-      total: 0,
-      page: 1,
-      limit: 50,
-      total_pages: 0,
-    });
-
-    renderWikiPage();
-
-    const emptyState = (await screen.findByText("empty")).closest(".empty-state");
-    expect(emptyState).not.toBeNull();
-    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", {
-      name: "articleEditor.create",
-    }));
-
-    expect(startCreateArticleMock).toHaveBeenCalledOnce();
-  });
-
-  it("offers filter reset instead of article creation when filters hide all results", async () => {
-    const user = userEvent.setup();
-    paramsMock.slug = undefined;
-    serviceMocks.fetchWikiArticleBySlug.mockResolvedValue(null);
-    serviceMocks.fetchWikiArticles.mockResolvedValue({
-      data: [],
-      total: 0,
-      page: 1,
-      limit: 50,
-      total_pages: 0,
-    });
-
-    renderWikiPage();
-
-    await user.click(await screen.findByRole("button", { name: "common:filter.toggle" }));
-    const filterDialog = await screen.findByRole("dialog", { name: /common:filter\.toggle/ });
-    await user.click(within(filterDialog).getByRole("switch", { name: "filter.showPinned" }));
-    const emptyState = (await screen.findByText("empty")).closest(".empty-state");
-    expect(emptyState).not.toBeNull();
-    expect(within(emptyState as HTMLElement).queryByRole("button", {
-      name: "articleEditor.create",
-    })).not.toBeInTheDocument();
-    await user.click(within(emptyState as HTMLElement).getByRole("button", {
-      name: "action.resetFilters",
-    }));
-
-    const toggle = await screen.findByRole("button", { name: "common:filter.toggle" });
-    await user.click(toggle);
-    expect(within(await screen.findByRole("dialog", {
-      name: /common:filter\.toggle/,
-    })).getByRole("switch", { name: "filter.showPinned" })).toBeInTheDocument();
-  });
-
-  it("does not expose article creation when the user only has edit permission", async () => {
-    permissionState.allowed = new Set(["wiki.articles.edit"]);
-    paramsMock.slug = undefined;
-    serviceMocks.fetchWikiArticleBySlug.mockResolvedValue(null);
-    serviceMocks.fetchWikiArticles.mockResolvedValue({
-      data: [],
-      total: 0,
-      page: 1,
-      limit: 50,
-      total_pages: 0,
-    });
-
-    renderWikiPage();
-
-    const emptyState = (await screen.findByText("empty")).closest(".empty-state");
-    expect(emptyState).not.toBeNull();
-    expect(within(emptyState as HTMLElement).queryByRole("button", {
-      name: "articleEditor.create",
-    })).not.toBeInTheDocument();
-  });
-
-  it("keeps article-list header actions at 44px without enlarging their icons", async () => {
-    renderWikiPage();
-
-    const createButton = await screen.findByRole("button", {
-      name: "articleEditor.create",
-    });
-    const categoriesButton = screen.getByRole("button", {
-      name: "editor.editCategories",
-    });
-
-    for (const button of [createButton, categoriesButton]) {
-      expect(button).toHaveClass("wiki-header-action");
-      expect(button.querySelector("svg")).toHaveAttribute("width", "16");
-      expect(button.querySelector("svg")).toHaveAttribute("height", "16");
+describe("WikiPage", () => {
+  beforeEach(() => {
+    controller.search = "";
+    controller.sortOrder = "curated";
+    controller.archivedMode = "active";
+    controller.selectedCategoryId = undefined;
+    controller.selectedSlug = null;
+    controller.selectedArticle = null;
+    controller.selectedCategory = null;
+    controller.isCreateRoute = false;
+    controller.canManageContent = true;
+    controller.canViewNonPublicContent = true;
+    controller.canCreateArticle = true;
+    controller.canEditArticle = true;
+    controller.canArchiveArticle = true;
+    controller.canDeleteArticle = true;
+    controller.isEditorPaneVisible = false;
+    controller.editorTab = "article";
+    controller.articleEditor.isCreatingArticle = false;
+    controller.articlesQuery = { isError: false, isLoading: false, isFetching: false, refetch: vi.fn() };
+    controller.detailQuery = { isError: false, isLoading: false, isFetching: false, error: null, refetch: vi.fn() };
+    controller.articles = defaultArticles.map((article) => ({ ...article }));
+    controller.pinnedArticles = defaultPinnedArticles.map((article) => ({ ...article }));
+    for (const value of Object.values(controller)) {
+      if (typeof value === "function") value.mockReset?.();
     }
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/WikiPage.css"), "utf8");
-    expect(css).toMatch(/\.wiki-header-action\s*\{[\s\S]*?inline-size:\s*2\.75rem[\s\S]*?block-size:\s*2\.75rem/);
+    for (const value of Object.values(controller.articleEditor)) {
+      if (typeof value === "function") value.mockReset?.();
+    }
+    for (const value of Object.values(controller.categoryEditor)) {
+      if (typeof value === "function") value.mockReset?.();
+    }
   });
 
-  it("keeps the shell title as the only h1 and exposes the article title as h2", async () => {
-    render(
-      <>
-        <h1>Wiki</h1>
-        <WikiPage />
-      </>,
-      { wrapper: createWrapper() },
-    );
+  it("renders the catalog with three pinned previews and a one-layer category rail", () => {
+    renderPage();
 
-    fireEvent.click(await screen.findByText("Kept Article"));
-    const articleHeadings = await screen.findAllByRole("heading", {
-      level: 2,
-      name: "Deleted Article",
-    });
-    expect(articleHeadings.some((heading) =>
-      heading.classList.contains("wiki-article-reader-title"),
-    )).toBe(true);
-    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole("heading", { level: 1, name: "Wiki" })).toBeInTheDocument();
+    expect(screen.getByTestId("page-layout")).toHaveAttribute("data-workspace-mode", "scroll");
+    expect(screen.getByTestId("page-toolbar")).toContainElement(screen.getByTestId("wiki-filters"));
+    expect(screen.getAllByTestId("pinned-wiki")).toHaveLength(3);
+    expect(screen.getByTestId("wiki-list")).toBeInTheDocument();
+    expect(document.querySelector(".content-pinned-section")).toHaveAttribute("data-slot", "card");
 
-    fireEvent.click(screen.getByRole("button", { name: "editor.editWiki" }));
-    expect(await screen.findByRole("heading", {
-      level: 2,
-      name: "articleEditor.title",
-    })).toHaveClass("wiki-article-editor-title");
-    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-
-    const titleField = screen.getByRole("textbox", { name: "aria.articleTitle" });
-    expect(titleField.closest(".wiki-editor-fields")).not.toBeNull();
+    const rail = document.querySelector<HTMLElement>(".content-category-rail");
+    expect(rail).not.toBeNull();
+    expect(within(rail as HTMLElement).getByRole("button", { name: "filter.allCategories" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(rail as HTMLElement).getByRole("button", { name: "Guides" }));
+    expect(controller.setSelectedCategoryId).toHaveBeenCalledWith("guides");
   });
 
-  it("locks the article delete action while deletion is pending", async () => {
-    articleEditorState.isDeleting = true;
-    renderWikiPage();
+  it("sizes the pinned grid from its item count and hides it when empty", () => {
+    const pinnedArticles = [...controller.pinnedArticles];
 
-    fireEvent.click(await screen.findByText("Kept Article"));
-    fireEvent.click(await screen.findByRole("button", { name: "editor.editWiki" }));
+    for (const count of [1, 2, 3]) {
+      controller.pinnedArticles = pinnedArticles.slice(0, count);
+      const { container, unmount } = renderPage();
 
-    expect(await screen.findByRole("button", {
-      name: "common:action.delete",
-    })).toBeDisabled();
+      expect(container.querySelector(".content-pinned-grid")).toHaveAttribute("data-count", String(count));
+      unmount();
+    }
+
+    controller.pinnedArticles = [];
+    const { container } = renderPage();
+    expect(container.querySelector(".content-pinned-section")).not.toBeInTheDocument();
+    controller.pinnedArticles = pinnedArticles;
   });
 
-  it("keeps the narrow wiki editor comfortably tall and long headings wrap-safe", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/WikiPage.css"), "utf8");
-    const titleRule = css.match(
-      /\.wiki-article-reader-title,\s*\.wiki-article-editor-title\s*\{([^}]*)\}/,
-    )?.[1] ?? "";
-    const narrowEditorRule = css.match(
-      /@media \(max-width: 767px\)[\s\S]*?\.wiki-article-editor-card \.infini-tiptap-surface\s*\{([^}]*)\}/,
-    )?.[1] ?? "";
+  it("does not repeat a pinned article in the catalog list", () => {
+    controller.articles = [controller.pinnedArticles[0]!, ...controller.articles];
 
-    expect(titleRule).toContain("overflow-wrap: anywhere");
-    expect(titleRule).toContain("min-width: 0");
-    expect(narrowEditorRule).toContain("min-height: clamp(");
-    expect(narrowEditorRule).not.toContain("overflow");
+    renderPage();
+
+    expect(within(screen.getByTestId("wiki-list")).queryByText("Pinned one")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("wiki-list")).getByText("Raid guide")).toBeInTheDocument();
   });
 
-  it("wires wiki sort through the toolbar without a shared clear action", async () => {
-    renderWikiPage();
+  it("hides the pinned section while filtering and keeps matching pinned articles in the results", () => {
+    controller.search = "Pinned";
+    controller.articles = [controller.pinnedArticles[0]!];
 
-    const filterToggle = await screen.findByRole("button", { name: "common:filter.toggle" });
-    fireEvent.click(filterToggle);
-    const filterDialog = await screen.findByRole("dialog", { name: "common:filter.toggle" });
-    const sort = within(filterDialog).getByRole("radiogroup", { name: "filter.sort" });
-    expect(within(sort).getByRole("radio", { name: "filter.sort.curated" })).toHaveAttribute("aria-checked", "true");
-    expect(filterToggle.closest(".content-filter-toolbar")).toHaveClass("wiki-page-toolbar");
+    renderPage();
 
-    fireEvent.click(within(sort).getByRole("radio", { name: "filter.sort.updated_asc" }));
-
-    await waitFor(() =>
-      expect(serviceMocks.fetchWikiArticles).toHaveBeenCalledWith(
-        expect.objectContaining({ sort: "updated_asc" }),
-      ),
-    );
-    expect(screen.queryByText("filter.summary.sort")).not.toBeInTheDocument();
-
-    expect(within(sort).getByRole("radio", { name: "filter.sort.updated_asc" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.queryByRole("button", { name: "common:filter.clearAll" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("pinned-wiki")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("wiki-list")).getByText("Pinned one")).toBeInTheDocument();
   });
 
-  it("uses the shared toolbar with a contained desktop workspace", async () => {
-    renderWikiPage();
+  it("opens pinned and list previews through the independent article route handler", () => {
+    renderPage();
 
-    await screen.findByRole("button", { name: "common:filter.toggle" });
-    const pageLayout = document.querySelector<HTMLElement>(".page-layout");
-    const toolbar = document.querySelector<HTMLElement>(".page-layout__toolbar");
-    const workspace = document.querySelector<HTMLElement>(".page-layout__workspace");
-    const filters = document.querySelector<HTMLElement>(".wiki-page-toolbar");
+    fireEvent.click(screen.getAllByTestId("pinned-wiki")[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Raid guide" }));
 
-    expect(pageLayout).toHaveAttribute("data-workspace-mode", "contained");
-    expect(toolbar).toContainElement(filters);
-    expect(workspace).not.toContainElement(filters);
+    expect(controller.handleSelectArticle).toHaveBeenNthCalledWith(1, "pinned-one");
+    expect(controller.handleSelectArticle).toHaveBeenNthCalledWith(2, "raid-guide");
   });
 
-  it("uses a semantic breadcrumb and page-scoped reading layout", async () => {
-    renderWikiPage();
+  it("resets catalog filters together", () => {
+    controller.search = "raid";
+    controller.archivedMode = "all";
+    controller.sortOrder = "updated_asc";
+    controller.selectedCategoryId = "guides";
+    renderPage();
 
-    const breadcrumb = await screen.findByRole("navigation", { name: "aria.breadcrumb" });
-    expect(within(breadcrumb).getByText("title")).toBeInTheDocument();
-    expect(within(breadcrumb).getByText("Guides")).toBeInTheDocument();
-
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/WikiPage.css"), "utf8");
-    const editorCss = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
-    expect(css).toMatch(
-      /\.wiki-article-reader-content\s*\{[\s\S]*?width:\s*min\(100%,\s*72ch\)[\s\S]*?max-width:\s*100%[\s\S]*?margin-inline:\s*auto/,
-    );
-    /* 阅读卡按正文高度收起；只有列表和编辑面板占满工作区、各自承接长内容滚动。 */
-    const readerCardRule = css.match(/\.wiki-article-reader-card\s*\{([^}]*)\}/)?.[1] ?? "";
-    const readerScrollRule = css.match(/\.wiki-article-reader-scroll\s*\{([^}]*)\}/)?.[1] ?? "";
-    const mobileStyles = css.slice(css.lastIndexOf("@media (max-width: 767px)"));
-
-    expect(readerCardRule).toContain("flex: 0 0 auto");
-    expect(readerCardRule).toContain("block-size: auto");
-    expect(readerCardRule).toContain("max-inline-size: 60rem");
-    expect(readerScrollRule).toContain("flex: 0 0 auto");
-    expect(readerScrollRule).toContain("overflow: visible");
-    expect(css).toMatch(
-      /\.wiki-article-list-card,\s*\.wiki-article-editor-card,\s*\.wiki-category-editor-card\s*\{[\s\S]*?flex:\s*1 1 auto[\s\S]*?block-size:\s*100%/,
-    );
-    expect(mobileStyles).toMatch(
-      /\.wiki-article-list-card,\s*\.wiki-article-editor-card\s*\{[^}]*min-block-size:\s*12\.5rem/,
-    );
-    expect(mobileStyles).not.toMatch(
-      /\.wiki-article-reader-card\s*\{[^}]*min-block-size:\s*12\.5rem/,
-    );
-    expect(css).toMatch(/\.wiki-page-grid\s*\{[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\)[\s\S]*?flex:\s*1 1 auto/);
-    expect(css).not.toContain("100dvh");
-    /* 宽屏读卡仍裁切圆角，正文本身不再变成第二个滚动容器。 */
-    expect(css).toMatch(/\.wiki-article-reader-card\s*\{[\s\S]*?overflow:\s*hidden/);
-    expect(css).not.toMatch(/\.wiki-article-reader-card \.infini-tiptap-toc/);
-    expect(editorCss).toMatch(
-      /\.infini-tiptap-toc\s*\{[\s\S]*?position:\s*sticky[\s\S]*?width:\s*200px/,
-    );
-    expect(editorCss).toMatch(
-      /@media \(max-width: 768px\)[\s\S]*?\.infini-tiptap-layout\s*\{[\s\S]*?flex-direction:\s*column[\s\S]*?\.infini-tiptap-toc\s*\{[\s\S]*?position:\s*static[\s\S]*?width:\s*100%/,
-    );
-    expect(css).toMatch(
-      /@media \(max-width: 767px\)[\s\S]*?\.wiki-article-item \+ \.wiki-article-item\s*\{[\s\S]*?border-block-start-color:\s*var\(--border-subtle\)/,
-    );
+    fireEvent.click(screen.getByRole("button", { name: "action.resetFilters" }));
+    expect(controller.setSearch).toHaveBeenCalledWith("");
+    expect(controller.setArchivedMode).toHaveBeenCalledWith("active");
+    expect(controller.setSelectedCategoryId).toHaveBeenCalledWith(undefined);
+    expect(controller.setSortOrder).toHaveBeenCalledWith("curated");
   });
 
-  it("uses Wiki and category context instead of repeating the article title in the mobile sheet", async () => {
-    mediaState.isDesktop = false;
-    renderWikiPage();
+  it("resets only hidden conditions from the toolbar", () => {
+    controller.search = "raid";
+    controller.archivedMode = "all";
+    controller.sortOrder = "updated_asc";
+    controller.selectedCategoryId = "guides";
+    renderPage();
 
-    await screen.findByText("Deleted Article", { selector: ".wiki-article-reader-title" });
-    const drawerTitle = document.querySelector("[data-slot=sheet-title]");
-    expect(drawerTitle).not.toBeNull();
-    expect(drawerTitle).toHaveTextContent("Wiki / Guides");
-    expect(drawerTitle).not.toHaveTextContent("Deleted Article");
+    fireEvent.click(screen.getByRole("button", { name: "toolbar reset filters" }));
+    expect(controller.setArchivedMode).toHaveBeenCalledWith("active");
+    expect(controller.setSortOrder).toHaveBeenCalledWith("curated");
+    expect(controller.setSearch).not.toHaveBeenCalled();
+    expect(controller.setSelectedCategoryId).not.toHaveBeenCalled();
   });
 
-  it("keeps a dirty article editor open when mobile Back is cancelled and closes after confirmation", async () => {
-    mediaState.isDesktop = false;
-    articleEditorState.isDirty = true;
-    confirmMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    renderWikiPage();
+  it("hides archived status from category-only managers", () => {
+    controller.canManageContent = true;
+    controller.canViewNonPublicContent = false;
 
-    fireEvent.click(await screen.findByRole("button", { name: "editor.editWiki" }));
-    await screen.findByText("articleEditor.title", { selector: ".wiki-article-editor-title" });
-    const back = screen.getByRole("button", { name: "backToList" });
-    expect(back).toHaveClass("wiki-back-button");
-    expect(back.querySelector("svg")).not.toBeNull();
+    renderPage();
 
-    fireEvent.click(back);
-    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("button", { name: "backToList" })).toBeInTheDocument();
-    expect(exitArticleEditorMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("radio", { name: "filter.status.archived" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "filter.sort.curated" })).toBeInTheDocument();
+  });
+
+  it("renders an independent reader page and returns to the catalog", async () => {
+    controller.selectedSlug = "raid-guide";
+    controller.selectedCategory = { id: "guides", name: "Guides", slug: "guides", sort_order: 0 };
+    controller.selectedArticle = {
+      ...controller.articles[0]!,
+      preview_media_id: "preview-media",
+      view_count: 12,
+      pinned: true,
+    };
+    renderPage();
+
+    expect(screen.getByRole("heading", { level: 2, name: "Raid guide" })).toHaveClass("wiki-detail-title");
+    expect(screen.queryByTestId("wiki-list")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("wiki-filters")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("wiki-reader-content")).toBeInTheDocument();
+    expect(document.querySelector(".wiki-detail-author-avatar")).toBeInTheDocument();
+    expect(screen.getByText("articleEditor.pinned")).toBeInTheDocument();
+    expect(screen.getByText("meta.lastEditor")).toBeInTheDocument();
+    expect(screen.getByText("meta.updatedLabel")).toBeInTheDocument();
+    expect(screen.getByText("meta.viewsLabel")).toBeInTheDocument();
+    expect(document.querySelector(".content-detail-header data")).toHaveAttribute("value", "12");
+    expect(document.querySelector(".wiki-detail-reader")).toContainElement(
+      screen.getByRole("button", { name: "backToList" }),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "backToList" }));
-    await waitFor(() => expect(exitArticleEditorMock).toHaveBeenCalledOnce());
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "backToList" })).not.toBeInTheDocument(),
-    );
+    expect(controller.handleBackToList).toHaveBeenCalledOnce();
   });
 
-  it("keeps a dirty category editor open when the sheet close action is cancelled and closes after confirmation", async () => {
-    mediaState.isDesktop = false;
-    paramsMock.slug = undefined;
-    routeSearchMock.selection = "none";
-    categoryEditorState.isDirty = true;
-    confirmMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    renderWikiPage();
+  it("uses a safe last-editor fallback instead of exposing an internal user id", () => {
+    controller.selectedSlug = "raid-guide";
+    controller.selectedCategory = { id: "guides", name: "Guides", slug: "guides", sort_order: 0 };
+    controller.selectedArticle = {
+      ...controller.articles[0]!,
+      created_by: "private-user-identifier",
+      updated_by_display_name: null,
+    };
 
-    fireEvent.click(await screen.findByRole("button", { name: "editor.editCategories" }));
-    expect(await screen.findByRole("button", { name: "editor.closeNoSave" })).toBeInTheDocument();
-    expect(document.querySelector("[data-slot=sheet-title]")).toHaveTextContent(
-      "categoryEditor.title",
+    renderPage();
+
+    expect(screen.getByText("meta.editorFallback")).toBeInTheDocument();
+    expect(screen.queryByText("private-")).not.toBeInTheDocument();
+  });
+
+  it("does not reserve an empty hero when an article has no preview image", async () => {
+    controller.selectedSlug = "raid-guide";
+    controller.selectedCategory = { id: "guides", name: "Guides", slug: "guides", sort_order: 0 };
+    controller.selectedArticle = {
+      ...controller.articles[0]!,
+      preview_media_id: null,
+    };
+
+    const { container } = renderPage();
+
+    expect(container.querySelector(".wiki-detail-cover")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("wiki-reader-content")).toBeInTheDocument();
+  });
+
+  it("keeps article metadata without repeating the preview image beside the title", () => {
+    controller.selectedSlug = "raid-guide";
+    controller.selectedCategory = { id: "guides", name: "Guides", slug: "guides", sort_order: 0 };
+    controller.selectedArticle = {
+      ...controller.articles[0]!,
+      preview_media_id: "preview-media",
+    };
+    const { container } = renderPage();
+    expect(container.querySelector(".wiki-detail-hero")).not.toBeInTheDocument();
+    expect(container.querySelector(".wiki-detail-cover")).not.toBeInTheDocument();
+    expect(container.querySelector(".content-detail-header__cover")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Raid guide" })).toBeInTheDocument();
+    expect(screen.getByText("Guide Author")).toBeInTheDocument();
+  });
+
+  it("uses the detail route for new articles and for the category editor", async () => {
+    controller.isCreateRoute = true;
+    controller.isEditorPaneVisible = true;
+    controller.articleEditor.isCreatingArticle = true;
+    const article = renderPage();
+
+    expect(await screen.findByTestId("wiki-article-editor")).toHaveAttribute("data-creating", "true");
+    expect(screen.getByTestId("wiki-article-editor")).toContainElement(
+      screen.getByRole("button", { name: "backToList" }),
     );
+    expect(screen.queryByTestId("wiki-list")).not.toBeInTheDocument();
+    article.unmount();
 
-    const close = document.querySelector("[data-slot=sheet-close]") as HTMLButtonElement | null;
-    expect(close).not.toBeNull();
-    fireEvent.click(close as HTMLButtonElement);
+    controller.isCreateRoute = false;
+    controller.articleEditor.isCreatingArticle = false;
+    controller.editorTab = "categories";
+    renderPage();
 
-    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("button", { name: "editor.closeNoSave" })).toBeInTheDocument();
-    expect(resetCategoryDraftsMock).not.toHaveBeenCalled();
-
-    fireEvent.click(close as HTMLButtonElement);
-    await waitFor(() => expect(resetCategoryDraftsMock).toHaveBeenCalledOnce());
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "editor.closeNoSave" })).not.toBeInTheDocument(),
+    expect(screen.getByTestId("wiki-category-editor")).toBeInTheDocument();
+    expect(screen.getByTestId("wiki-category-editor")).toContainElement(
+      screen.getByRole("button", { name: "backToList" }),
     );
+    fireEvent.click(screen.getByRole("button", { name: "editor.closeNoSave" }));
+    expect(controller.handleCloseCategoryEditorWithoutSave).toHaveBeenCalledOnce();
+  });
+
+  it("returns to the catalog when a selected article was deleted", () => {
+    controller.selectedSlug = "missing-article";
+    controller.detailQuery = {
+      isError: true,
+      isLoading: false,
+      isFetching: false,
+      error: new ApiRequestError("Missing", { status: 404 }),
+      refetch: vi.fn(),
+    };
+
+    renderPage();
+
+    expect(screen.getByText("common:notFound.title")).toBeInTheDocument();
+    expect(screen.queryByText("welcome.title")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "backToList" }));
+    expect(controller.handleBackToList).toHaveBeenCalledOnce();
+  });
+
+  it("offers detail retry without turning a transport failure into the welcome state", () => {
+    const refetch = vi.fn();
+    controller.selectedSlug = "raid-guide";
+    controller.detailQuery = {
+      isError: true,
+      isLoading: false,
+      isFetching: false,
+      error: new Error("offline"),
+      refetch,
+    };
+
+    renderPage();
+
+    expect(screen.getByText("common:loadError")).toBeInTheDocument();
+    expect(screen.queryByText("welcome.title")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "common:action.retry" }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
+
+  it("keeps cached article content visible and retries a refresh failure", () => {
+    const refetch = vi.fn();
+    controller.selectedSlug = "raid-guide";
+    controller.selectedArticle = controller.articles[0]!;
+    controller.detailQuery = {
+      isError: true,
+      isLoading: false,
+      isFetching: false,
+      error: new Error("refresh failed"),
+      refetch,
+    };
+
+    renderPage();
+
+    expect(screen.getByRole("heading", { level: 2, name: "Raid guide" })).toBeInTheDocument();
+    expect(screen.getByText("common:loadError")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "common:action.retry" }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
+
+  it("shows only the dedicated archive action to an archive-only role", async () => {
+    controller.selectedSlug = "raid-guide";
+    controller.selectedArticle = controller.articles[0]!;
+    controller.canCreateArticle = false;
+    controller.canEditArticle = false;
+    controller.canArchiveArticle = true;
+    controller.canDeleteArticle = false;
+
+    renderPage();
+
+    expect(screen.queryByRole("button", { name: "editor.editWiki" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "history.button" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "common:action.delete" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "articleEditor.archive" }));
+    await waitFor(() => expect(controller.articleEditor.archiveArticle).toHaveBeenCalledOnce());
+  });
+
+  it("shows only the dedicated delete action to a delete-only role", async () => {
+    controller.selectedSlug = "raid-guide";
+    controller.selectedArticle = controller.articles[0]!;
+    controller.canCreateArticle = false;
+    controller.canEditArticle = false;
+    controller.canArchiveArticle = false;
+    controller.canDeleteArticle = true;
+
+    renderPage();
+
+    expect(screen.queryByRole("button", { name: "editor.editWiki" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "articleEditor.archive" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "common:action.delete" }));
+    await waitFor(() => expect(controller.articleEditor.deleteArticle).toHaveBeenCalledOnce());
   });
 });

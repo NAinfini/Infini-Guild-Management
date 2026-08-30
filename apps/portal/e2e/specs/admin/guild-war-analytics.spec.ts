@@ -2,7 +2,7 @@ import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { createThrowawayMember, uniqueTag } from "../../support/members";
 import { expect, readJson, test, type Flow } from "../../support/test";
-import { field, selectOption, setToggle, toggle } from "../../support/ui";
+import { field, pageSubnavItem, selectOption, setToggle, toggle } from "../../support/ui";
 
 /*
  * 公会战「Analytics」标签：模式切换、战集与日期预设、成员/队伍/指标选择、
@@ -45,6 +45,8 @@ let warATitle: string;
 let warBTitle: string;
 let warAId: string;
 let warBId: string;
+let ownedEventIds = new Set<string>();
+let ownedHistoryIds = new Set<string>();
 let referenceDuration: number;
 let m1: Member;
 let m2: Member;
@@ -53,6 +55,8 @@ let m3: Member;
 let firstSelectable: Member;
 
 test.beforeEach(async ({ api }) => {
+  ownedEventIds = new Set();
+  ownedHistoryIds = new Set();
   stamp = Date.now();
   warATitle = `${SYSTEM_TEST_CONTENT_MARKER} WarA ${stamp}`;
   warBTitle = `${SYSTEM_TEST_CONTENT_MARKER} WarB ${stamp}`;
@@ -116,23 +120,15 @@ test.beforeEach(async ({ api }) => {
 test.afterEach(async ({ api }) => {
   /* 先删战史再删活动：destroyEvent 对 war_history 只做 event_id = NULL，
      顺序反了战史会留在库里，下一次运行的排名和行数就全乱了。 */
-  const histories = await readJson(
-    await api.get(`/api/guild-war/history?search=${stamp}&limit=20`),
-    "回读待清理的战史",
-  ) as { data: Array<{ id: string }> };
-  if (histories.data.length > 0) {
+  if (ownedHistoryIds.size > 0) {
     const response = await api.post("/api/guild-war/history/batch-delete", {
-      data: { ids: histories.data.map((entry) => entry.id) },
+      data: { ids: [...ownedHistoryIds] },
     });
     expect(response.ok(), `清理战史返回 ${response.status()}: ${await response.text()}`).toBe(true);
   }
 
-  const events = await readJson(
-    await api.get(`/api/events?search=${stamp}&limit=50`),
-    "回读待清理的活动",
-  ) as { data: Array<{ id: string }> };
-  for (const entry of events.data) {
-    const response = await api.delete(`/api/events/${entry.id}/destroy`);
+  for (const id of ownedEventIds) {
+    const response = await api.delete(`/api/events/${id}/destroy`);
     expect([200, 204, 404], `清理活动返回 ${response.status()}`).toContain(response.status());
   }
 });
@@ -157,6 +153,7 @@ async function seedWar(api: APIRequestContext, input: SeedWarInput): Promise<str
     }),
     `创建活动 ${input.title}`,
   ) as { id: string };
+  ownedEventIds.add(created.id);
 
   const participantIds = [...new Set(input.teams.flatMap((team) => team.members.map((member) => member.id)))];
   const joined = await api.post(`/api/events/${created.id}/participants`, {
@@ -196,6 +193,7 @@ async function seedWar(api: APIRequestContext, input: SeedWarInput): Promise<str
     }),
     `结束战争 ${input.title}`,
   ) as { war_history_id: string };
+  ownedHistoryIds.add(concluded.war_history_id);
   return concluded.war_history_id;
 }
 
@@ -241,6 +239,12 @@ function pressedToolbarChoice(page: Page, label: string): Locator {
   return choice(toolbar(page), label);
 }
 
+async function selectAnalyticsMode(page: Page, label: string): Promise<void> {
+  const button = pressedToolbarChoice(page, label);
+  await button.click();
+  await expect(button).toHaveAttribute("aria-pressed", "true");
+}
+
 function listboxOption(page: Page, listboxLabel: string, text: string): Locator {
   return page.getByRole("listbox", { name: listboxLabel }).getByRole("option").filter({ hasText: text });
 }
@@ -271,7 +275,7 @@ function emptyState(page: Page): Locator {
  */
 async function openAnalyticsTab(page: Page, flow: Flow): Promise<void> {
   await page.goto("/guild-war");
-  await page.getByRole("tab", { name: "History", exact: true }).click();
+  await pageSubnavItem(page, "Guild war workspace", "History").click();
   await flow.act(
     () => field(page, "Search war records").fill(String(stamp)),
     HISTORY_LIST,
@@ -279,7 +283,7 @@ async function openAnalyticsTab(page: Page, flow: Flow): Promise<void> {
   await expect(page.locator(".war-history-rail-item"), "列表必须只剩本用例的两场战").toHaveCount(2);
 
   await flow.act(
-    () => page.getByRole("tab", { name: "Analytics", exact: true }).click(),
+    () => pageSubnavItem(page, "Guild war workspace", "Analytics").click(),
     ANALYTICS,
   );
   await expect(page.locator(".gwa-console")).toBeVisible();
@@ -293,6 +297,8 @@ async function toggleMember(page: Page, display_name: string): Promise<void> {
 test("战集与日期预设：换一组战就重新向服务端取数，显式选战会把预设顶成 All", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
 
+  await expect(pressedToolbarChoice(page, "Wars"), "分析页默认先展示逐场结果")
+    .toHaveAttribute("aria-pressed", "true");
   await expect(pressedToolbarChoice(page, "Last 10"), "默认预设是最近 10 场")
     .toHaveAttribute("aria-pressed", "true");
   await expect(chartHeading(page), "默认把筛出来的两场都算进去").toContainText("2 wars");
@@ -319,8 +325,8 @@ test("战集与日期预设：换一组战就重新向服务端取数，显式�
     "aria-selected",
     "true",
   );
-  await expect(fieldSummary(page, "War Set")).toHaveText("1 wars");
-  await expect(chartHeading(page)).toContainText("1 wars");
+  await expect(fieldSummary(page, "War Set")).toHaveText("1 war");
+  await expect(chartHeading(page)).toContainText("1 war");
   await expect(
     pressedToolbarChoice(page, "All"),
     "手动挑战之后日期预设必须自己变成 All——否则界面在说「最近 10 场」，算的却是 1 场",
@@ -339,6 +345,7 @@ test("战集与日期预设：换一组战就重新向服务端取数，显式�
 
 test("玩家模式：空状态引导选人，选中谁表格就出谁的列", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
+  await selectAnalyticsMode(page, "Player");
 
   // 一个人都没选时，图表位给的是引导，不是空图。
   await expect(emptyState(page)).toContainText("Choose data to chart");
@@ -376,15 +383,13 @@ test("玩家模式：空状态引导选人，选中谁表格就出谁的列", as
   await expect(rowCells(page, 1).nth(0)).toHaveText(warBTitle);
   await expect(rowCells(page, 1).nth(3)).toHaveText("1000");
 
-  /* 现状记录，不是我认为对的样子：玩家模式的日期格直接铺了原始 ISO 串
-     （analyticsPlayerRows 用的是 war.created_at 本身），战争模式那张表却截到了天。
-     结果格同理，这里是没翻译的 "win"，战争模式里是 "Win"。 */
-  await expect(rowCells(page, 0).nth(1)).toHaveText(/^\d{4}-\d{2}-\d{2}T/);
-  await expect(rowCells(page, 0).nth(2)).toHaveText("win");
+  await expect(rowCells(page, 0).nth(1)).toHaveText(/^\d{4}-\d{2}-\d{2}$/);
+  await expect(rowCells(page, 0).nth(2)).toHaveText("Win");
 });
 
 test("玩家模式：「只看参战过的活动」真的把没上场的那一场从表里去掉", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
+  await selectAnalyticsMode(page, "Player");
   await openConsoleField(page, "Members");
   // m3 只打了 B 那一场。
   await toggleMember(page, m3.display_name);
@@ -407,6 +412,7 @@ test("玩家模式：「只看参战过的活动」真的把没上场的那一�
 
 test("指标最多选五个：选满之后第六个点不动，退掉一个又能选", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
+  await selectAnalyticsMode(page, "Player");
   await openConsoleField(page, "Members");
   await toggleMember(page, m1.display_name);
 
@@ -433,7 +439,7 @@ test("指标最多选五个：选满之后第六个点不动，退掉一个又�
 
 test("排行榜模式：聚合方式、Top N 与最少场次各自改变榜单", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
-  await choice(toolbar(page), "Rankings").click();
+  await selectAnalyticsMode(page, "Rankings");
 
   await expect(tableColumns(page)).toHaveText([
     "#",
@@ -487,7 +493,7 @@ test("排行榜模式：聚合方式、Top N 与最少场次各自改变榜单",
 
 test("队伍模式：队伍筛选与合计/平均两种口径", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
-  await choice(toolbar(page), "Teams").click();
+  await selectAnalyticsMode(page, "Teams");
 
   await expect(tableColumns(page)).toHaveText(["Team", "Wars", "Total", "Average"]);
   await expect(tableRows(page)).toHaveCount(2);
@@ -514,18 +520,17 @@ test("队伍模式：队伍筛选与合计/平均两种口径", async ({ page, f
   await teams.getByRole("option").filter({ hasText: "Alpha" }).click();
   await expect(tableRows(page), "只勾 Alpha 就只剩 Alpha").toHaveCount(1);
   await expect(rowCells(page, 0).nth(0)).toHaveText("Alpha");
-  await expect(chartHeading(page)).toContainText("1 teams");
+  await expect(chartHeading(page)).toContainText("1 team");
 });
 
-test("战争模式：胜负汇总、目标切换与双方比分", async ({ page, flow }) => {
+test("战争模式：胜负时间轴、目标切换与双方比分", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
-  await choice(toolbar(page), "Wars").click();
+  await selectAnalyticsMode(page, "Wars");
 
-  const summary = page.locator(".gwa-war-summary");
-  await expect(summary).toContainText("Win 1");
-  await expect(summary).toContainText("Loss 1");
-  await expect(summary).toContainText("Draw 0");
-  await expect(summary, "一胜一负就是五成").toContainText("Win rate 50%");
+  const outcomes = page.getByRole("list", { name: "War outcome timeline", exact: true });
+  await expect(outcomes.getByRole("listitem"), "两场战都要进入胜负时间轴").toHaveCount(2);
+  await expect(outcomes.getByRole("listitem").filter({ hasText: warATitle })).toContainText("Win");
+  await expect(outcomes.getByRole("listitem").filter({ hasText: warBTitle })).toContainText("Loss");
 
   await expect(tableColumns(page)).toHaveText([
     "War",
@@ -560,8 +565,9 @@ test("战争模式：胜负汇总、目标切换与双方比分", async ({ page,
   ).toHaveText("-");
 });
 
-test("归一化：开关一按整表数值改写，权重滑块目前只是展示", async ({ page, flow }) => {
+test("归一化：开关改写数值，有权限的管理员可以保存权重", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
+  await selectAnalyticsMode(page, "Player");
   await openConsoleField(page, "Members");
   await toggleMember(page, m1.display_name);
 
@@ -595,22 +601,39 @@ test("归一化：开关一按整表数值改写，权重滑块目前只是展�
   await firstWeight.press("ArrowRight");
   await expect(firstValue, "滑块要能动").not.toHaveText(before);
 
-  /*
-   * 现状记录，等确认：难度系数是服务端按站点配置算好一起返回的
-   * （GuildWarAnalyticsService.computeWarModifier），前端这份 modifierWeights
-   * 只喂给了这几根滑块自己，既不参与任何计算，界面上也没有保存入口。
-   * 所以拖动之后表格一个数字都不会变，刷新即还原——要么接上
-   * PATCH /api/admin/analytics-settings，要么把滑块撤掉。
-   */
-  await expect(
-    rowCells(page, 0).nth(3),
-    "现状：拖权重不影响任何数值，因为难度系数是服务端算的",
-  ).toHaveText("500");
+  let savedWeights: Record<string, number> | null = null;
+  await page.route("**/api/admin/analytics-settings", async (route) => {
+    if (route.request().method() !== "PATCH") {
+      await route.continue();
+      return;
+    }
+    const body = route.request().postDataJSON() as {
+      modifier_weights: Record<string, number>;
+    };
+    savedWeights = body.modifier_weights;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        reference_duration_minutes: referenceDuration,
+        modifier_weights: body.modifier_weights,
+      }),
+    });
+  });
+
+  const save = page.getByRole("button", { name: "Save Weights", exact: true });
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(page.getByText("Weights saved", { exact: true })).toBeVisible();
+  expect(savedWeights, "保存入口必须提交完整的五项权重").not.toBeNull();
+  expect(Object.keys(savedWeights!)).toHaveLength(5);
+  expect(savedWeights!.kills, "第一根滑块改动必须进入 PATCH 请求").toBeCloseTo(0.31);
 });
 
 test("数据表与图表的展示控件：热力图、复制 CSV、展开图表、折叠表格", async ({ page, flow }) => {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await openAnalyticsTab(page, flow);
+  await selectAnalyticsMode(page, "Player");
   await openConsoleField(page, "Members");
   await toggleMember(page, m1.display_name);
 
@@ -627,10 +650,8 @@ test("数据表与图表的展示控件：热力图、复制 CSV、展开图表�
   const csv = await page.evaluate(() => navigator.clipboard.readText());
   // Windows 剪贴板会把 \n 换成 \r\n，按 \n 硬切会在行尾留下 \r。
   const [header, firstRow] = csv.split(/\r?\n/);
-  /* 现状记录：表头写的是内部字段名（user0_metric0），不是表格上那列的标题
-     「member_01 - Damage」。粘到聊天窗里没人看得懂这一列是谁的什么数据。 */
-  expect(header, "现状：CSV 表头用的是内部字段名").toBe(
-    "war_name,created_at,result,user0_metric0",
+  expect(header, "CSV 表头必须沿用界面可见列名").toBe(
+    `"War","Date","Result","${m1.display_name} - Damage"`,
   );
   expect(firstRow, "第一行必须是表格里看到的那一行").toContain(warATitle);
   expect(firstRow).toContain("\"500\"");

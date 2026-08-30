@@ -5,15 +5,10 @@
   min-block-size: 100vh;
   min-block-size: 100dvh;
   display: grid;
-  place-items: center end;
+  place-items: center;
   overflow: hidden;
   box-sizing: border-box;
   padding: clamp(var(--space-xl), 5vh, 4rem) clamp(3rem, 14vw, 14rem);
-}
-
-.app-content .system-status-page {
-  min-block-size: calc(100vh - var(--app-header-height) - var(--shell-content-gap));
-  min-block-size: calc(100dvh - var(--app-header-height) - var(--shell-content-gap));
 }
 
 .system-status-page__scene {
@@ -28,6 +23,10 @@
   position: absolute;
   inset: 0;
   background: color-mix(in srgb, var(--surface-base) 18%, transparent);
+}
+
+[data-theme="light"] .system-status-page__scene::after {
+  background: color-mix(in srgb, var(--surface-base) 10%, transparent);
 }
 
 .system-status-page__panel {
@@ -82,7 +81,6 @@
 
 @media (max-width: 47.99em) {
   .system-status-page {
-    place-items: start center;
     padding: var(--space-md);
   }
 

@@ -1,21 +1,129 @@
-import type { Locator, Page } from "@playwright/test";
-import { expect, test } from "../../support/test";
+import {
+  request,
+  type APIRequestContext,
+  type Browser,
+  type Locator,
+  type Page,
+} from "@playwright/test";
+import { MUTATION_HEADERS } from "../../support/api";
+import { PORTAL_ORIGIN } from "../../support/config";
+import { createThrowawayMember, uniqueTag } from "../../support/members";
+import {
+  createFlow,
+  expect,
+  identityHeaders,
+  test,
+  watchPageDefects,
+} from "../../support/test";
 
 /*
- * 设置页：主题、主色、语言。
+ * 设置页：主题、主色、语言，以及服务端通知偏好。
  *
- * 三组都是纯客户端偏好——写 localStorage、改 <html> 上的 data-* 属性，
+ * 前三组都是纯客户端偏好——写 localStorage、改 <html> 上的 data-* 属性，
  * 一个请求都不该发（SettingsPage.tsx → preferences store → ThemeProvider）。
  * 所以每条用例的验收是三件事一起看：属性变了、localStorage 落盘了、
  * 刷新之后还在。少了最后一步，「切了但没存住」根本测不出来。
  *
- * 不需要收尾还原：每条用例都是全新的浏览器上下文，localStorage 从空开始，
- * 而 storageState 是从纯 API 通道存的，本身不含任何 origin 数据。
+ * 前三条不需要收尾还原：每条用例都是全新的浏览器上下文，localStorage 从空开始，
+ * 而 storageState 是从纯 API 通道存的，本身不含任何 origin 数据。通知偏好则用
+ * 本轮登记的一次性账号验证；不触碰种子管理员，收尾由 user artifact 的外键级联清理。
  */
 
 /** 偏好卡片由 RadioGroupItem 承担选择语义，无障碍名含标题和说明。 */
 function optionRadio(page: Page, label: string): Locator {
   return page.getByRole("radio", { name: new RegExp(`^${label}`) });
+}
+
+type NotificationPreferences = {
+  member_joined: boolean;
+  announcement_published: boolean;
+  event_created: boolean;
+  wiki_article_created: boolean;
+  updated_at: string | null;
+};
+
+type NotificationPreferenceSession = {
+  api: APIRequestContext;
+  page: Page;
+  close: () => Promise<void>;
+};
+
+async function expectPostOk(
+  response: Awaited<ReturnType<APIRequestContext["post"]>>,
+  label: string,
+): Promise<void> {
+  expect(response.ok(), `${label} 返回 ${response.status()}: ${await response.text()}`).toBe(true);
+}
+
+async function createNotificationPreferenceSession({
+  adminApi,
+  browser,
+  clientAddress,
+  trackArtifacts,
+}: {
+  adminApi: APIRequestContext;
+  browser: Browser;
+  clientAddress: string;
+  trackArtifacts: boolean;
+}): Promise<NotificationPreferenceSession> {
+  const account = await createThrowawayMember(adminApi, uniqueTag("notification_preferences"));
+  const permanentLoginName = `${account.login_name}_ready`;
+  const permanentPassword = "E2e-notification-preferences-password-1";
+  const sessionHeaders = identityHeaders(clientAddress, trackArtifacts);
+  const auth = await request.newContext({
+    baseURL: PORTAL_ORIGIN,
+    ignoreHTTPSErrors: true,
+    extraHTTPHeaders: { ...MUTATION_HEADERS, ...sessionHeaders },
+  });
+
+  try {
+    await expectPostOk(await auth.post("/api/auth/login", {
+      data: {
+        login_name: account.login_name,
+        password: account.password,
+        stay_logged_in: true,
+      },
+    }), "临时通知偏好账号登录");
+    await expectPostOk(await auth.post("/api/auth/complete-password-reset", {
+      data: {
+        login_name: permanentLoginName,
+        new_password: permanentPassword,
+        confirm_new_password: permanentPassword,
+      },
+    }), "临时通知偏好账号完成首次凭据设置");
+
+    const context = await browser.newContext({
+      baseURL: PORTAL_ORIGIN,
+      storageState: await auth.storageState(),
+      ignoreHTTPSErrors: true,
+      locale: "en-US",
+      timezoneId: "UTC",
+      extraHTTPHeaders: sessionHeaders,
+    });
+    const page = await context.newPage();
+    const assertClean = watchPageDefects(page);
+    return {
+      api: auth,
+      page,
+      close: async () => {
+        try {
+          assertClean();
+        } finally {
+          await context.close();
+          await auth.dispose();
+        }
+      },
+    };
+  } catch (error) {
+    await auth.dispose();
+    throw error;
+  }
+}
+
+async function readNotificationPreferences(api: APIRequestContext): Promise<NotificationPreferences> {
+  const response = await api.get("/api/notifications/preferences");
+  expect(response.ok(), `读取通知偏好返回 ${response.status()}: ${await response.text()}`).toBe(true);
+  return await response.json() as NotificationPreferences;
 }
 
 async function readStorage(page: Page, key: string): Promise<string | null> {
@@ -104,4 +212,41 @@ test("语言：切到中文后整页文案跟着换，落盘且刷新后保持",
   await flow.clickWithoutApi(optionRadio(page, "English"));
   await expect(page.getByText("Appearance", { exact: true })).toBeVisible();
   expect(await readStorage(page, "locale")).toBe("en");
+});
+
+test("通知偏好：切换后写入服务端，刷新仍保持", async ({
+  api,
+  browser,
+  clientAddress,
+  trackArtifacts,
+}) => {
+  const session = await createNotificationPreferenceSession({
+    adminApi: api,
+    browser,
+    clientAddress,
+    trackArtifacts,
+  });
+
+  try {
+    await session.page.goto("/settings");
+    await expect(session.page.getByText("Appearance", { exact: true })).toBeVisible();
+    await settle(session.page);
+
+    const original = await readNotificationPreferences(session.api);
+    const toggle = session.page.getByRole("switch", { name: /^New members/ });
+    const nextValue = !original.member_joined;
+    const flow = createFlow(session.page);
+
+    await expect(toggle).toHaveAttribute("aria-checked", String(original.member_joined));
+    await flow.click(toggle, { method: "PATCH", path: /^\/api\/notifications\/preferences$/ });
+
+    const saved = await readNotificationPreferences(session.api);
+    expect(saved.member_joined).toBe(nextValue);
+
+    await session.page.reload();
+    await expect(session.page.getByRole("switch", { name: /^New members/ }))
+      .toHaveAttribute("aria-checked", String(nextValue));
+  } finally {
+    await session.close();
+  }
 });

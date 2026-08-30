@@ -32,7 +32,7 @@ function applyAtomically(database: DatabaseSync, sql: string): void {
 
 describe("first admin bootstrap", () => {
   it("rejects reserved system-test identity names", async () => {
-    const hash = await createPasswordHash("correct horse battery staple", 10_000);
+    const hash = await createPasswordHash("correct horse battery staple");
 
     expect(() => buildFirstAdminBootstrapBundle({
       mode: "create",
@@ -52,7 +52,7 @@ describe("first admin bootstrap", () => {
 
   it("creates the first role manager with a verifiable password and complete profile", async () => {
     const database = freshDatabase();
-    const hash = await createPasswordHash("correct horse battery staple", 10_000);
+    const hash = await createPasswordHash("correct horse battery staple");
     const bundle = buildFirstAdminBootstrapBundle({
       mode: "create",
       userId: "admin-1",
@@ -107,7 +107,7 @@ describe("first admin bootstrap", () => {
 
   it("rolls back when an active role manager already exists or the promote target is unavailable", async () => {
     const database = freshDatabase();
-    const hash = await createPasswordHash("first-admin-password", 10_000);
+    const hash = await createPasswordHash("first-admin-password");
     applyAtomically(database, buildFirstAdminBootstrapBundle({
       mode: "create",
       userId: "admin-1",

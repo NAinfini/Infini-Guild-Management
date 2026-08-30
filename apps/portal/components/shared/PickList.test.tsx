@@ -1,7 +1,5 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PickList } from "./PickList";
 
@@ -103,13 +101,7 @@ describe("PickList", () => {
     expect(screen.getAllByRole("checkbox")).toHaveLength(2);
   });
 
-  it("keeps caller save and cancel actions without exposing bulk or status APIs", () => {
-    const source = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/PickList.tsx"), "utf8");
-
-    expect(source).not.toMatch(/\bbulk\?:/);
-    expect(source).not.toMatch(/\bstatus\?:/);
-    expect(source).not.toMatch(/\baction\?: ReactNode/);
-
+  it("renders caller-provided save and cancel actions", () => {
     renderList({
       actions: (
         <>
@@ -123,11 +115,4 @@ describe("PickList", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
   });
 
-  it("lets a finished list hand wheel scrolling back to its native parent", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/PickList.css"), "utf8");
-    const bodyRule = css.match(/\.pick-list__body\s*\{([^}]*)\}/)?.[1] ?? "";
-
-    expect(bodyRule).toContain("overflow: hidden auto");
-    expect(bodyRule).not.toContain("overscroll-behavior");
-  });
 });

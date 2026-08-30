@@ -90,7 +90,7 @@ describe("useGuildWarDragData", () => {
           role_tag: "Leader",
           sort_order: 0,
           stats: { kills: 99 },
-          note: "legacy war note",
+          note: "saved war note",
         }],
       }],
     } as unknown as GuildWarActiveResponse;
@@ -139,5 +139,32 @@ describe("useGuildWarDragData", () => {
     expect(detail).not.toHaveProperty("teamName");
     expect(detail).not.toHaveProperty("roleTag");
     expect(detail).not.toHaveProperty("stats");
+  });
+
+  it("keeps active-war avatars while the member directory is unavailable", () => {
+    const activeData = {
+      ...initialData,
+      teams: [{
+        ...initialData.teams[0]!,
+        members: [{
+          id: "war-member-1",
+          war_team_id: "team-1",
+          user_id: "user-1",
+          display_name: "Alice",
+          avatar_media_id: "avatar1234567890abcde",
+          role_tag: null,
+          sort_order: 0,
+          stats: null,
+          note: null,
+        }],
+      }],
+    } as GuildWarActiveResponse;
+
+    const { result } = renderHook(() => useDragDataHarness(activeData));
+
+    expect(result.current.dragColumns[0]?.members[0]).toMatchObject({
+      display_name: "Alice",
+      avatarMediaId: "avatar1234567890abcde",
+    });
   });
 });

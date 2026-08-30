@@ -65,7 +65,7 @@ export async function fetchEventDetailBatch(ids: string[]): Promise<{ data: Even
     chunks.push(ids.slice(i, i + BATCH_DETAIL_CHUNK_SIZE));
   }
 
-  const results = await Promise.allSettled(
+  const results = await Promise.all(
     chunks.map((chunk) =>
       apiRequest<{ data: EventDetailResponse[] }>("/api/events/batch-details", {
         method: "POST",
@@ -75,9 +75,7 @@ export async function fetchEventDetailBatch(ids: string[]): Promise<{ data: Even
   );
 
   return {
-    data: results
-      .filter((r): r is PromiseFulfilledResult<{ data: EventDetailResponse[] }> => r.status === "fulfilled")
-      .flatMap((r) => r.value.data),
+    data: results.flatMap((result) => result.data),
   };
 }
 

@@ -2,6 +2,20 @@ import { AppError } from "@guild/kernel";
 import { applyStaticSecurityHeaders } from "@guild/shared/utils/static-security-headers";
 
 const RETRY_AFTER_SECONDS = 300;
+export const MAINTENANCE_REASON_MAX_LENGTH = 500;
+const STRICT_ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+export type MaintenanceDetails = Readonly<{
+  reason: string | null;
+  until: string | null;
+}>;
+
+export type MaintenanceEnvironment = Readonly<{
+  IG_MAINTENANCE_REASON?: string;
+  IG_MAINTENANCE_UNTIL?: string;
+}>;
+
+const EMPTY_MAINTENANCE_DETAILS: MaintenanceDetails = Object.freeze({ reason: null, until: null });
 
 export function isMaintenanceModeEnabled(value: string | undefined): boolean {
   const mode = value?.trim();
@@ -9,10 +23,35 @@ export function isMaintenanceModeEnabled(value: string | undefined): boolean {
   return true;
 }
 
-export function maintenanceResponse(request: Request): Response {
+export function readMaintenanceDetails(
+  environment: MaintenanceEnvironment,
+): MaintenanceDetails {
+  const reason = environment.IG_MAINTENANCE_REASON?.trim() ?? "";
+  if (reason.length > MAINTENANCE_REASON_MAX_LENGTH) {
+    throw new TypeError(`IG_MAINTENANCE_REASON must be at most ${MAINTENANCE_REASON_MAX_LENGTH} characters`);
+  }
+  const until = environment.IG_MAINTENANCE_UNTIL?.trim() ?? "";
+  if (until && !isStrictIsoDatetime(until)) {
+    throw new TypeError("IG_MAINTENANCE_UNTIL must be a canonical ISO datetime in UTC");
+  }
+  return Object.freeze({
+    reason: reason || null,
+    until: until || null,
+  });
+}
+
+export function maintenanceResponse(
+  request: Request,
+  details: MaintenanceDetails = EMPTY_MAINTENANCE_DETAILS,
+): Response {
   const pathname = new URL(request.url).pathname;
   if (pathname === "/api/health") {
-    return jsonResponse(request, 200, { ok: true, maintenance: true });
+    return jsonResponse(request, 200, {
+      ok: true,
+      maintenance: true,
+      ...(details.reason ? { reason: details.reason } : {}),
+      ...(details.until ? { until: details.until } : {}),
+    });
   }
   if (pathname === "/api" || pathname.startsWith("/api/")) {
     const requestId = crypto.randomUUID();
@@ -23,7 +62,7 @@ export function maintenanceResponse(request: Request): Response {
     });
     return jsonResponse(request, 503, error.toResponseBody(requestId), requestId);
   }
-  return htmlResponse(request);
+  return htmlResponse(request, details);
 }
 
 function jsonResponse(
@@ -37,11 +76,39 @@ function jsonResponse(
   return new Response(request.method === "HEAD" ? null : JSON.stringify(body), { status, headers });
 }
 
-function htmlResponse(request: Request): Response {
-  return new Response(request.method === "HEAD" ? null : MAINTENANCE_HTML, {
+function htmlResponse(request: Request, details: MaintenanceDetails): Response {
+  return new Response(request.method === "HEAD" ? null : renderMaintenanceHtml(details), {
     status: 503,
     headers: maintenanceHeaders(request, "text/html; charset=UTF-8"),
   });
+}
+
+function renderMaintenanceHtml(details: MaintenanceDetails): string {
+  const reason = details.reason === null
+    ? ""
+    : `<p class="maintenance-reason"><strong>原因 · <span lang="en">Reason</span></strong>${escapeHtml(details.reason)}</p>`;
+  const until = details.until === null
+    ? ""
+    : `<p class="maintenance-until"><span>预计结束 · <span lang="en">Estimated completion</span></span> <time datetime="${escapeHtml(details.until)}">${escapeHtml(details.until)}</time></p>`;
+  return MAINTENANCE_HTML
+    .replace("<!-- MAINTENANCE_REASON -->", reason)
+    .replace("<!-- MAINTENANCE_UNTIL -->", until);
+}
+
+function isStrictIsoDatetime(value: string): boolean {
+  if (!STRICT_ISO_DATETIME.test(value)) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString() === value;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>\"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  })[character] ?? character);
 }
 
 function maintenanceHeaders(request: Request, contentType: string): Headers {
@@ -77,6 +144,10 @@ const MAINTENANCE_HTML = `<!doctype html>
     h2 { margin: .5rem 0 0; color: #a39d94; font-size: clamp(1rem, 3vw, 1.25rem); font-weight: 600; line-height: 1.4; }
     .copy { display: grid; gap: .5rem; max-width: 62ch; margin-top: 1.75rem; color: #d6d2c8; font-size: .95rem; line-height: 1.65; }
     .copy p { margin: 0; }
+    .maintenance-reason { display: grid; gap: .25rem; margin-top: .75rem !important; padding: .75rem .875rem; border: 1px solid #3a4a46; border-radius: 10px; background: #111f1d; }
+    .maintenance-reason strong { color: #6fcfbb; font-size: .8125rem; }
+    .maintenance-until { margin: 1rem 0 0; color: #d6d2c8; font-size: .8125rem; }
+    .maintenance-until time { color: #6fcfbb; font-variant-numeric: tabular-nums; }
     .status { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid #3a3833; color: #a39d94; font-size: .8125rem; }
     .state { display: inline-flex; align-items: center; gap: .5rem; color: #6fcfbb; font-weight: 700; }
     .state::before { width: .5rem; height: .5rem; border-radius: 50%; background: #2fb49c; content: ""; }
@@ -116,7 +187,9 @@ const MAINTENANCE_HTML = `<!doctype html>
       <div class="copy">
         <p>我们正在安全更新数据与媒体服务。完成后网站会自动恢复，请稍后再来。</p>
         <p lang="en">We are safely updating data and media services. The site will return when the work is complete.</p>
+        <!-- MAINTENANCE_REASON -->
       </div>
+      <!-- MAINTENANCE_UNTIL -->
       <div class="status">
         <span>芳华朝云 · <span lang="en">Infini Guild</span></span>
         <span class="state"><span>暂时不可用 · <span lang="en">Temporarily unavailable</span></span></span>

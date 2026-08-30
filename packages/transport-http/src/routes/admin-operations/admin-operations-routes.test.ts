@@ -100,13 +100,13 @@ describe("admin operations HTTP route", () => {
     expect(body.scheduled_jobs).toHaveLength(8);
     expect(body.scheduled_jobs[0]).toMatchObject({
       name: "recurrence-materialization",
-      schedule: "quarter-hourly",
+      schedule: "half-hourly",
       status: "never-run",
       lease: { state: "none" },
     });
     expect(body.scheduled_jobs[4]).toMatchObject({
       name: "media-gc",
-      schedule: "quarter-hourly",
+      schedule: "hourly-media",
       status: "running",
       processed: null,
       finished_at: null,

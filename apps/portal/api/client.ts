@@ -3,6 +3,11 @@ import i18n from "i18next";
 import { nanoid } from "nanoid";
 
 type JsonValue = Record<string, unknown>;
+type ApiRequestInit = RequestInit & {
+  bodyJson?: JsonValue;
+  ifMatch?: string;
+  signal?: AbortSignal | null;
+};
 type CachedJsonResponse = {
   etag: string;
   data: unknown;
@@ -80,21 +85,19 @@ function resolveErrorMessage(message: string | null | undefined, status: number)
 }
 
 function handleFetchError(err: unknown): never {
-  if (err instanceof DOMException && err.name === "AbortError") {
-    throw new ApiRequestError(tCommon("errors.requestTimeout", "Request timed out. Please try again."), {
-      status: 0,
-    });
-  }
+  const message = err instanceof DOMException && err.name === "AbortError"
+    ? tCommon("errors.requestTimeout", "Request timed out. Please try again.")
+    : tCommon("errors.connectionIssue", "Unable to reach server. Check your network and retry.");
   if (typeof window !== "undefined") {
     window.dispatchEvent(
       new CustomEvent("guild-api-network", {
         detail: {
-          message: tCommon("errors.connectionIssue", "Unable to reach server. Check your network and retry."),
+          message,
         },
       }),
     );
   }
-  throw new ApiRequestError("Network request failed", {
+  throw new ApiRequestError(message, {
     status: 0,
   });
 }
@@ -119,18 +122,6 @@ async function handleErrorResponse(response: Response): Promise<never> {
     );
   }
 
-  if (response.status === 409 && typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent("guild-api-conflict", {
-        detail: {
-          message: resolveErrorMessage(errorPayload?.message, 409),
-          requestId: errorPayload?.request_id,
-          errorCode: errorPayload?.error_code,
-        },
-      }),
-    );
-  }
-
   throw new ApiRequestError(resolveErrorMessage(errorPayload?.message, response.status), {
     status: response.status,
     errorCode: errorPayload?.error_code,
@@ -141,13 +132,19 @@ async function handleErrorResponse(response: Response): Promise<never> {
 
 export async function apiRequest<TResponse>(
   input: string,
-  init: RequestInit & { bodyJson?: JsonValue; ifMatch?: string; signal?: AbortSignal } = {},
+  init: ApiRequestInit = {},
 ): Promise<TResponse> {
   const url = input;
-  const headers = new Headers(init.headers);
+  const {
+    bodyJson,
+    ifMatch,
+    signal,
+    ...requestInit
+  } = init;
+  const headers = new Headers(requestInit.headers);
 
-  const method = (init.method ?? "GET").toUpperCase();
-  const cacheKey = method === "GET" && !init.body && !init.bodyJson ? url : null;
+  const method = (requestInit.method ?? "GET").toUpperCase();
+  const cacheKey = method === "GET" && !requestInit.body && !bodyJson ? url : null;
   const cachedResponse = cacheKey ? jsonResponseCache.get(cacheKey) : undefined;
   if (cachedResponse) {
     headers.set("If-None-Match", cachedResponse.etag);
@@ -158,23 +155,24 @@ export async function apiRequest<TResponse>(
     headers.set("X-Request-Id", nanoid());
   }
 
-  if (init.ifMatch) {
-    headers.set("If-Match", init.ifMatch);
+  if (ifMatch) {
+    headers.set("If-Match", ifMatch);
   }
 
-  if (init.bodyJson) {
+  if (bodyJson) {
     headers.set("Content-Type", "application/json");
   }
 
   let response: Response;
   try {
     response = await fetchWithTimeout(url, {
-      ...init,
+      ...requestInit,
       credentials: "include",
-      body: init.bodyJson ? JSON.stringify(init.bodyJson) : init.body,
+      body: bodyJson ? JSON.stringify(bodyJson) : requestInit.body,
       headers,
-    }, init.signal ?? undefined);
+    }, signal ?? undefined);
   } catch (err) {
+    signal?.throwIfAborted();
     handleFetchError(err);
   }
 
@@ -229,6 +227,7 @@ export async function apiDownload(
   init: RequestInit = {},
 ): Promise<{ blob: Blob; headers: Headers }> {
   const url = input;
+  const { signal, ...requestInit } = init;
   const headers = new Headers(init.headers);
   headers.set("X-Request-Id", nanoid());
 
@@ -240,12 +239,13 @@ export async function apiDownload(
   let response: Response;
   try {
     response = await fetchWithTimeout(url, {
-      ...init,
+      ...requestInit,
       method: init.method ?? "GET",
       credentials: "include",
       headers,
-    });
+    }, signal ?? undefined);
   } catch (err) {
+    signal?.throwIfAborted();
     handleFetchError(err);
   }
 

@@ -20,7 +20,6 @@ export type BottomNavItem = {
   to: string;
   label: string;
   icon: NavigationIcon;
-  isNew?: boolean;
   active?: boolean;
   onSelect?: () => void;
   groupLabel?: string;
@@ -30,7 +29,6 @@ type BottomNavProps = {
   pathname: string;
   mainItems: BottomNavItem[];
   moreItems: BottomNavItem[];
-  onNavigate?: (to: string) => void;
 };
 
 function isPathActive(pathname: string, target: string): boolean {
@@ -62,11 +60,7 @@ export function groupBottomNavItems(items: readonly BottomNavItem[]): BottomNavI
   return groups;
 }
 
-function NewIndicator({ visible }: { visible?: boolean }) {
-  return visible ? <span className="bottom-nav-new-dot" aria-hidden="true" /> : null;
-}
-
-export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: BottomNavProps) {
+export function BottomNav({ pathname, mainItems, moreItems }: BottomNavProps) {
   const { t } = useTranslation("common");
   const [moreOpened, setMoreOpened] = useState(false);
   const itemIsActive = (item: BottomNavItem) => item.active ?? isPathActive(pathname, item.to);
@@ -81,7 +75,6 @@ export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: Bottom
       item.onSelect();
       return;
     }
-    onNavigate?.(item.to);
   };
 
   return (
@@ -99,12 +92,10 @@ export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: Bottom
                 item.onSelect();
                 return;
               }
-              onNavigate?.(item.to);
             }}
           >
             <span className="bottom-nav-icon-wrap">
               <span className="bottom-nav-icon"><item.icon /></span>
-              <NewIndicator visible={item.isNew} />
             </span>
             <span className="bottom-nav-label">{item.label}</span>
             <span className="bottom-nav-indicator" />
@@ -162,7 +153,6 @@ export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: Bottom
                         >
                           <span className="bottom-nav-drawer__link-icon-wrap">
                             <span className="bottom-nav-drawer__link-icon"><Icon size={20} /></span>
-                            <NewIndicator visible={item.isNew} />
                           </span>
                           <span className="bottom-nav-drawer__link-label">{item.label}</span>
                           <span className="bottom-nav-drawer__link-status" aria-hidden="true" />

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCloudflareStaticAssets } from "./static-assets.js";
 
-const INDEX = "<!doctype html><title>{{SITE_NAME}}</title><meta name=\"description\" content=\"{{SITE_DESCRIPTION}}\"><img src=\"{{SITE_LOGO_URL}}\">";
+const INDEX = "<!doctype html><title>{{SITE_NAME}}</title><meta name=\"description\" content=\"{{SITE_DESCRIPTION}}\"><link rel=\"icon\" href=\"{{SITE_LOGO_URL}}\"><img src=\"{{SITE_LOGO_URL}}\">";
 const ASSET = "console.log('streamed asset')";
 const ASSET_ETAG = '"asset-v1"';
 
@@ -125,7 +125,7 @@ describe("Cloudflare static assets", () => {
   it("serves the branded index for roots, directories, and unknown application routes", async () => {
     const { handler } = fixture();
 
-    for (const pathname of ["/", "/settings/", "/guild/members", "/register/A1b2C3d4E5"]) {
+    for (const pathname of ["/", "/settings/", "/guild/members", "/register/A1B2C3D4E5"]) {
       const response = await handler(new Request(`https://guild.test${pathname}`, {
         headers: { Accept: "text/html" },
       }));
@@ -133,6 +133,7 @@ describe("Cloudflare static assets", () => {
       const html = await response?.text();
       expect(html).toContain("<title>Guild &amp; Co</title>");
       expect(html).toContain('content="Events &amp; wiki &lt;together&gt; &quot;safely&quot; today&#39;s"');
+      expect(html).toContain('rel="icon" href="/brand?a=1&amp;b=2"');
       expect(html).toContain("src=\"/brand?a=1&amp;b=2\"");
       expect(response?.headers.get("Cache-Control")).toBe(
         "public, max-age=0, s-maxage=60, must-revalidate, no-transform",

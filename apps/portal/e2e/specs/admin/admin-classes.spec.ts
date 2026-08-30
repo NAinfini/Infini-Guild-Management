@@ -1,8 +1,9 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
+import { catalogRevisionToken } from "@guild/shared";
 import { pngUpload } from "../../support/files";
 import { uniqueTag } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
-import { confirmDialog, expectNoDialog, field } from "../../support/ui";
+import { appSiderNavigationItem, confirmDialog, expectNoDialog, expectToast, field } from "../../support/ui";
 
 /*
  * 后台「职业」页签：职业目录的增删改，以及图标来源开关（矢量图标库 / 自定义图片）。
@@ -30,6 +31,7 @@ type ServerClass = {
   vector_icon: string | null;
   icon_media_id: string | null;
   sort_order: number;
+  updated_at: string;
 };
 
 function master(page: Page): Locator {
@@ -85,7 +87,7 @@ async function createServerClass(api: APIRequestContext, label: string): Promise
 
 async function openClasses(page: Page): Promise<void> {
   await page.goto("/admin?tab=classes");
-  await expect(page.getByRole("tab", { name: /Classes/ })).toHaveAttribute("aria-selected", "true");
+  await expect(appSiderNavigationItem(page, "Classes")).toHaveAttribute("aria-current", "page");
   await expect(master(page)).toBeVisible();
   await page.waitForLoadState("networkidle");
 }
@@ -96,13 +98,6 @@ async function shownCount(page: Page): Promise<number> {
   const value = Number.parseInt(text, 10);
   expect(Number.isInteger(value), `计数读到的是 ${JSON.stringify(text)}`).toBe(true);
   return value;
-}
-
-async function expectNotified(page: Page, text: string): Promise<void> {
-  await expect(
-    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
-    `没有弹出通知「${text}」`,
-  ).toBeVisible();
 }
 
 /*
@@ -136,8 +131,8 @@ test("新建职业：没名字存不了；填完之后颜色、图标原样落�
 
   await field(form, "Class name").fill(label);
   await fillColor(form, "#A78BFA");
-  await iconOption(form, "Crown").click();
-  await expect(iconOption(form, "Crown"), "选中的图标要标出来").toHaveAttribute("aria-pressed", "true");
+  await iconOption(form, "Sovereign").click();
+  await expect(iconOption(form, "Sovereign"), "选中的图标要标出来").toHaveAttribute("aria-pressed", "true");
   await expect(
     form.getByText(label, { exact: true }),
     "左边的实时预览要跟着填的名字走，否则存下来长什么样全靠猜",
@@ -146,7 +141,7 @@ test("新建职业：没名字存不了；填完之后颜色、图标原样落�
 
   await expect(saveButton(form)).toBeEnabled();
   const created = await flow.click(saveButton(form), CREATE_CLASS) as ServerClass;
-  await expectNotified(page, "Class saved");
+  await expectToast(page, "Class saved");
   await expectEditorClosed(page);
 
   const saved = await serverClass(api, created.id);
@@ -186,7 +181,7 @@ test("编辑职业：点清单选中，改名落到服务端且不动顺序", as
 
   await field(form, "Class name").fill(renamed);
   await flow.click(saveButton(form), UPDATE_CLASS);
-  await expectNotified(page, "Class saved");
+  await expectToast(page, "Class saved");
   await expectEditorClosed(page);
 
   const saved = await serverClass(api, item.id);
@@ -198,7 +193,7 @@ test("编辑职业：点清单选中，改名落到服务端且不动顺序", as
   await expect(classItem(page, renamed), "清单要跟着刷新").toBeVisible();
 });
 
-test("自定义图标：不选图存不了；传完落到 R2 且取得回来；再切回矢量会把图删干净", async ({ page, api, flow }) => {
+test("自定义图标：不选图存不了；传完落到 R2 且取得回来；再切回矢量会立即解除关联", async ({ page, api, flow }) => {
   const item = await createServerClass(api, `E2E ${uniqueTag("icon")}`);
   await openClasses(page);
   await expect(classItem(page, item.label)).toContainText("Vector");
@@ -218,7 +213,7 @@ test("自定义图标：不选图存不了；传完落到 R2 且取得回来；�
 
   /* 保存是两个请求：先更新这一行，再把图传上去。等的是后一个。 */
   const uploaded = await flow.click(saveButton(form), UPLOAD_ICON) as ServerClass;
-  await expectNotified(page, "Class saved");
+  await expectToast(page, "Class saved");
   await expectEditorClosed(page);
 
   expect(uploaded.icon_type).toBe("image");
@@ -235,8 +230,10 @@ test("自定义图标：不选图存不了；传完落到 R2 且取得回来；�
     expect(fetched.headers()["content-type"], "浏览器上传前已统一转成 WebP").toContain("image/webp");
   }
 
-  /* 切回矢量由职业更新接口原子解除媒体关联；那张图没人用了，必须一并删掉，
-     不能在 R2 上留孤儿。 */
+  /* 切回矢量由职业更新接口原子解除媒体关联。R2 实体由媒体 GC 异步回收，
+     而公开整段 GET 又可能命中 60 秒边缘缓存，二者都不能拿来判断这次写入。
+     Range 请求会绕过边缘缓存；它必须立即 404，证明数据库里的活动媒体图已经
+     被解除，旧 id 不能再通过受控媒体端点读取。 */
   await classItem(page, item.label).click();
   await sourceOption(form, "Vector").click();
   await flow.click(saveButton(form), UPDATE_CLASS);
@@ -246,8 +243,12 @@ test("自定义图标：不选图存不了；传完落到 R2 且取得回来；�
   expect(cleared.icon_type).toBe("vector");
   expect(cleared.icon_media_id, "切回矢量之后不该再挂着图片媒体").toBeNull();
   await expect(classItem(page, item.label)).toContainText("Vector");
-  expect((await api.get(`/api/media/${mediaId}/view`)).status(), "媒体本身也该取不到了").toBe(404);
-  expect((await api.get(`/api/media/${mediaId}/full`)).status(), "原图也该一并取不到").toBe(404);
+  for (const variant of ["view", "full"] as const) {
+    const fetched = await api.get(`/api/media/${mediaId}/${variant}`, {
+      headers: { Range: "bytes=0-1" },
+    });
+    expect(fetched.status(), `${variant} 图标解除关联后不该再从源站读到`).toBe(404);
+  }
 });
 
 /*
@@ -262,7 +263,8 @@ test("自定义图标：不选图存不了；传完落到 R2 且取得回来；�
 test("拖拽排序：整张目录一次提交，顺序按下标重新发号落库；残缺的顺序一律回 409", async ({ page, api, flow }) => {
   await createServerClass(api, `E2E ${uniqueTag("sort-a")}`);
   await createServerClass(api, `E2E ${uniqueTag("sort-b")}`);
-  const before = (await serverClasses(api)).map((item) => item.id);
+  const beforeRows = await serverClasses(api);
+  const before = beforeRows.map((item) => item.id);
   const expected = [before[1] as string, before[0] as string, ...before.slice(2)];
 
   try {
@@ -321,14 +323,19 @@ test("拖拽排序：整张目录一次提交，顺序按下标重新发号落�
     await expect(rows.first()).toContainText(firstLabel);
 
     /* 少一个 id 的重排必须被拒：否则没提交的那些会停在旧号段上，和新号段交错。 */
-    const partial = await api.patch("/api/classes/reorder", { data: { order: expected.slice(1) } });
+    const partial = await api.patch("/api/classes/reorder", {
+      data: { order: expected.slice(1), expected_revision_token: catalogRevisionToken(saved) },
+    });
     expect(partial.status(), "残缺的顺序要回 409，不能悄悄写进去").toBe(409);
     expect(
       (await serverClasses(api)).map((item) => item.id),
       "被拒的那次不能改动任何一行",
     ).toEqual(expected);
   } finally {
-    await api.patch("/api/classes/reorder", { data: { order: before } });
+    const current = await serverClasses(api);
+    await api.patch("/api/classes/reorder", {
+      data: { order: before, expected_revision_token: catalogRevisionToken(current) },
+    });
   }
 });
 
@@ -352,7 +359,7 @@ test("删除职业：确认框取消什么都不做；确认之后清单、计�
   await form.getByRole("button", { name: "Delete class", exact: true }).click();
   const again = await confirmDialog(page, "Delete class from catalog?");
   await flow.click(again.getByRole("button", { name: "Delete class", exact: true }), DELETE_CLASS);
-  await expectNotified(page, "Class deleted");
+  await expectToast(page, "Class deleted");
 
   await expect(classItem(page, item.label)).toHaveCount(0);
   await expectEditorClosed(page);

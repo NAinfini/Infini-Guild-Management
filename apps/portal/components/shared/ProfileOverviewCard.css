@@ -3,6 +3,11 @@
 
 /* 左边「我是谁」，右边五个计数。它答的是「现在是什么」，表单答的是「改什么」
    ——所以它是一条，不是又一张带标题的卡。 */
+.profile-overview-container {
+  min-width: 0;
+  container-type: inline-size;
+}
+
 .profile-overview {
   /* 主职业色。组件按主职业内联覆盖这一个变量；这里声明的是「没有职业」时的
      取值。必须是独立声明，不能写成 var() 的第二参数兜底——守卫 rule 1
@@ -16,9 +21,7 @@
   padding: var(--card-padding);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-surface);
-  /* 左侧那道主职业色，是这一条和名片预览之间唯一的视觉连线。 */
-  border-inline-start: 3px solid var(--overview-accent);
-  /* 160deg 是全站统一的材质角度（architecture-boundaries 守卫的那条）。 */
+  /* 160deg 是全站统一的材质角度。 */
   background: linear-gradient(
     160deg,
     color-mix(in srgb, var(--overview-accent) 9%, var(--surface-raised)) 0%,
@@ -236,9 +239,9 @@
   color: var(--text-primary);
 }
 
-/* 两块（身份 / 计数）挤到一行放不下时改成上下两行，计数自己折。断点比资料页
-   整页的 1199 早：这一条本来就是横向最吃宽度的一块。 */
-@media (max-width: 1399px) {
+/* 组件既在资料页也在侧栏检查器中使用，所以按自己的可用宽度响应，而不是按
+   浏览器视口猜测。 */
+@container (max-width: 72rem) {
   .profile-overview {
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
@@ -246,5 +249,33 @@
 
   .profile-overview__stats {
     grid-template-columns: repeat(auto-fit, minmax(96px, max-content));
+  }
+}
+
+@container (max-width: 34rem) {
+  .profile-overview {
+    padding: var(--space-md);
+  }
+
+  .profile-overview__identity {
+    align-items: flex-start;
+  }
+
+  .profile-overview__avatar {
+    inline-size: 72px;
+    block-size: 72px;
+  }
+
+  .profile-overview__avatar-actions [data-slot="button"] {
+    width: 32px;
+  }
+
+  .profile-overview__name {
+    font-size: var(--text-h3);
+  }
+
+  .profile-overview__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-md);
   }
 }

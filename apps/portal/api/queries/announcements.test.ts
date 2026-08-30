@@ -37,19 +37,16 @@ describe("announcement queries", () => {
     expect(params.get("sort")).toBe("updated_desc");
   });
 
-  it("omits archived unless the caller explicitly filters it", async () => {
-    await fetchAnnouncements({ page: 1, limit: 20, archived: undefined });
-    let params = new URLSearchParams((clientMocks.apiRequest.mock.calls[0]?.[0] as string).split("?")[1]);
+  it("uses status as the only lifecycle filter", async () => {
+    await fetchAnnouncements({ page: 1, limit: 20, status: "archived" });
+    const params = new URLSearchParams((clientMocks.apiRequest.mock.calls[0]?.[0] as string).split("?")[1]);
+    expect(params.get("status")).toBe("archived");
     expect(params.has("archived")).toBe(false);
-
-    await fetchAnnouncements({ page: 1, limit: 20, archived: false });
-    params = new URLSearchParams((clientMocks.apiRequest.mock.calls[1]?.[0] as string).split("?")[1]);
-    expect(params.get("archived")).toBe("false");
   });
 
   it("includes sort in the list query key", () => {
-    const descending = queryKeys.announcements.list("active", "all", "", "updated_desc");
-    const ascending = queryKeys.announcements.list("active", "all", "", "updated_asc");
+    const descending = queryKeys.announcements.list("all", "all", "", "updated_desc");
+    const ascending = queryKeys.announcements.list("all", "all", "", "updated_asc");
 
     expect(descending).not.toEqual(ascending);
     expect(descending.at(-1)).toBe("updated_desc");

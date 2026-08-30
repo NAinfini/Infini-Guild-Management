@@ -14,6 +14,7 @@ type WarDetail = {
   member_stats: Array<{
     user_id: string;
     display_name?: string | null;
+    avatar_media_id?: string | null;
     stats: Record<string, number | null> | null;
   }>;
   teams: Array<{
@@ -139,6 +140,18 @@ export function useGuildWarAnalyticsComputed({
     return map;
   }, [analyticsWarDetails]);
 
+  const analyticsUserIdToAvatarMediaId = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const war of analyticsWarDetails) {
+      for (const member of war.member_stats) {
+        if (!map.has(member.user_id) || member.avatar_media_id) {
+          map.set(member.user_id, member.avatar_media_id ?? null);
+        }
+      }
+    }
+    return map;
+  }, [analyticsWarDetails]);
+
   const analyticsTeamOptions = useMemo(() => {
     const names = analyticsWarDetails.flatMap((war) => war.teams.map((team) => team.team_name));
     return Array.from(new Set(names)).sort();
@@ -174,6 +187,7 @@ export function useGuildWarAnalyticsComputed({
         war_name: war.war_name,
         created_at: localDateKey(war.created_at),
         enemy_name: war.enemy_name ?? "—",
+        result_id: war.result,
         result: war.result ? getGuildWarResultLabel(war.result) : "—",
         own,
         enemy,
@@ -399,9 +413,20 @@ export function useGuildWarAnalyticsComputed({
         },
         yAxis: { type: "value" },
         series: [
-          { type: "bar", name: t("analytics.wars.own"), data: analyticsWarOverviewRows.map((row) => row.own) },
-          { type: "bar", name: t("analytics.wars.enemy"), data: analyticsWarOverviewRows.map((row) => row.enemy) },
-          { type: "line", name: t("analytics.wars.margin"), smooth: true, data: analyticsWarOverviewRows.map((row) => row.margin) },
+          {
+            type: "bar",
+            name: t("analytics.wars.own"),
+            barMaxWidth: 30,
+            itemStyle: { borderRadius: [4, 4, 0, 0] },
+            data: analyticsWarOverviewRows.map((row) => row.own),
+          },
+          {
+            type: "bar",
+            name: t("analytics.wars.enemy"),
+            barMaxWidth: 30,
+            itemStyle: { borderRadius: [4, 4, 0, 0] },
+            data: analyticsWarOverviewRows.map((row) => row.enemy),
+          },
         ],
       };
     }
@@ -686,29 +711,32 @@ export function useGuildWarAnalyticsComputed({
           GUILD_WAR_KDA_KEY,
         ];
 
-    // Compute max per metric across all users for normalization to percentile
+    // Normalize aggregated profiles against aggregated peers. Comparing a
+    // multi-war total to a single-war maximum can exceed the radar's 100 scale.
     const metricMaxes = new Map<AnalyticsMetricKey, number>();
+    const metricScores = new Map<AnalyticsMetricKey, Map<string, number>>();
     for (const metric of metricsToUse) {
-      let max = 0;
+      const valuesByUser = new Map<string, number[]>();
       for (const war of analyticsTimeline) {
         for (const member of war.member_stats) {
-          const val = getNormalizedMetricValue(war.id, member, metric);
-          if (val > max) max = val;
+          const values = valuesByUser.get(member.user_id) ?? [];
+          values.push(getNormalizedMetricValue(war.id, member, metric));
+          valuesByUser.set(member.user_id, values);
         }
       }
-      metricMaxes.set(metric, max || 1);
+      const scores = new Map(
+        Array.from(valuesByUser, ([userId, values]) => [
+          userId,
+          aggregateValues(values, analyticsAggregation),
+        ]),
+      );
+      metricScores.set(metric, scores);
+      metricMaxes.set(metric, Math.max(1, ...scores.values()));
     }
 
-    // Aggregate each selected user's values
     const userProfiles = analyticsSelectedUsers.map((userId) => {
       const values = metricsToUse.map((metric) => {
-        const userValues: number[] = [];
-        for (const war of analyticsTimeline) {
-          const member = war.member_stats.find((m) => m.user_id === userId);
-          if (member) userValues.push(getNormalizedMetricValue(war.id, member, metric));
-        }
-        if (userValues.length === 0) return 0;
-        const aggregated = aggregateValues(userValues, analyticsAggregation);
+        const aggregated = metricScores.get(metric)?.get(userId) ?? 0;
         const max = metricMaxes.get(metric) ?? 1;
         return Number((aggregated / max * 100).toFixed(1));
       });
@@ -872,6 +900,7 @@ export function useGuildWarAnalyticsComputed({
   return {
     analyticsSelectableUserIds,
     analyticsUserIdToUsername,
+    analyticsUserIdToAvatarMediaId,
     analyticsTeamOptions,
     analyticsTimeline,
     analyticsMetricLabel,

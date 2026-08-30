@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
-import type { EventAggregate, EventGuildWarLifecycleStore, EventsStore, RecurringTemplateAggregate } from "./model.js";
+import type { EventAggregate, EventGuildWarLifecycleStore, EventMediaPort, EventsStore, RecurringTemplateAggregate } from "./model.js";
 import { EventsService, selectRaffleWinnerIds } from "./events-service.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
@@ -128,13 +128,12 @@ function service(
   random = () => 0,
   lifecycle: EventGuildWarLifecycleStore = { destroyEvent: vi.fn().mockResolvedValue("deleted") },
   publish = vi.fn(),
+  media: EventMediaPort = { list: vi.fn().mockResolvedValue(new Map()) },
 ) {
   return new EventsService({
     store,
     lifecycle,
-    media: {
-      list: vi.fn().mockResolvedValue(new Map()),
-    },
+    media,
     notifications: { publish },
     deferred: { defer: (task) => void task() },
     createId: (() => {
@@ -146,6 +145,64 @@ function service(
 }
 
 describe("EventsService notification invalidation", () => {
+  it("uses attachment snapshots instead of fetching after committed event and template writes", async () => {
+    const createMediaList = vi.fn().mockRejectedValue(new Error("post-commit event media read failed"));
+    const createEvents = service(
+      fakeStore({
+        create: vi.fn().mockResolvedValue(aggregate("other", null)),
+        createTemplate: vi.fn().mockResolvedValue(templateAggregate()),
+      }),
+      () => 0,
+      undefined,
+      undefined,
+      { list: createMediaList },
+    );
+
+    await expect(createEvents.create(context(["events.create"]), {
+      type: "other",
+      title: "Created",
+      start_at: "2026-08-10T12:00:00.000Z",
+      attachments: ["event-media-1"],
+    })).resolves.toMatchObject({ attachments: ["event-media-1"] });
+    await expect(createEvents.createTemplate(context(["events.templates"]), {
+      type: "social",
+      title: "Created template",
+      start_time: "12:00",
+      recurrence_rule: { frequency: "weekly", interval: 1, daysOfWeek: [1] },
+      attachments: ["template-media-1"],
+    })).resolves.toMatchObject({ attachments: ["template-media-1"] });
+    expect(createMediaList).not.toHaveBeenCalled();
+
+    const event = { ...aggregate("other", null), attachments: ["existing-event-media"] };
+    const template = { ...templateAggregate(), attachments: ["existing-template-media"] };
+    const updateMediaList = vi.fn()
+      .mockResolvedValueOnce(new Map([[event.event.id, event.attachments]]))
+      .mockResolvedValueOnce(new Map([[template.template.id, template.attachments]]))
+      .mockRejectedValue(new Error("post-commit event media read failed"));
+    const updateEvents = service(
+      fakeStore({
+        get: vi.fn().mockResolvedValue(event),
+        update: vi.fn().mockResolvedValue(aggregate("other", null)),
+        getTemplate: vi.fn().mockResolvedValue(template),
+        updateTemplate: vi.fn().mockResolvedValue(templateAggregate()),
+      }),
+      () => 0,
+      undefined,
+      undefined,
+      { list: updateMediaList },
+    );
+
+    await expect(updateEvents.update(context(["events.edit"]), event.event.id, {
+      title: "Saved",
+      expected_updated_at: event.event.updatedAt,
+    })).resolves.toMatchObject({ attachments: event.attachments });
+    await expect(updateEvents.updateTemplate(context(["events.templates"]), template.template.id, {
+      title: "Saved",
+      expected_updated_at: template.template.updatedAt,
+    })).resolves.toMatchObject({ attachments: template.attachments });
+    expect(updateMediaList).toHaveBeenCalledTimes(2);
+  });
+
   it("publishes the creation hint and inbox invalidation after a successful create", async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
     const events = service(
@@ -186,7 +243,10 @@ describe("EventsService notification invalidation", () => {
       setArchived: vi.fn().mockResolvedValue(undefined),
     }), () => 0, lifecycle, publish);
 
-    await events.update(context(["events.edit"]), existing.event.id, { title: "Updated" });
+    await events.update(context(["events.edit"]), existing.event.id, {
+      title: "Updated",
+      expected_updated_at: NOW,
+    });
     await events.archive(context(["events.archive"]), existing.event.id);
     await events.destroy(context(["events.delete"]), existing.event.id);
 
@@ -211,9 +271,107 @@ describe("EventsService notification invalidation", () => {
   });
 });
 
+describe("EventsService edit revisions", () => {
+  it("passes the read revision to each successful write and rejects stale event or template edits before auditing", async () => {
+    const event = aggregate("other", null);
+    const template = templateAggregate();
+    const update = vi.fn().mockResolvedValue(event);
+    const updateTemplate = vi.fn().mockResolvedValue(template);
+    const events = service(fakeStore({
+      get: vi.fn().mockResolvedValue(event),
+      getTemplate: vi.fn().mockResolvedValue(template),
+      update,
+      updateTemplate,
+    }));
+
+    await events.update(context(["events.edit"]), event.event.id, {
+      title: "Saved",
+      expected_updated_at: event.event.updatedAt,
+    });
+    await events.updateTemplate(context(["events.templates"]), template.template.id, {
+      title: "Saved",
+      expected_updated_at: template.template.updatedAt,
+    });
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      expectedUpdatedAt: event.event.updatedAt,
+      updatedAt: "2026-08-09T12:00:00.001Z",
+      audit: expect.any(Object),
+    }));
+    expect(updateTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      expectedUpdatedAt: template.template.updatedAt,
+      updatedAt: "2026-08-09T12:00:00.000Z",
+      audit: expect.any(Object),
+    }));
+
+    await expect(events.update(context(["events.edit"]), event.event.id, {
+      title: "Stale",
+      expected_updated_at: "2026-08-09T11:59:59.999Z",
+    })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    await expect(events.updateTemplate(context(["events.templates"]), template.template.id, {
+      title: "Stale",
+      expected_updated_at: "2026-08-03T11:59:59.999Z",
+    })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(updateTemplate).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("EventsService audit context", () => {
+  it("passes each aggregate snapshot and next revision into child mutations", async () => {
+    const member = { id: "participant-1", event_id: "event-1", user_id: "user-1", joined_at: NOW };
+    const addParticipants = vi.fn().mockResolvedValue({ participants: [member], changed: true });
+    const removeParticipants = vi.fn().mockResolvedValue(1);
+    const replacePollVote = vi.fn().mockResolvedValue(true);
+    const drawRaffle = vi.fn().mockImplementation(async (input: {
+      eventId: string;
+      winnerIds: readonly string[];
+      winnerRowIds: readonly string[];
+    }) => input.winnerIds.map((userId, index) => ({
+      id: input.winnerRowIds[index]!, eventId: input.eventId, userId, drawnAt: NOW,
+    })));
+    const events = service(fakeStore({
+      get: vi.fn()
+        .mockResolvedValueOnce(aggregate("other", null))
+        .mockResolvedValueOnce(aggregate("other", null))
+        .mockResolvedValueOnce(aggregate("poll", null))
+        .mockResolvedValueOnce(aggregate("raffle", null)),
+      addParticipants,
+      removeParticipants,
+      replacePollVote,
+      drawRaffle,
+    }));
+
+    await events.join(context([]), "event-1");
+    await events.leave(context([]), "event-1");
+    await events.votePoll(context([]), "event-1", ["option-1"]);
+    await events.drawRaffle(context(["events.edit"]), "event-1");
+
+    const expectedRevision = "2026-08-09T12:00:00.001Z";
+    expect(addParticipants).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: "event-1",
+      expectedUpdatedAt: NOW,
+      updatedAt: expectedRevision,
+    }));
+    expect(removeParticipants).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: "event-1",
+      expectedUpdatedAt: NOW,
+      updatedAt: expectedRevision,
+    }));
+    expect(replacePollVote).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: "event-1",
+      expectedUpdatedAt: NOW,
+      updatedAt: expectedRevision,
+    }));
+    expect(drawRaffle).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: "event-1",
+      expectedUpdatedAt: NOW,
+      updatedAt: expectedRevision,
+    }));
+  });
+
   it("defers moderator batch outcomes to the atomic store", async () => {
-    const addParticipants = vi.fn().mockResolvedValue([]);
+    const addParticipants = vi.fn().mockResolvedValue({ participants: [], changed: false });
     const removeParticipants = vi.fn().mockResolvedValue(2);
     const events = service(fakeStore({
       get: vi.fn().mockResolvedValue(aggregate("other", null)),
@@ -228,25 +386,29 @@ describe("EventsService audit context", () => {
       field: "event_id",
       value: { type: "reference", value: { id: "event-1", label: "Event" } },
     }];
-    expect(addParticipants).toHaveBeenCalledWith(
-      "event-1",
-      ["user-2", "user-3"],
-      expect.any(Array),
-      NOW,
-      "moderator",
-      expect.objectContaining({
+    expect(addParticipants).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: "event-1",
+      userIds: ["user-2", "user-3"],
+      participantIds: expect.any(Array),
+      now: NOW,
+      mode: "moderator",
+      expectedUpdatedAt: NOW,
+      updatedAt: "2026-08-09T12:00:00.001Z",
+      audit: expect.objectContaining({
         action: "batch_add_by_moderator",
         payload: expect.objectContaining({ context: expectedContext }),
       }),
-    );
-    expect(removeParticipants).toHaveBeenCalledWith(
-      "event-1",
-      ["user-2", "user-3"],
-      expect.objectContaining({
+    }));
+    expect(removeParticipants).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: "event-1",
+      userIds: ["user-2", "user-3"],
+      expectedUpdatedAt: NOW,
+      updatedAt: "2026-08-09T12:00:00.001Z",
+      audit: expect.objectContaining({
         action: "batch_remove_by_moderator",
         payload: expect.objectContaining({ context: expectedContext }),
       }),
-    );
+    }));
   });
 
   it("records safe scalar event changes and keeps descriptions out of the payload", async () => {
@@ -262,6 +424,7 @@ describe("EventsService audit context", () => {
       capacity: 20,
       pinned: true,
       description: "New private detail",
+      expected_updated_at: NOW,
     });
 
     expect(update.mock.calls[0]![0].audit.payload).toEqual({
@@ -296,6 +459,7 @@ describe("EventsService recurrence writes", () => {
       description: null,
       end_at: null,
       capacity: null,
+      expected_updated_at: NOW,
     });
 
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
@@ -332,6 +496,7 @@ describe("EventsService recurrence writes", () => {
       duration_minutes: null,
       capacity: null,
       visibility_offset_minutes: 0,
+      expected_updated_at: current.template.updatedAt,
     })).resolves.toMatchObject({ template: { title: "Renamed" } });
     expect(updateTemplate.mock.calls[0]![0]).toMatchObject({
       patch: {
@@ -346,20 +511,23 @@ describe("EventsService recurrence writes", () => {
 
     await events.updateTemplate(context(["events.templates"]), "template-1", {
       recurrence_rule: { frequency: "weekly", interval: 1, daysOfWeek: [3, 1] },
+      expected_updated_at: current.template.updatedAt,
     });
     expect(updateTemplate.mock.calls[1]![0]).not.toHaveProperty("restartCursorDate");
 
-    await events.updateTemplate(context(["events.templates"]), "template-1", { start_time: "13:00" });
+    await events.updateTemplate(context(["events.templates"]), "template-1", {
+      start_time: "13:00",
+      expected_updated_at: current.template.updatedAt,
+    });
     expect(updateTemplate.mock.calls[2]![0]).toMatchObject({ restartCursorDate: "2026-08-08" });
 
     await events.resumeTemplate(context(["events.templates"]), "template-1");
-    expect(setTemplatePaused).toHaveBeenCalledWith(
-      "template-1",
-      false,
-      NOW,
-      expect.any(Object),
-      "2026-08-08",
-    );
+    expect(setTemplatePaused).toHaveBeenCalledWith(expect.objectContaining({
+      templateId: "template-1",
+      paused: false,
+      expectedUpdatedAt: current.template.updatedAt,
+      resumeCursorDate: "2026-08-08",
+    }));
     expect(materializeDue).not.toHaveBeenCalled();
   });
 });
@@ -455,12 +623,12 @@ describe("EventsService poll and raffle rules", () => {
   });
 
   it("draws distinct raffle winners through one audited store mutation", async () => {
-    const drawRaffle = vi.fn().mockImplementation(async (
-      eventId: string,
-      winnerIds: readonly string[],
-      winnerRowIds: readonly string[],
-    ) => winnerIds.map((userId, index) => ({
-      id: winnerRowIds[index]!, eventId, userId, drawnAt: NOW,
+    const drawRaffle = vi.fn().mockImplementation(async (input: {
+      eventId: string;
+      winnerIds: readonly string[];
+      winnerRowIds: readonly string[];
+    }) => input.winnerIds.map((userId, index) => ({
+      id: input.winnerRowIds[index]!, eventId: input.eventId, userId, drawnAt: NOW,
     })));
     const events = service(fakeStore({
       get: vi.fn().mockResolvedValue(aggregate("raffle", null)),
@@ -469,6 +637,10 @@ describe("EventsService poll and raffle rules", () => {
     const winners = await events.drawRaffle(context(["events.edit"]), "event-1");
     expect(winners.map(({ userId }) => userId)).toEqual(["user-1", "user-2"]);
     expect(drawRaffle).toHaveBeenCalledOnce();
-    expect(drawRaffle.mock.calls[0]![5]).toMatchObject({ requestId: expect.any(String), action: "raffle_draw" });
+    expect(drawRaffle.mock.calls[0]![0]).toMatchObject({
+      expectedUpdatedAt: NOW,
+      updatedAt: "2026-08-09T12:00:00.001Z",
+      audit: { requestId: expect.any(String), action: "raffle_draw" },
+    });
   });
 });

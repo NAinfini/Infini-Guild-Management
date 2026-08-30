@@ -369,9 +369,12 @@ export function DroppableMemberColumn({
         <div className="guild-war-column-header">
           <div className="guild-war-column-header__row">
             <div className="guild-war-column-header__identity">
-              <strong className="guild-war-column-header__title" title={column.title}>
-                {column.title}
-              </strong>
+              <Tooltip>
+                <TooltipTrigger render={<strong className="guild-war-column-header__title" tabIndex={0} />}>
+                  {column.title}
+                </TooltipTrigger>
+                <TooltipContent>{column.title}</TooltipContent>
+              </Tooltip>
               <Badge variant="outline" className="guild-war-column-count">
                 {column.members.length}
               </Badge>
@@ -457,16 +460,18 @@ export function DroppableMemberColumn({
                 </Tooltip>
               ) : null}
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="guild-war-column-action"
-                  aria-label={t("active.aria.columnActions")}
-                  title={t("active.aria.columnActions")}
-                />}>
-                  <DotsIcon size={16} />
-                </DropdownMenuTrigger>
+                <Tooltip>
+                  <DropdownMenuTrigger render={<TooltipTrigger render={<Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="guild-war-column-action"
+                    aria-label={t("active.aria.columnActions")}
+                  />} />}>
+                    <DotsIcon size={16} />
+                  </DropdownMenuTrigger>
+                  <TooltipContent>{t("active.aria.columnActions")}</TooltipContent>
+                </Tooltip>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => toggleSort("display_name")}>
                     <UserIcon size={14} />
@@ -636,6 +641,7 @@ type GuildWarDragBoardLayoutProps = {
   poolColumn?: DragMemberColumn;
   teamColumns: DragMemberColumn[];
   canDrag: boolean;
+  canRemoveParticipants: boolean;
   activeSearch: string;
   activeDragItem: ActiveDragItem | null;
   toMemberDomId: (itemId: string) => string;
@@ -658,6 +664,7 @@ export function GuildWarDragBoardLayout({
   poolColumn,
   teamColumns,
   canDrag,
+  canRemoveParticipants,
   activeSearch,
   activeDragItem,
   toMemberDomId,
@@ -690,7 +697,7 @@ export function GuildWarDragBoardLayout({
               absentUserIds={absentUserIds}
             />
           ) : null}
-          <TrashDropZone visible={Boolean(activeDragItem)} />
+          <TrashDropZone visible={canRemoveParticipants && Boolean(activeDragItem)} />
         </div>
       </div> : null}
 

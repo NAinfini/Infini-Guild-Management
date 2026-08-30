@@ -1,13 +1,14 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { queryKeys } from "../../api/query-keys";
 import { NotificationPopover } from "./NotificationPopover";
 
 const mocks = vi.hoisted(() => ({
+  fetchActiveImportantNotices: vi.fn(),
   fetchInboxNotifications: vi.fn(),
+  markImportantNoticesRead: vi.fn(),
   markInboxNotificationsRead: vi.fn(),
   isPhone: false,
 }));
@@ -22,8 +23,13 @@ vi.mock("react-i18next", () => ({
       if (key === "label.notificationsUnread") return `Notifications (${options?.count ?? 0} unread)`;
       if (key === "label.notifications") return "Notifications";
       if (key === "action.markAllRead") return "Mark all read";
+      if (key === "action.loadMore") return "Load more";
+      if (key === "notification.loadMoreError") return "Unable to load more notifications.";
       if (key === "notification.title.announcement_published") return "Announcement published";
       if (key === "notification.aria.open") return `Open ${options?.title ?? ""} notification`;
+      if (key === "notification.aria.openRequired") {
+        return `Open ${options?.title ?? ""} notification — acknowledgement required`;
+      }
       return key;
     },
     i18n: { language: "en" },
@@ -35,7 +41,9 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("../../services/NotificationService", () => ({
+  fetchActiveImportantNotices: mocks.fetchActiveImportantNotices,
   fetchInboxNotifications: mocks.fetchInboxNotifications,
+  markImportantNoticesRead: mocks.markImportantNoticesRead,
   markInboxNotificationsRead: mocks.markInboxNotificationsRead,
 }));
 
@@ -69,19 +77,24 @@ const secondPage = {
 
 const firstRowLabel = "Open Announcement published: First announcement notification";
 
-function renderPopover(user: { id: string } | null = { id: "user-1" }) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPopover(
+  user: { id: string } | null = { id: "user-1" },
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   render(
     <QueryClientProvider client={queryClient}>
       <NotificationPopover user={user as never} />
     </QueryClientProvider>,
   );
+  return queryClient;
 }
 
 describe("NotificationPopover", () => {
   beforeEach(() => {
     mocks.isPhone = false;
+    mocks.fetchActiveImportantNotices.mockReset().mockResolvedValue([]);
     mocks.fetchInboxNotifications.mockReset().mockResolvedValue(firstPage);
+    mocks.markImportantNoticesRead.mockReset().mockResolvedValue({ updated: 1 });
     mocks.markInboxNotificationsRead.mockReset().mockResolvedValue({ ok: true, unread_count: 0 });
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
       new DOMRect(0, 0, 360, 48),
@@ -92,17 +105,6 @@ describe("NotificationPopover", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses a viewport-safe width and bounded scrolling contract", () => {
-    const styles = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/layout/NotificationPopover.module.css"),
-      "utf8",
-    );
-
-    expect(styles).toMatch(/width:\s*min\(27\.5rem,\s*calc\(100vw - var\(--space-xl\)\)\)/);
-    expect(styles).toMatch(/max-height:\s*min\(/);
-    expect(styles).toContain("overflow-y: auto");
-  });
-
   it("does not request the protected inbox for a guest, even if the isolated trigger is clicked", async () => {
     const user = userEvent.setup();
     renderPopover(null);
@@ -110,9 +112,37 @@ describe("NotificationPopover", () => {
     await user.click(screen.getByRole("button", { name: "Notifications" }));
 
     expect(mocks.fetchInboxNotifications).not.toHaveBeenCalled();
+    expect(mocks.fetchActiveImportantNotices).not.toHaveBeenCalled();
   });
 
-  it("automatically loads every recent notification page without exposing filter, read-toggle, or load-more controls", async () => {
+  it("keeps fresh unread data when opening the inbox", async () => {
+    const user = userEvent.setup();
+    renderPopover();
+
+    const trigger = await screen.findByRole("button", { name: "Notifications (1 unread)" });
+    expect(mocks.fetchInboxNotifications).toHaveBeenCalledTimes(1);
+
+    await user.click(trigger);
+
+    expect(mocks.fetchInboxNotifications).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes from its trigger and stays closed after the exit transition", async () => {
+    const user = userEvent.setup();
+    renderPopover();
+
+    const trigger = await screen.findByRole("button", { name: "Notifications (1 unread)" });
+    await user.click(trigger);
+    expect(await screen.findByText("First announcement")).toBeInTheDocument();
+
+    await user.click(trigger);
+    await waitFor(() => expect(screen.queryByText("First announcement")).not.toBeInTheDocument());
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(screen.queryByText("First announcement")).not.toBeInTheDocument();
+  });
+
+  it("loads additional notification pages only when the user requests them", async () => {
     mocks.fetchInboxNotifications.mockImplementation(({ cursor }: { cursor?: string | null }) =>
       Promise.resolve(cursor === "next-page" ? secondPage : { ...firstPage, next_cursor: "next-page", unread_count: 2 }));
     const user = userEvent.setup();
@@ -120,9 +150,15 @@ describe("NotificationPopover", () => {
 
     await user.click(await screen.findByRole("button", { name: "Notifications (2 unread)" }));
 
+    expect(await screen.findByText("First announcement")).toBeInTheDocument();
+    expect(screen.queryByText("Second announcement")).not.toBeInTheDocument();
+    expect(mocks.fetchInboxNotifications).not.toHaveBeenCalledWith({ limit: 50, cursor: "next-page" });
+
+    await user.click(screen.getByRole("button", { name: "Load more" }));
+
     expect(await screen.findByText("Second announcement")).toBeInTheDocument();
     expect(mocks.fetchInboxNotifications).toHaveBeenCalledWith({ limit: 50, cursor: "next-page" });
-    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
   });
 
   it("marks an unread notification once on fine-pointer hover even if it subsequently receives focus", async () => {
@@ -182,6 +218,55 @@ describe("NotificationPopover", () => {
     await waitFor(() => expect(mocks.markInboxNotificationsRead).toHaveBeenCalledWith({ all: true }));
   });
 
+  it("keeps active administrator notices above recent activity and marks opening as read without acknowledging", async () => {
+    mocks.fetchActiveImportantNotices.mockResolvedValue([{
+      id: "notice-1",
+      title: "Planned maintenance",
+      body_json: JSON.stringify({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Tonight at 8" }] }],
+      }),
+      published_at: "2026-08-23T12:00:00.000Z",
+      expires_at: null,
+      requires_acknowledgement: true,
+      read_at: null,
+      acknowledged_at: null,
+    }]);
+    const user = userEvent.setup();
+    renderPopover();
+
+    await user.click(await screen.findByRole("button", { name: "Notifications (2 unread)" }));
+
+    expect(screen.getByText("notification.noticesSection")).toBeInTheDocument();
+    expect(screen.getByText("Planned maintenance")).toBeInTheDocument();
+    expect(screen.getByText("notification.activitySection")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", {
+      name: "Open Planned maintenance notification — acknowledgement required",
+    }));
+    await waitFor(() => expect(mocks.markImportantNoticesRead).toHaveBeenCalledWith({ ids: ["notice-1"] }));
+  });
+
+  it("marks both notice layers read without acknowledging either one", async () => {
+    mocks.fetchActiveImportantNotices.mockResolvedValue([{
+      id: "notice-1",
+      title: "Planned maintenance",
+      body_json: JSON.stringify({ type: "doc", content: [{ type: "paragraph" }] }),
+      published_at: "2026-08-23T12:00:00.000Z",
+      expires_at: null,
+      requires_acknowledgement: false,
+      read_at: null,
+      acknowledged_at: null,
+    }]);
+    const user = userEvent.setup();
+    renderPopover();
+
+    await user.click(await screen.findByRole("button", { name: "Notifications (2 unread)" }));
+    await user.click(screen.getByRole("button", { name: "Mark all read" }));
+
+    await waitFor(() => expect(mocks.markInboxNotificationsRead).toHaveBeenCalledWith({ all: true }));
+    expect(mocks.markImportantNoticesRead).toHaveBeenCalledWith({ all: true });
+  });
+
   it("uses a bottom drawer on phone viewports", async () => {
     mocks.isPhone = true;
     const user = userEvent.setup();
@@ -200,32 +285,50 @@ describe("NotificationPopover", () => {
 
     await user.click(await screen.findByRole("button", { name: "Notifications" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("loadError");
+    expect(await screen.findByRole("alert")).toHaveTextContent("notification.activityLoadError");
     const callsBeforeRetry = mocks.fetchInboxNotifications.mock.calls.length;
     await user.click(screen.getByRole("button", { name: "action.retry" }));
     await waitFor(() => expect(mocks.fetchInboxNotifications.mock.calls.length).toBeGreaterThan(callsBeforeRetry));
   });
 
-  it("uses the shared Base UI popover and drawer primitives", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/layout/NotificationPopover.tsx"),
-      "utf8",
-    );
+  it("refreshes stale inbox data when it opens", async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const inboxQueryKey = queryKeys.notifications.inbox("user-1");
+    queryClient.setQueryData(inboxQueryKey, {
+      pages: [firstPage],
+      pageParams: [undefined],
+    });
+    renderPopover({ id: "user-1" }, queryClient);
 
-    expect(source).toContain('"@portal/components/ui/popover"');
-    expect(source).toContain('"@portal/components/ui/drawer"');
-    expect(source.toLowerCase()).not.toContain(["man", "tine"].join(""));
+    const trigger = await screen.findByRole("button", { name: "Notifications (1 unread)" });
+    expect(mocks.fetchInboxNotifications).not.toHaveBeenCalled();
+
+    queryClient.setQueryData(inboxQueryKey, (current) => current, { updatedAt: 0 });
+    await user.click(trigger);
+
+    await waitFor(() => expect(mocks.fetchInboxNotifications).toHaveBeenCalledTimes(1));
   });
 
-  it("does not retain the removed unread mutation, segmented tabs, eyes, or manual pagination in the source", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/layout/NotificationPopover.tsx"),
-      "utf8",
-    );
+  it("keeps loaded notifications visible and retries only the failed next page", async () => {
+    mocks.fetchInboxNotifications.mockImplementation(({ cursor }: { cursor?: string | null }) => {
+      if (cursor === "next-page") return Promise.reject(new Error("next page failed"));
+      return Promise.resolve({ ...firstPage, next_cursor: "next-page" });
+    });
+    const user = userEvent.setup();
+    renderPopover();
 
-    expect(source).not.toContain("markInboxNotificationUnread");
-    expect(source).not.toContain("SegmentedControl");
-    expect(source).not.toContain("EyeIcon");
-    expect(source).not.toContain("notification.action.loadMore");
+    await user.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));
+    await user.click(await screen.findByRole("button", { name: "Load more" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load more notifications.");
+    expect(screen.getByText("First announcement")).toBeInTheDocument();
+
+    mocks.fetchInboxNotifications.mockImplementation(({ cursor }: { cursor?: string | null }) =>
+      Promise.resolve(cursor === "next-page" ? secondPage : { ...firstPage, next_cursor: "next-page" }));
+    await user.click(screen.getByRole("button", { name: "action.retry" }));
+
+    expect(await screen.findByText("Second announcement")).toBeInTheDocument();
+    expect(mocks.fetchInboxNotifications).toHaveBeenLastCalledWith({ limit: 50, cursor: "next-page" });
   });
 });

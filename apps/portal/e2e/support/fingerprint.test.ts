@@ -24,4 +24,22 @@ describe("E2E cleanup fingerprint", () => {
     const after = [{ singleton: 1, revision_token: "after", updated_at: "after" }];
     expect(hashTableRows("wiki_category_state", after)).toBe(hashTableRows("wiki_category_state", before));
   });
+
+  it("accepts an API-restored site config with fresh concurrency metadata", () => {
+    const before = [{
+      singleton: 1,
+      site_name: "Infini Guild",
+      feature_tools: 1,
+      revision_token: "before",
+      updated_at: "2026-08-01T00:00:00.000Z",
+    }];
+    const restored = [{
+      ...before[0],
+      revision_token: "after",
+      updated_at: "2026-08-10T00:00:00.000Z",
+    }];
+    expect(hashTableRows("site_config", restored)).toBe(hashTableRows("site_config", before));
+    expect(hashTableRows("site_config", [{ ...restored[0], feature_tools: 0 }]))
+      .not.toBe(hashTableRows("site_config", before));
+  });
 });

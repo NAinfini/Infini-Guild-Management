@@ -11,7 +11,6 @@ import { confirmDialog, field, selectOption, setToggle } from "../../support/ui"
 
 const CREATE_EVENT = { method: "POST", path: /^\/api\/events$/ } as const;
 const UPDATE_EVENT = { method: "PATCH", path: /^\/api\/events\/[^/]+$/ } as const;
-const UPLOAD_IMAGES = { method: "POST", path: /^\/api\/events\/[^/]+\/images$/ } as const;
 
 const START_LOCAL = "2027-05-01T18:00";
 const END_LOCAL = "2027-05-01T20:00";
@@ -117,7 +116,10 @@ test("新建活动：/events/new 保存后返回列表且字段完整落库", as
   const created = await flow.click(submitButton(editor, "Create Event"), CREATE_EVENT) as { id: string };
 
   await expect(page).toHaveURL(/\/events$/);
-  await expect(page.getByRole("button", { name: "Create Event", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Filters", exact: true })
+      .getByRole("button", { name: "Create Event", exact: true }),
+  ).toBeVisible();
 
   const persisted = await readEvent(api, created.id);
   expect(persisted.title).toBe(title);
@@ -282,7 +284,7 @@ test("附件：新建和编辑路由分别保留并追加图片", async ({ page,
   await editEditor.locator("input[type='file']").setInputFiles(webpUpload(`e2e-edit-${stamp}.webp`));
   await expect(editEditor.getByText("Attachments (2/5)", { exact: true })).toBeVisible();
 
-  await flow.act(() => submitButton(editEditor, "Save").click(), UPLOAD_IMAGES);
+  await flow.act(() => submitButton(editEditor, "Save").click(), UPDATE_EVENT);
   await expect(page).toHaveURL(new RegExp(`/events/${created.id}$`));
   expect(
     (await readEvent(api, created.id)).attachments,

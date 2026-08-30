@@ -1,7 +1,13 @@
 import {
   createMemberAbsenceSchema,
+  deleteMemberProfileImagesResponseSchema,
+  deleteMemberProfileMediaResponseSchema,
   deleteProfileImagesSchema,
+  memberProfileRevisionEtag,
+  updateMemberProfileResponseSchema,
   updateProfileSchema,
+  uploadMemberProfileImagesResponseSchema,
+  uploadMemberProfileMediaResponseSchema,
   type CreateMemberAbsencePayload,
   type MemberAbsence,
   type MemberProfile,
@@ -15,70 +21,157 @@ import {
 } from "../../utils/upload-media";
 
 export type UpdateMyProfilePayload = z.input<typeof updateProfileSchema>;
+export type UpdateOwnProfileResult = Readonly<{
+  profile: MemberProfile;
+  profileRevisionToken: string;
+}>;
+export type ProfileImageUploadResult = Readonly<{
+  media_ids: string[];
+  profileRevisionToken: string;
+}>;
+export type ProfileAudioUploadResult = Readonly<{
+  media_id: string;
+  profileRevisionToken: string;
+}>;
+export type ProfileAvatarUploadResult = ProfileAudioUploadResult;
+export type ProfileMediaDeleteResult = Readonly<{
+  ok: true;
+  profileRevisionToken: string;
+}>;
+export type ProfileImagesDeleteResult = ProfileMediaDeleteResult & Readonly<{ deleted: number }>;
 
-export function updateMyProfile(userId: string, payload: UpdateMyProfilePayload): Promise<MemberProfile> {
-  const bodyJson = updateProfileSchema.parse(payload);
-  return apiRequest<MemberProfile>(`/api/users/${userId}/profile`, {
-    method: "PATCH",
-    bodyJson,
-  });
+export function updateMyProfile(
+  userId: string,
+  payload: UpdateMyProfilePayload,
+  profileRevisionToken: string,
+): Promise<UpdateOwnProfileResult> {
+  return updateProfileWithRevision(userId, payload, profileRevisionToken);
 }
 
-export async function uploadProfileImages(userId: string, files: File[]): Promise<{ media_ids: string[] }> {
+export function updateOwnProfile(
+  userId: string,
+  payload: UpdateMyProfilePayload,
+  profileRevisionToken: string,
+): Promise<UpdateOwnProfileResult> {
+  return updateProfileWithRevision(userId, payload, profileRevisionToken);
+}
+
+async function updateProfileWithRevision(
+  userId: string,
+  payload: UpdateMyProfilePayload,
+  profileRevisionToken: string,
+): Promise<UpdateOwnProfileResult> {
+  const bodyJson = updateProfileSchema.parse(payload);
+  const { profile_revision_token: nextProfileRevisionToken, ...profile } = updateMemberProfileResponseSchema.parse(await apiRequest<unknown>(`/api/users/${userId}/profile`, {
+    method: "PATCH",
+    bodyJson,
+    ifMatch: memberProfileRevisionEtag(profileRevisionToken),
+  }));
+  return { profile, profileRevisionToken: nextProfileRevisionToken };
+}
+
+export async function uploadProfileImages(
+  userId: string,
+  files: File[],
+  profileRevisionToken: string,
+): Promise<ProfileImageUploadResult> {
   const converted = await convertImagesForUpload(files);
   const formData = new FormData();
   appendImageUploadVariants(formData, converted);
 
-  return apiRequest<{ media_ids: string[] }>(`/api/users/${userId}/media/images`, {
-    method: "POST",
-    body: formData,
-  });
+  const result = await requestProfileMedia(
+    `/api/users/${userId}/media/images`,
+    profileRevisionToken,
+    { method: "POST", body: formData },
+    uploadMemberProfileImagesResponseSchema,
+  );
+  return { media_ids: result.media_ids, profileRevisionToken: result.profile_revision_token };
 }
 
 /** Uploads the canonical Ogg/Opus file produced by useMediaUpload's audio preprocessing. */
-export async function uploadProfileAudio(userId: string, canonicalAudioFile: File): Promise<{ media_id: string }> {
+export async function uploadProfileAudio(
+  userId: string,
+  canonicalAudioFile: File,
+  profileRevisionToken: string,
+): Promise<ProfileAudioUploadResult> {
   const formData = new FormData();
   formData.append("file", canonicalAudioFile);
 
-  return apiRequest<{ media_id: string }>(`/api/users/${userId}/media/audio`, {
-    method: "POST",
-    body: formData,
-  });
+  const result = await requestProfileMedia(
+    `/api/users/${userId}/media/audio`,
+    profileRevisionToken,
+    { method: "POST", body: formData },
+    uploadMemberProfileMediaResponseSchema,
+  );
+  return { media_id: result.media_id, profileRevisionToken: result.profile_revision_token };
 }
 
-export async function uploadAvatar(userId: string, file: File): Promise<{ media_id: string }> {
+export async function uploadAvatar(
+  userId: string,
+  file: File,
+  profileRevisionToken: string,
+): Promise<ProfileAvatarUploadResult> {
   const converted = await convertImageForUpload(file);
   const formData = new FormData();
   appendImageUploadVariants(formData, [converted]);
 
-  return apiRequest<{ media_id: string }>(`/api/users/${userId}/media/avatar`, {
-    method: "POST",
-    body: formData,
-  });
+  const result = await requestProfileMedia(
+    `/api/users/${userId}/media/avatar`,
+    profileRevisionToken,
+    { method: "POST", body: formData },
+    uploadMemberProfileMediaResponseSchema,
+  );
+  return { media_id: result.media_id, profileRevisionToken: result.profile_revision_token };
 }
 
-export function deleteAvatar(userId: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/users/${userId}/media/avatar`, {
-    method: "DELETE",
-  });
+export async function deleteAvatar(userId: string, profileRevisionToken: string): Promise<ProfileMediaDeleteResult> {
+  const result = await requestProfileMedia(
+    `/api/users/${userId}/media/avatar`,
+    profileRevisionToken,
+    { method: "DELETE" },
+    deleteMemberProfileMediaResponseSchema,
+  );
+  return { ok: result.ok, profileRevisionToken: result.profile_revision_token };
 }
 
-export function deleteProfileImage(userId: string, mediaId: string): Promise<{ ok: true }> {
-  return deleteProfileImages(userId, [mediaId]).then(() => ({ ok: true as const }));
+export function deleteProfileImage(
+  userId: string,
+  mediaId: string,
+  profileRevisionToken: string,
+): Promise<ProfileMediaDeleteResult> {
+  return deleteProfileImages(userId, [mediaId], profileRevisionToken).then(({ profileRevisionToken: nextProfileRevisionToken }) => ({
+    ok: true as const,
+    profileRevisionToken: nextProfileRevisionToken,
+  }));
 }
 
-export function deleteProfileImages(userId: string, mediaIds: string[]): Promise<{ ok: true; deleted: number }> {
+export async function deleteProfileImages(
+  userId: string,
+  mediaIds: string[],
+  profileRevisionToken: string,
+): Promise<ProfileImagesDeleteResult> {
   const bodyJson = deleteProfileImagesSchema.parse({ media_ids: mediaIds });
-  return apiRequest<{ ok: true; deleted: number }>(`/api/users/${userId}/media/images`, {
-    method: "DELETE",
-    bodyJson,
-  });
+  const result = await requestProfileMedia(
+    `/api/users/${userId}/media/images`,
+    profileRevisionToken,
+    { method: "DELETE", bodyJson },
+    deleteMemberProfileImagesResponseSchema,
+  );
+  return {
+    ok: result.ok,
+    deleted: result.deleted,
+    profileRevisionToken: result.profile_revision_token,
+  };
 }
 
-export function deleteProfileAudio(userId: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/users/${userId}/media/audio`, {
-    method: "DELETE",
-  });
+export async function deleteProfileAudio(userId: string, profileRevisionToken: string): Promise<ProfileMediaDeleteResult> {
+  const result = await requestProfileMedia(
+    `/api/users/${userId}/media/audio`,
+    profileRevisionToken,
+    { method: "DELETE" },
+    deleteMemberProfileMediaResponseSchema,
+  );
+  return { ok: result.ok, profileRevisionToken: result.profile_revision_token };
 }
 
 export function createMemberAbsence(userId: string, payload: CreateMemberAbsencePayload): Promise<MemberAbsence> {
@@ -93,4 +186,16 @@ export function deleteMemberAbsence(userId: string, absenceId: string): Promise<
   return apiRequest<{ ok: true }>(`/api/users/${userId}/absences/${absenceId}`, {
     method: "DELETE",
   });
+}
+
+async function requestProfileMedia<TSchema extends z.ZodType>(
+  path: string,
+  profileRevisionToken: string,
+  init: RequestInit & { bodyJson?: Record<string, unknown> },
+  responseSchema: TSchema,
+): Promise<z.output<TSchema>> {
+  return responseSchema.parse(await apiRequest<unknown>(path, {
+    ...init,
+    ifMatch: memberProfileRevisionEtag(profileRevisionToken),
+  }));
 }

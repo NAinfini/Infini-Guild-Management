@@ -4,13 +4,25 @@ import {
   ADMIN_OPERATION_MEDIA_STATES,
 } from "@guild/shared/schemas/admin-operations";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
-import { SCHEDULED_JOB_GROUPS } from "../jobs/public.js";
+import {
+  SCHEDULED_JOB_GROUPS,
+  type ScheduledJobSchedule,
+} from "../jobs/public.js";
 import type {
   AdminOperationsRuntimePort,
   AdminOperationsStore,
 } from "./model.js";
 
-const dailyJobs = new Set<string>(SCHEDULED_JOB_GROUPS.daily);
+const schedulesByJob = new Map(Reflect.ownKeys(SCHEDULED_JOB_GROUPS).flatMap((schedule) => {
+  const typedSchedule = schedule as ScheduledJobSchedule;
+  return SCHEDULED_JOB_GROUPS[typedSchedule].map((name) => [name, typedSchedule] as const);
+}));
+
+function scheduleForJob(name: (typeof ADMIN_OPERATION_JOB_NAMES)[number]): ScheduledJobSchedule {
+  const schedule = schedulesByJob.get(name);
+  if (!schedule) throw new TypeError(`Scheduled job ${name} has no configured cadence`);
+  return schedule;
+}
 
 export class AdminOperationsService {
   constructor(
@@ -42,7 +54,7 @@ export class AdminOperationsService {
         const isRunning = lease !== undefined;
         return {
           name,
-          schedule: dailyJobs.has(name) ? "daily" as const : "quarter-hourly" as const,
+          schedule: scheduleForJob(name),
           status: isRunning
             ? "running" as const
             : status?.status === "running"

@@ -306,7 +306,7 @@
 }
 
 .sandbox__code-text {
-  font-family: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
+  font-family: var(--font-code);
   font-size: 12px;
   line-height: 1.6;
   word-break: break-all;
@@ -314,7 +314,7 @@
 }
 
 .sandbox__override-textarea {
-  font-family: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
+  font-family: var(--font-code);
   font-size: 12px;
   min-height: 108px;
 }

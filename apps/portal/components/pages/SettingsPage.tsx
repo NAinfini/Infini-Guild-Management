@@ -1,11 +1,25 @@
+import type { NotificationPreferences } from "@guild/shared";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { LanguageIcon } from "@portal/components/icons";
+import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
+import { Button } from "@portal/components/ui/button";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { Switch } from "@portal/components/ui/switch";
 
 import { PageLayout } from "../layout/PageLayout";
 import { useTheme } from "../../providers/ThemeProvider";
 import { usePreferencesStore } from "../../stores/preferences";
+import { useAuthStore } from "../../stores/auth";
+import { queryKeys } from "../../api/query-keys";
+import {
+  fetchNotificationPreferences,
+  updateNotificationPreferences,
+} from "../../services/NotificationService";
+import { useAppError } from "../../hooks/useAppError";
+import { useExternalView } from "../../hooks/useExternalView";
 import "./SettingsPage.css";
 
 type Accent = "teal" | "indigo" | "violet" | "orange";
@@ -72,10 +86,42 @@ const ACCENT_OPTIONS: { value: Accent; labelKey: string; descKey: string }[] = [
   { value: "orange", labelKey: "accent.orange", descKey: "accent.orange.desc" },
 ];
 
+type NotificationPreferenceKey = Exclude<keyof NotificationPreferences, "updated_at">;
+const NOTIFICATION_OPTIONS: NotificationPreferenceKey[] = [
+  "member_joined",
+  "announcement_published",
+  "event_created",
+  "wiki_article_created",
+];
+
 export function SettingsPage() {
   const { t } = useTranslation("settings");
   const { locale, setLocale } = usePreferencesStore();
   const { theme: currentTheme, setTheme, accent, setAccent } = useTheme();
+  const userId = useAuthStore((state) => state.user?.id);
+  const isExternalView = useExternalView();
+  const queryClient = useQueryClient();
+  const { showError } = useAppError();
+
+  const notificationPreferencesQuery = useQuery({
+    queryKey: queryKeys.notifications.preferences(userId),
+    queryFn: fetchNotificationPreferences,
+    enabled: Boolean(userId) && !isExternalView,
+  });
+  const notificationPreferencesMutation = useMutation({
+    mutationFn: ({ key, enabled }: { key: NotificationPreferenceKey; enabled: boolean }) =>
+      updateNotificationPreferences({ [key]: enabled }),
+    onSuccess: (preferences) => {
+      queryClient.setQueryData(queryKeys.notifications.preferences(userId), preferences);
+    },
+    onError: (error) => {
+      showError(error, t("notification.saveFailed"));
+    },
+  });
+  const notificationPreferencesBlockingError = notificationPreferencesQuery.isError
+    && notificationPreferencesQuery.data === undefined;
+  const notificationPreferencesRefreshError = notificationPreferencesQuery.isError
+    && notificationPreferencesQuery.data !== undefined;
 
   const handleLocaleChange = useCallback((nextLocale: "en" | "zh") => {
     if (nextLocale !== locale) setLocale(nextLocale);
@@ -132,6 +178,53 @@ export function SettingsPage() {
                 ))}
               </RadioGroup>
             </div>
+
+            {userId && !isExternalView ? (
+              <div className="settings-field-group">
+                <p id="settings-notifications-label" className="settings-field-label">
+                  {t("field.notifications")}
+                </p>
+                <p className="settings-field-description">{t("notification.description")}</p>
+                {notificationPreferencesQuery.isLoading ? (
+                  <div className="settings-notification-list" aria-busy="true">
+                    {NOTIFICATION_OPTIONS.map((key) => <Skeleton key={key} className="settings-notification-skeleton" />)}
+                  </div>
+                ) : notificationPreferencesBlockingError ? (
+                  <Button type="button" variant="outline" onClick={() => { void notificationPreferencesQuery.refetch(); }}>
+                    {t("notification.retry")}
+                  </Button>
+                ) : (
+                  <>
+                    {notificationPreferencesRefreshError ? (
+                      <Alert variant="destructive">
+                        <AlertTitle>{t("common:loadError")}</AlertTitle>
+                        <AlertDescription>
+                          <span>{t("common:loadErrorRetry")}</span>
+                          <Button size="sm" variant="outline" loading={notificationPreferencesQuery.isFetching} onClick={() => { void notificationPreferencesQuery.refetch(); }}>
+                            {t("notification.retry")}
+                          </Button>
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
+                    <div className="settings-notification-list" aria-labelledby="settings-notifications-label">
+                      {NOTIFICATION_OPTIONS.map((key) => (
+                        <label key={key} className="settings-notification-row">
+                          <span>
+                            <strong>{t(`notification.${key}.label`)}</strong>
+                            <small>{t(`notification.${key}.description`)}</small>
+                          </span>
+                          <Switch
+                            checked={notificationPreferencesQuery.data?.[key] ?? true}
+                            disabled={notificationPreferencesMutation.isPending}
+                            onCheckedChange={(enabled) => notificationPreferencesMutation.mutate({ key, enabled })}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null}
           </div>
         </fieldset>
 

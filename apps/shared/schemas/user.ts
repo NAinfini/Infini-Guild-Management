@@ -239,6 +239,39 @@ export const deleteProfileImagesSchema = z.object({
   media_ids: z.array(mediaIdSchema).min(L.profileImagesDeleteBatch.min).max(L.profileImagesDeleteBatch.max),
 }).strict();
 
+export const memberProfileRevisionTokenSchema = z.string().min(1).max(200);
+
+/**
+ * Successful profile writes return the committed revision in JSON. HTTP ETags
+ * remain available for cache validators and If-Match, but intermediaries may
+ * transform those headers while the mutation result still needs a usable CAS
+ * token for the next write.
+ */
+export const updateMemberProfileResponseSchema = memberProfileSchema.extend({
+  profile_revision_token: memberProfileRevisionTokenSchema,
+}).strict();
+
+export const uploadMemberProfileImagesResponseSchema = z.object({
+  media_ids: z.array(mediaIdSchema),
+  profile_revision_token: memberProfileRevisionTokenSchema,
+}).strict();
+
+export const deleteMemberProfileImagesResponseSchema = z.object({
+  ok: z.literal(true),
+  deleted: z.number().int().min(0),
+  profile_revision_token: memberProfileRevisionTokenSchema,
+}).strict();
+
+export const uploadMemberProfileMediaResponseSchema = z.object({
+  media_id: mediaIdSchema,
+  profile_revision_token: memberProfileRevisionTokenSchema,
+}).strict();
+
+export const deleteMemberProfileMediaResponseSchema = z.object({
+  ok: z.literal(true),
+  profile_revision_token: memberProfileRevisionTokenSchema,
+}).strict();
+
 /**
  * Every roster projection keeps the Portal's existing shape. Fields that the
  * viewer cannot read are represented by their existing redacted values rather
@@ -257,10 +290,16 @@ export const authenticatedMemberProfileSchema = memberProfileSchema.extend({
 
 export const adminMemberProfileSchema = memberProfileSchema;
 
+export const adminMemberEditRevisionsSchema = z.object({
+  user_revision_token: z.string().min(1).max(200),
+  profile_revision_token: z.string().min(1).max(200),
+}).strict();
+
 export const userDetailResponseSchema = z.object({
   user: userSchema,
   profile: memberProfileSchema,
   badges: z.array(userBadgeSchema),
+  edit_revisions: adminMemberEditRevisionsSchema.optional(),
 }).strict();
 
 export const usersListResponseSchema = z.object({

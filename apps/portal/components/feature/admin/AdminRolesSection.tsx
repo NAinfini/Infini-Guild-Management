@@ -48,6 +48,7 @@ import { userCanManageRoles } from "../../../utils/permissions";
 import { AdminLoadError } from "./AdminLoadError";
 
 type RoleDraft = {
+  revisionToken: string;
   name: string;
   level: number;
   color: string;
@@ -63,6 +64,7 @@ type RolePayload = {
 };
 
 type RoleUpdatePayload = {
+  expected_revision_token: string;
   name?: string;
   level?: number;
   color?: string | null;
@@ -78,7 +80,7 @@ type AdminRolesSectionProps = {
   updateRolePending: boolean;
   isRoleDeletePending: (roleId: string) => boolean;
   onCreateRole: (payload: RolePayload) => Promise<boolean>;
-  onUpdateRole: (roleId: string, payload: RoleUpdatePayload) => Promise<boolean>;
+  onUpdateRole: (roleId: string, payload: RoleUpdatePayload) => Promise<AdminRole | null>;
   onDeleteRole: (roleId: string) => Promise<boolean>;
 };
 
@@ -234,6 +236,7 @@ function colorPickerValue(color: string): string {
 
 function roleToDraft(role: AdminRole): RoleDraft {
   return {
+    revisionToken: role.revision_token,
     name: role.name,
     level: role.level,
     color: normalizeColor(role.color),
@@ -300,18 +303,21 @@ export function AdminRolesSection({
   const actorRoleLevel = user?.role_level ?? 0;
   const canCreateRoles = actorRoleLevel > 1;
   const isRoleEditable = (role: AdminRole) => Boolean(
-    user && (role.id === user.role || role.level < actorRoleLevel),
+    user && role.level <= actorRoleLevel,
   );
   const isRoleDeletable = (role: AdminRole) => Boolean(
     user && role.id !== user.role && role.level < actorRoleLevel,
   );
 
   useEffect(() => {
-    const next: Record<string, RoleDraft> = {};
-    for (const role of roles) {
-      next[role.id] = roleToDraft(role);
-    }
-    setDrafts(next);
+    setDrafts((current) => {
+      const next: Record<string, RoleDraft> = {};
+      for (const role of roles) {
+        const draft = current[role.id];
+        next[role.id] = draft && isRoleDraftDirty(role, draft) ? draft : roleToDraft(role);
+      }
+      return next;
+    });
   }, [roles]);
 
   useEffect(() => {
@@ -339,9 +345,7 @@ export function AdminRolesSection({
   const isDirty = selectedRole && selectedDraft ? isRoleDraftDirty(selectedRole, selectedDraft) : false;
   const canEditSelectedRole = selectedRole ? isRoleEditable(selectedRole) : false;
   const canDeleteSelectedRole = selectedRole ? isRoleDeletable(selectedRole) : false;
-  const editableRoleLevelMax = selectedRole?.id === user?.role
-    ? Math.min(1_000, actorRoleLevel)
-    : Math.min(1_000, Math.max(1, actorRoleLevel - 1));
+  const editableRoleLevelMax = Math.min(1_000, actorRoleLevel);
 
   const openCreateRoleModal = () => {
     setCreateRoleName("");
@@ -431,12 +435,19 @@ export function AdminRolesSection({
       }
     }
 
-    await onUpdateRole(role.id, {
+    const updated = await onUpdateRole(role.id, {
+      expected_revision_token: draft.revisionToken,
       name: draft.name.trim(),
       level: draft.level,
       color: draft.color.trim() || null,
       permissions: draft.permissions,
     });
+    if (updated) {
+      setDrafts((current) => ({
+        ...current,
+        [role.id]: { ...draft, revisionToken: updated.revision_token },
+      }));
+    }
   };
 
   return (
@@ -626,7 +637,6 @@ export function AdminRolesSection({
                         <div className="admin-roles-perm-grid">
                           {category.permissions.map((permission) => {
                             const isGranted = Boolean(selectedDraft.permissions[permission]);
-                            const cannotGrantPermission = !isGranted && user?.permissions[permission] !== true;
                             const meta = PERM_META[permission] ?? DEFAULT_META;
                             const label = t(`roles.permission.${permission}`, { defaultValue: permission });
                             const tooltipText = t(`roles.tooltip.${permission}`, { defaultValue: "" });
@@ -638,7 +648,7 @@ export function AdminRolesSection({
                                 aria-pressed={isGranted}
                                 variant={isGranted ? "secondary" : "outline"}
                                 onClick={() => togglePermission(selectedRole.id, permission)}
-                                disabled={!canEditSelectedRole || cannotGrantPermission}
+                                disabled={!canEditSelectedRole}
                                 size="sm"
                               >
                                 {isGranted ? (

@@ -3,14 +3,21 @@ import { LIMITS } from "../config/limits";
 import { roleIdSchema, roleMetadataSchema } from "./role";
 import { memberProfileSchema, userSchema } from "./user";
 import { identityNameSchema } from "./identity";
+import { PASSWORD_RULES, PASSWORD_RULE_MESSAGES, passwordRuleChecks } from "../utils/password-policy";
 
 export { identityNameSchema } from "./identity";
 
 const L = LIMITS.content;
 
 export const INVITE_CODE_LENGTH = 10;
-export const INVITE_CODE_PATTERN = /^[A-Za-z0-9]{10}$/;
-export const inviteCodeSchema = z.string().length(INVITE_CODE_LENGTH).regex(INVITE_CODE_PATTERN);
+export const inviteCodeSchema = z.string().length(INVITE_CODE_LENGTH).regex(/^[A-Z0-9]+$/);
+
+export const newPasswordSchema = z.string().superRefine((password, context) => {
+  const checks = passwordRuleChecks(password);
+  for (const rule of PASSWORD_RULES) {
+    if (!checks[rule]) context.addIssue({ code: "custom", message: PASSWORD_RULE_MESSAGES[rule] });
+  }
+});
 
 export const loginSchema = z.object({
   login_name: identityNameSchema,
@@ -22,8 +29,8 @@ export const registerSchema = z
   .object({
     login_name: identityNameSchema,
     display_name: identityNameSchema,
-    password: z.string().min(L.password.min).max(L.password.max),
-    confirmPassword: z.string().min(L.password.min).max(L.password.max),
+    password: newPasswordSchema,
+    confirmPassword: z.string(),
   })
   .refine((value) => value.password === value.confirmPassword, {
     path: ["confirmPassword"],
@@ -33,8 +40,8 @@ export const registerSchema = z
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1),
-    newPassword: z.string().min(L.password.min).max(L.password.max),
-    confirmNewPassword: z.string().min(L.password.min).max(L.password.max),
+    newPassword: newPasswordSchema,
+    confirmNewPassword: z.string(),
   })
   .refine((value) => value.newPassword === value.confirmNewPassword, {
     path: ["confirmNewPassword"],
@@ -78,8 +85,8 @@ export const oauthStartSchema = z.object({
 
 export const completePasswordResetSchema = z.object({
   login_name: identityNameSchema,
-  new_password: z.string().min(L.password.min).max(L.password.max),
-  confirm_new_password: z.string().min(L.password.min).max(L.password.max),
+  new_password: newPasswordSchema,
+  confirm_new_password: z.string(),
 }).strict().refine((value) => value.new_password === value.confirm_new_password, {
   path: ["confirm_new_password"],
   message: "Passwords do not match",
@@ -93,10 +100,5 @@ export const requestEmailVerificationSchema = z.object({
 export const resendEmailVerificationSchema = z.object({ current_password: z.string().min(1) }).strict();
 export const verifyEmailSchema = z.object({ token: z.string().min(32).max(512) }).strict();
 export const removeEmailSchema = z.object({ current_password: z.string().min(1) }).strict();
-
-export const loginLockErrorDetailsSchema = z.object({
-  retry_after_seconds: z.number().int().positive(),
-  locked_until: z.string().datetime({ offset: true }),
-}).strict();
 
 export type AuthSessionResponse = z.infer<typeof authSessionResponseSchema>;

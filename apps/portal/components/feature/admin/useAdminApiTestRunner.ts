@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "@guild/shared";
-import { useNotificationStore } from "../../../stores/notifications";
+import { usePushSyncStore } from "../../../stores/push-sync";
 import {
   API_TEST_GAP_GET_MS,
   API_TEST_GAP_MUTATION_MS,
@@ -10,6 +10,8 @@ import {
   createInitialTestRunContext,
   nextLogId,
   prepareEndpointRequest,
+  redactInviteCredentialPath,
+  redactInviteCreationResult,
   readRetryAfterSeconds,
   requestSystemTestCleanup,
   runEndpointTest,
@@ -40,7 +42,7 @@ export function useAdminApiTestRunner(
   visibleApiCategories: CategoryDef[],
   actor: AdminApiTestActor | null,
 ) {
-  const setSuppressed = useNotificationStore((state) => state.setSuppressed);
+  const setSuppressed = usePushSyncStore((state) => state.setSuppressed);
   const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
   const [runningSet, setRunningSet] = useState<Set<string>>(new Set());
   const [resultMap, setResultMap] = useState<Map<string, EndpointResult>>(new Map());
@@ -49,6 +51,10 @@ export function useAdminApiTestRunner(
   const runLogRef = useRef<DebugLogEntry[]>([]);
   // Resolves when the previous run has finished its teardown, not merely its requests.
   const inFlightRef = useRef<Promise<void> | null>(null);
+
+  useEffect(() => () => {
+    abortRef.current?.abort();
+  }, []);
 
   const pushLog = useCallback((entry: DebugLogEntry) => {
     runLogRef.current = [...runLogRef.current, entry];
@@ -103,10 +109,11 @@ export function useAdminApiTestRunner(
 
       if (signal.aborted) break;
       contextRef.current = captureContextFromResponse(contextRef.current, ep, result);
+      const visibleResult = redactInviteCreationResult(ep, result);
 
       setResultMap((prev) => {
         const next = new Map(prev);
-        next.set(key, result);
+        next.set(key, visibleResult);
         return next;
       });
 
@@ -121,13 +128,13 @@ export function useAdminApiTestRunner(
         category: category.label,
         label: ep.label,
         method: ep.method,
-        path: prepared.path,
-        status: result.status,
-        latencyMs: result.latencyMs,
-        error: result.error,
-        body: result.body,
-        ranAt: result.ranAt,
-        skipped: result.skipped,
+        path: redactInviteCredentialPath(prepared.path),
+        status: visibleResult.status,
+        latencyMs: visibleResult.latencyMs,
+        error: visibleResult.error,
+        body: visibleResult.body,
+        ranAt: visibleResult.ranAt,
+        skipped: visibleResult.skipped,
       });
     }
 
@@ -415,7 +422,6 @@ export function useAdminApiTestRunner(
     setDebugLogs([]);
     setResultMap(new Map());
     setSelectedSuiteEndpointTotal(0);
-    contextRef.current = createInitialTestRunContext();
   }, []);
 
   const stop = useCallback(() => {

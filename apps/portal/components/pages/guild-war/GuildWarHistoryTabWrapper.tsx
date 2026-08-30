@@ -15,7 +15,7 @@ const LazyWarHistoryTab = lazy(() =>
 );
 
 type GuildWarHistoryTabWrapperProps = {
-  canManageActive: boolean;
+  canManageHistory: boolean;
   historyViewMode: HistoryViewMode;
   setHistoryViewMode: (mode: HistoryViewMode) => void;
   historyChartMetric: string;
@@ -35,6 +35,7 @@ type GuildWarHistoryTabWrapperProps = {
   guildWarMutations: ReturnType<typeof useGuildWarMutations>;
   historyQuery: ReturnType<typeof useGuildWarData>["historyQuery"];
   historyDetailQuery: ReturnType<typeof useGuildWarData>["historyDetailQuery"];
+  historyDetailMissing: boolean;
   chartThemeName: string;
   chartThemeConfig: EChartsThemeConfig;
   chartPalette: string[];
@@ -42,7 +43,7 @@ type GuildWarHistoryTabWrapperProps = {
 };
 
 export function GuildWarHistoryTabWrapper({
-  canManageActive,
+  canManageHistory,
   historyViewMode,
   setHistoryViewMode,
   historyChartMetric,
@@ -62,6 +63,7 @@ export function GuildWarHistoryTabWrapper({
   guildWarMutations,
   historyQuery,
   historyDetailQuery,
+  historyDetailMissing,
   chartThemeName,
   chartThemeConfig,
   chartPalette,
@@ -78,7 +80,7 @@ export function GuildWarHistoryTabWrapper({
     historyPage,
     historyPerPage,
     historyDetail,
-    canManage: canManageActive,
+    canManage: canManageHistory,
     saveMemberStatsPending: guildWarMutations.updateMemberStatsMutation.isPending,
     onSelectHistoryId: setSelectedHistoryId,
     onSaveMemberStats: guildWarMutations.saveHistoryMemberStats,
@@ -112,7 +114,7 @@ export function GuildWarHistoryTabWrapper({
         exportPending={guildWarMutations.exportHistoryMutation.isPending}
         exportCsvLabel={t("history.export.csv")}
         exportJsonLabel={t("history.export.json")}
-        canManage={canManageActive}
+        canManage={canManageHistory}
         historyLoading={historyQuery.isLoading}
         historyError={historyQuery.isError}
         historyRows={historyRows}
@@ -123,7 +125,7 @@ export function GuildWarHistoryTabWrapper({
         onHistoryPageChange={setHistoryPage}
         onHistoryPerPageChange={setHistoryPerPage}
         historyDetailLoading={historyDetailQuery.isLoading}
-        historyDetailError={historyDetailQuery.isError}
+        historyDetailError={historyDetailQuery.isError && !historyDetailMissing}
         historyDetail={historyDetail}
         historyMvp={guildWarHistory.historyMvp}
         saveMemberStatsPending={guildWarMutations.updateMemberStatsMutation.isPending}

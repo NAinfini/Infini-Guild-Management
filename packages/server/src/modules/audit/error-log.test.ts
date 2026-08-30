@@ -45,4 +45,23 @@ describe("ErrorLogService", () => {
     await expect(value.list(context(["admin.status.view"]), { source: null, page: 101, limit: 5 }))
       .rejects.toMatchObject({ status: 400 });
   });
+
+  it.each([
+    "/api/auth/verify-invite/SECRET1234",
+    "/api/auth/register/SECRET1234",
+  ])("redacts invite credentials from request errors for %s", async (requestPath) => {
+    const value = store();
+    const error = new Error(`failed while processing SECRET1234 at ${requestPath}`);
+    await new ErrorLogService(value).recordUnexpected({
+      error,
+      requestId: "request-1",
+      requestPath,
+      requestMethod: "post",
+      createdAt: "2026-08-09T00:00:00.000Z",
+    });
+
+    const record = vi.mocked(value.insert).mock.calls[0]?.[0];
+    expect(record?.requestPath).toContain(":redacted");
+    expect(JSON.stringify(record)).not.toContain("SECRET1234");
+  });
 });

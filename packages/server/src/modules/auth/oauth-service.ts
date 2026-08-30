@@ -1,4 +1,9 @@
-import { AppError, type RequestContext } from "@guild/kernel";
+import {
+  AppError,
+  type DeferredTasks,
+  type NotificationPublisher,
+  type RequestContext,
+} from "@guild/kernel";
 import { createAuditEvent } from "../audit/public.js";
 import { createOpaqueToken, digestToken, verifyPassword } from "./crypto.js";
 import type { AuthStore } from "./auth-types.js";
@@ -18,6 +23,8 @@ export type OAuthServiceOptions = Readonly<{
   siteConfig: OAuthSiteConfigReader;
   clients: Readonly<Record<OAuthProvider, OAuthProviderClient>>;
   publicUrl: string;
+  notifications?: NotificationPublisher;
+  deferred?: DeferredTasks;
   generateId?: () => string;
   generateToken?: () => string;
 }>;
@@ -129,7 +136,7 @@ export class OAuthService {
         subjectId: actor.userId,
         subjectLabel: user.displayName,
         action: "update",
-        context: [{ field: "provider", value: { type: "code", value: input.provider } }],
+        context: [{ field: "provider", value: { type: "text", value: input.provider } }],
       }),
     });
     if (linked === "linked_elsewhere" || linked === "invalid") throw unavailableAuthorization();
@@ -161,10 +168,17 @@ export class OAuthService {
         subjectId: actor.userId,
         subjectLabel: user.displayName,
         action: "update",
-        context: [{ field: "provider", value: { type: "code", value: provider } }],
+        context: [{ field: "provider", value: { type: "text", value: provider } }],
       }),
     });
     if (!removed) throw new AppError({ code: "NOT_FOUND", status: 404, message: "OAuth identity is not linked" });
+    const { deferred, notifications } = this.options;
+    if (deferred && notifications) {
+      deferred.defer(() => notifications.publish({
+        type: "authorization_refresh",
+        user_ids: [actor.userId],
+      }));
+    }
     return { ok: true };
   }
 

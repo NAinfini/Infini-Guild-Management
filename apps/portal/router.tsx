@@ -12,6 +12,7 @@ import {
   createRouter,
   redirect,
   retainSearchParams,
+  useRouter,
 } from "@tanstack/react-router";
 import { userCanAccessAdmin } from "./utils/permissions";
 import { Suspense, lazy, useEffect, type ReactNode } from "react";
@@ -21,13 +22,13 @@ import { apiRequest } from "./api/client";
 import { queryClient } from "./api/query-client";
 import { AppShell } from "./components/layout/AppShell";
 import { SystemStatusPage } from "./components/pages/SystemStatusPage";
-import { resolveRouteSession } from "./router-session";
+import { createRouteSessionResolver } from "./router-session";
 import { transitionSession } from "./session-transition";
 import { useAuthStore } from "./stores/auth";
 import { useSiteConfigStore } from "./stores/site-config";
 import { EVENTS_ROUTE_SEARCH_SCHEMA } from "./utils/event-navigation";
 import { isExternalViewSearch } from "./utils/external-view";
-import { stashEmailVerificationToken } from "./utils/auth-navigation";
+import { isSafeReturnTo, stashEmailVerificationToken } from "./utils/auth-navigation";
 import {
   RouteProgress,
   completeRouteProgress,
@@ -35,6 +36,19 @@ import {
 } from "./components/ui/route-progress";
 
 type AuthSessionResponse = { user: User; profile: MemberProfile; session_scope: "normal" | "password_change" };
+
+const routeSessionResolver = createRouteSessionResolver({
+  getCachedSession: () => {
+    const store = useAuthStore.getState();
+    return store.user && store.profile && store.sessionScope
+      ? { user: store.user, profile: store.profile, session_scope: store.sessionScope }
+      : null;
+  },
+  isSessionResolved: () => useAuthStore.getState().sessionResolved,
+  markSessionResolved: () => useAuthStore.getState().markSessionResolved(),
+  requestSession: () => apiRequest<AuthSessionResponse>("/api/auth/me"),
+  transitionSession: (session) => transitionSession(queryClient, session, { broadcast: false }),
+});
 
 const PORTAL_PREVIEW_SEARCH_SCHEMA = z.object({
   preview: z.literal("external").optional(),
@@ -44,6 +58,10 @@ const LOGIN_SEARCH_SCHEMA = z.object({
   returnTo: z.string().optional(),
   reason: z.enum(["required", "expired"]).optional(),
   oauth: z.literal("failed").optional(),
+});
+
+const COMPLETE_PASSWORD_RESET_SEARCH_SCHEMA = z.object({
+  returnTo: z.string().optional(),
 });
 
 const GUILD_WAR_SEARCH_SCHEMA = z.object({
@@ -62,20 +80,7 @@ const PROFILE_SEARCH_SCHEMA = z.object({
   oauth: z.literal("linked").optional(),
 });
 
-const ANNOUNCEMENTS_SEARCH_SCHEMA = z.object({
-  /*
-   * 同 warName 的坑：TanStack 解析搜索参数时先拿 JSON.parse 试一遍，
-   * ?announcementId=12345 到这里已经是 number，z.string() 会把整条路由打进错误边界。
-   * 地址栏是用户能随便改的入口，改错一个参数该是「查不到这条公告」，不是整页崩掉。
-   * coerce 收口；.optional() 在 coerce 之前短路 undefined，不会变出 "undefined"。
-   */
-  announcementId: z.coerce.string().trim().min(1).optional(),
-  selection: z.literal("none").optional(),
-}).passthrough();
-
-const WIKI_SEARCH_SCHEMA = z.object({
-  selection: z.literal("none").optional(),
-}).passthrough();
+const CONTENT_SEARCH_SCHEMA = z.object({}).passthrough();
 
 const STORAGE_SEARCH_SCHEMA = z.object({
   storageId: z.string().trim().min(1).optional(),
@@ -123,7 +128,11 @@ async function requireAuthenticatedSession(
     });
   }
   if (session.session_scope === "password_change" && location.pathname !== "/complete-password-reset") {
-    throw redirect({ to: "/complete-password-reset" });
+    const returnTo = `${location.pathname}${location.searchStr ?? ""}`;
+    throw redirect({
+      to: "/complete-password-reset",
+      search: isSafeReturnTo(returnTo) ? { returnTo } : {},
+    });
   }
   return session;
 }
@@ -132,7 +141,15 @@ async function requireEventMutationPermission(
   permission: keyof User["permissions"],
   location: AuthenticatedRouteLocation,
 ): Promise<void> {
-  requireRouteFeature("events");
+  return requireFeatureMutationPermission("events", permission, location);
+}
+
+async function requireFeatureMutationPermission(
+  feature: keyof FeatureFlags,
+  permission: keyof User["permissions"],
+  location: AuthenticatedRouteLocation,
+): Promise<void> {
+  requireRouteFeature(feature);
   const session = await requireAuthenticatedSession(location);
   if (isExternalViewSearch(location.searchStr)) {
     throw redirect({ to: "/403" });
@@ -398,16 +415,7 @@ function SettingsRoutePage() {
 }
 
 async function ensureSession(): Promise<AuthSessionResponse | null> {
-  return resolveRouteSession({
-    getCachedSession: () => {
-      const store = useAuthStore.getState();
-      return store.user && store.profile && store.sessionScope
-        ? { user: store.user, profile: store.profile, session_scope: store.sessionScope }
-        : null;
-    },
-    requestSession: () => apiRequest<AuthSessionResponse>("/api/auth/me"),
-    transitionSession: (session) => transitionSession(queryClient, session, { broadcast: false }),
-  });
+  return routeSessionResolver.resolve();
 }
 
 function NotFoundPage(): ReactNode {
@@ -431,6 +439,7 @@ function NotFoundPage(): ReactNode {
 
 function RouteErrorFallback(): ReactNode {
   const { t } = useTranslation("common");
+  const router = useRouter();
   const title = t("errors.pageUnavailable.title");
 
   useEffect(() => {
@@ -443,7 +452,7 @@ function RouteErrorFallback(): ReactNode {
       code="500"
       title={title}
       description={t("errors.pageUnavailable.description")}
-      action={{ label: t("action.retry"), onClick: () => window.location.reload() }}
+      action={{ label: t("action.retry"), onClick: () => void router.invalidate() }}
     />
   );
 }
@@ -495,14 +504,7 @@ const rootRoute = createRootRoute({
     middlewares: [retainSearchParams<z.infer<typeof PORTAL_PREVIEW_SEARCH_SCHEMA>>(["preview"])],
   },
   beforeLoad: async () => {
-    if (!useAuthStore.getState().user) {
-      try {
-        const response = await apiRequest<AuthSessionResponse>("/api/auth/me");
-        transitionSession(queryClient, response, { broadcast: false });
-      } catch {
-        // no valid session — that's fine for public routes
-      }
-    }
+    await ensureSession();
   },
 });
 
@@ -652,6 +654,7 @@ const profileRoute = createRoute({
 const completePasswordResetRoute = createRoute({
   getParentRoute: () => authenticatedOnlyRoute,
   path: "/complete-password-reset",
+  validateSearch: (search) => COMPLETE_PASSWORD_RESET_SEARCH_SCHEMA.parse(search),
   beforeLoad: async () => {
     const session = await ensureSession();
     if (!session || session.session_scope !== "password_change") throw redirect({ to: "/" });
@@ -673,7 +676,27 @@ const announcementsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/announcements",
   beforeLoad: () => requireRouteFeature("announcements"),
-  validateSearch: (search) => ANNOUNCEMENTS_SEARCH_SCHEMA.parse(search),
+  validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
+  component: AnnouncementsRoutePage,
+});
+
+const announcementCreateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/announcements/new",
+  beforeLoad: ({ location }) => requireFeatureMutationPermission(
+    "announcements",
+    "announcements.create",
+    location,
+  ),
+  validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
+  component: AnnouncementsRoutePage,
+});
+
+const announcementDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/announcements/$announcementId",
+  beforeLoad: () => requireRouteFeature("announcements"),
+  validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
   component: AnnouncementsRoutePage,
 });
 
@@ -696,7 +719,12 @@ const storageRoute = createRoute({
   getParentRoute: () => authenticatedOnlyRoute,
   path: "/storage",
   validateSearch: (search) => STORAGE_SEARCH_SCHEMA.parse(search),
-  beforeLoad: () => requireRouteFeature("storage"),
+  beforeLoad: ({ location }) => {
+    requireRouteFeature("storage");
+    if (isExternalViewSearch((location as { searchStr?: string }).searchStr)) {
+      throw redirect({ to: "/403" });
+    }
+  },
   component: StorageRoutePage,
 });
 
@@ -704,8 +732,11 @@ const storageManageRoute = createRoute({
   getParentRoute: () => authenticatedOnlyRoute,
   path: "/storage/manage",
   validateSearch: (search) => STORAGE_MANAGE_SEARCH_SCHEMA.parse(search),
-  beforeLoad: () => {
+  beforeLoad: ({ location }) => {
     requireRouteFeature("storage");
+    if (isExternalViewSearch((location as { searchStr?: string }).searchStr)) {
+      throw redirect({ to: "/403" });
+    }
     const user = useAuthStore.getState().user;
     if (!user?.permissions["admin.storage.structure"]) {
       throw redirect({ to: "/storage" });
@@ -718,7 +749,19 @@ const wikiRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/wiki",
   beforeLoad: () => requireRouteFeature("wiki"),
-  validateSearch: (search) => WIKI_SEARCH_SCHEMA.parse(search),
+  validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
+  component: WikiRoutePage,
+});
+
+const wikiCreateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/wiki/new",
+  beforeLoad: ({ location }) => requireFeatureMutationPermission(
+    "wiki",
+    "wiki.articles.create",
+    location,
+  ),
+  validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
   component: WikiRoutePage,
 });
 
@@ -726,7 +769,7 @@ const wikiSlugRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/wiki/$slug",
   beforeLoad: () => requireRouteFeature("wiki"),
-  validateSearch: (search) => WIKI_SEARCH_SCHEMA.parse(search),
+  validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
   component: WikiRoutePage,
 });
 
@@ -781,9 +824,12 @@ const routeTree = rootRoute.addChildren([
   recurringTemplateEditRoute,
   rosterRoute,
   announcementsRoute,
+  announcementCreateRoute,
+  announcementDetailRoute,
   guildWarRoute,
   galleryRoute,
   wikiRoute,
+  wikiCreateRoute,
   wikiSlugRoute,
   publicSettingsRoute,
   publicToolsRoute,

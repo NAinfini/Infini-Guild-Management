@@ -26,7 +26,6 @@
   "empty.filteredDescription": "Try another display name, class, or sort order.",
   "grid.aria": "Roster member grid",
   "action.resetFilters": "Reset filters",
-  "action.loadMore": "Load more",
   "message.titleCopied": "Title copied",
   "message.nothingToCopy": "Nothing to copy"
 }

@@ -35,7 +35,10 @@ export function useRecurringTemplatesController({
   });
 
   const createMutation = useMutation({
-    mutationFn: createTemplateMutation,
+    mutationFn: ({ payload, files }: {
+      payload: Parameters<typeof createTemplateMutation>[0];
+      files?: File[];
+    }) => createTemplateMutation(payload, files),
     onSuccess: async () => {
       await invalidateTemplates();
       notifySuccess(t("recurring.message.created"));
@@ -44,8 +47,11 @@ export function useRecurringTemplatesController({
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateTemplateMutation>[1] }) =>
-      updateTemplateMutation(id, payload),
+    mutationFn: ({ id, payload, files }: {
+      id: string;
+      payload: Parameters<typeof updateTemplateMutation>[1];
+      files?: File[];
+    }) => updateTemplateMutation(id, payload, files),
     onSuccess: async () => {
       await invalidateTemplates();
       notifySuccess(t("recurring.message.updated"));
@@ -81,13 +87,14 @@ export function useRecurringTemplatesController({
   });
 
   const createRecurringTemplate = useCallback(
-    async (payload: Parameters<typeof createTemplateMutation>[0]) => createMutation.mutateAsync(payload),
+    async (payload: Parameters<typeof createTemplateMutation>[0], files?: File[]) =>
+      createMutation.mutateAsync({ payload, files }),
     [createMutation],
   );
 
   const updateRecurringTemplate = useCallback(
-    async (id: string, payload: Parameters<typeof updateTemplateMutation>[1]) =>
-      updateMutation.mutateAsync({ id, payload }),
+    async (id: string, payload: Parameters<typeof updateTemplateMutation>[1], files?: File[]) =>
+      updateMutation.mutateAsync({ id, payload, files }),
     [updateMutation],
   );
 

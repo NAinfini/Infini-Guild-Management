@@ -1,12 +1,16 @@
 import {
-  acknowledgeImportantNoticeSchema,
   createImportantNoticeSchema,
   importantNoticeAcknowledgementResponseSchema,
+  importantNoticeReadResponseSchema,
   importantNoticeSchema,
   inboxNotificationMutationResponseSchema,
   markInboxNotificationsReadSchema,
+  markImportantNoticesReadSchema,
+  notificationPreferencesSchema,
+  updateNotificationPreferencesSchema,
   updateImportantNoticeSchema,
 } from "@guild/shared";
+import type { UpdateNotificationPreferences } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
 
@@ -16,10 +20,21 @@ export function markInboxNotificationsRead(input: { ids?: string[]; all?: true }
     .then((response) => inboxNotificationMutationResponseSchema.parse(response));
 }
 
-export function acknowledgeImportantNotice(id: string, publicationRevision: number) {
-  const bodyJson = acknowledgeImportantNoticeSchema.parse({ publication_revision: publicationRevision });
-  return apiRequest<unknown>(`/api/important-notices/${id}/acknowledgement`, { method: "PUT", bodyJson })
+export function updateNotificationPreferences(input: UpdateNotificationPreferences) {
+  const bodyJson = updateNotificationPreferencesSchema.parse(input);
+  return apiRequest<unknown>("/api/notifications/preferences", { method: "PATCH", bodyJson })
+    .then((response) => notificationPreferencesSchema.parse(response));
+}
+
+export function acknowledgeImportantNotice(id: string) {
+  return apiRequest<unknown>(`/api/important-notices/${id}/acknowledgement`, { method: "PUT" })
     .then((response) => importantNoticeAcknowledgementResponseSchema.parse(response));
+}
+
+export function markImportantNoticesRead(input: { ids?: string[]; all?: true }) {
+  const bodyJson = markImportantNoticesReadSchema.parse(input);
+  return apiRequest<unknown>("/api/important-notices/read", { method: "PATCH", bodyJson })
+    .then((response) => importantNoticeReadResponseSchema.parse(response));
 }
 
 export type CreateImportantNoticePayload = z.input<typeof createImportantNoticeSchema>;

@@ -20,9 +20,10 @@ const EVENTS_LAST_SEEN_KEY = "events.last_seen_at";
 
 type UseEventsFilteringParams = {
   currentUserId: string | undefined;
+  externalView?: boolean;
 };
 
-export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) {
+export function useEventsFiltering({ currentUserId, externalView = false }: UseEventsFilteringParams) {
   const { t } = useTranslation("events");
   const navigate = useNavigate();
   const routeSearch = useSearch({ strict: false }) as EventsRouteSearch;
@@ -89,6 +90,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
     searchQuery,
     pinnedOnly,
     lockedOnly,
+    publicMemberProjection: externalView || !currentUserId,
   });
 
   const events = eventsQueryData;

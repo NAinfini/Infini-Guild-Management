@@ -1,7 +1,12 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
 import { Badge } from "@portal/components/ui/badge";
 import { Card } from "@portal/components/ui/card";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
+import {
+  TOOLTIP_CLOSE_DELAY_MS,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@portal/components/ui/tooltip";
 import {
   ArchiveIcon,
   CalendarEventIcon,
@@ -53,6 +58,7 @@ function EventStatusIndicator({ children, color, icon, title, description }: Eve
     <Tooltip>
       <TooltipTrigger
         delay={350}
+        closeDelay={TOOLTIP_CLOSE_DELAY_MS}
         render={<span
           className="event-card__status-icon"
           data-animate-icon-trigger

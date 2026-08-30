@@ -1,7 +1,15 @@
 import type { Storage, StorageItem, StorageStockFilter } from "@guild/shared";
-import { ClipboardIcon, PlusIcon, SearchIcon, XIcon } from "@portal/components/icons";
+import { ClipboardIcon, ClockIcon, PlusIcon, SearchIcon, XIcon } from "@portal/components/icons";
 import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@portal/components/ui/dialog";
 import {
   InputGroup,
   InputGroupAddon,
@@ -10,7 +18,11 @@ import {
 } from "@portal/components/ui/input-group";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
 import { Skeleton } from "@portal/components/ui/skeleton";
-import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
+import {
+  ContentFilterGroup,
+  ContentFilterOption,
+  ContentFilterToolbar,
+} from "@portal/components/shared/ContentFilterToolbar";
 import { useDebouncedSearch } from "@portal/hooks/useDebouncedSearch";
 import { useStorageItems } from "@portal/hooks/useStorage";
 import { resolveMediaUrl } from "@portal/utils/media";
@@ -19,6 +31,7 @@ import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
 import type { StorageBatchDraft } from "./StorageBatchPanel";
 import { StorageItemCard } from "./StorageItemCard";
+import { StorageLedgerPanel } from "./StorageLedgerPanel";
 
 type MemberTransactionMode = "intake" | "distribute";
 
@@ -27,7 +40,6 @@ type StorageInventoryPanelProps = {
   categoryId: string | null;
   canManageItems: boolean;
   canManageStock: boolean;
-  hasAnyItems: boolean;
   batchDraft?: StorageBatchDraft;
   onStartBatch: () => void;
   onBatchQuantityChange: (item: StorageItem, quantity: number) => void;
@@ -41,7 +53,6 @@ export function StorageInventoryPanel({
   categoryId,
   canManageItems,
   canManageStock,
-  hasAnyItems,
   batchDraft,
   onStartBatch,
   onBatchQuantityChange,
@@ -51,6 +62,7 @@ export function StorageInventoryPanel({
 }: StorageInventoryPanelProps) {
   const { t } = useTranslation("storage");
   const { search, setSearch, debouncedSearch } = useDebouncedSearch();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [stockFilter, setStockFilter] = useState<StorageStockFilter>("all");
   const itemsQuery = useStorageItems({
     storageId: storage.id,
@@ -59,6 +71,7 @@ export function StorageInventoryPanel({
     stock: stockFilter,
   });
   const items = itemsQuery.items;
+  const hasAnyItems = items.length > 0;
   const itemsBlockingError = itemsQuery.isError && items.length === 0;
   const itemsRefreshError = itemsQuery.isError && items.length > 0;
   const stockFilterOptions = [
@@ -111,19 +124,23 @@ export function StorageInventoryPanel({
                 value={stockFilter}
                 onValueChange={(value) => setStockFilter(value as StorageStockFilter)}
                 aria-label={t("field.stock")}
-                className="storage-stock-filter"
+                className="content-filter-toolbar__option-list content-filter-toolbar__option-list--columns"
               >
                 {stockFilterOptions.map((option) => (
-                  <label key={option.value} className="storage-radio-field">
+                  <ContentFilterOption key={option.value}>
                     <RadioGroupItem value={option.value} />
                     <span>{option.label}</span>
-                  </label>
+                  </ContentFilterOption>
                 ))}
               </RadioGroup>
             </ContentFilterGroup>
           )}
           actions={(
             <div className="storage-command__actions">
+              <Button variant="outline" onClick={() => setHistoryOpen(true)}>
+                <ClockIcon size={16} aria-hidden="true" />
+                {t("action.showHistory")}
+              </Button>
               <Button
                 variant={batchDraft ? "secondary" : "outline"}
                 onClick={onStartBatch}
@@ -251,6 +268,30 @@ export function StorageInventoryPanel({
           ) : null}
         </div>
       </section>
+
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="storage-modal-content storage-ledger-modal" showCloseButton={false}>
+          <DialogHeader className="storage-modal-header">
+            <div className="storage-overlay-heading">
+              <DialogTitle id="storage-ledger-modal-title">{t("ledger.title")}</DialogTitle>
+              <DialogClose
+                aria-label={t("common:action.close")}
+                render={<Button type="button" variant="ghost" size="icon-lg" />}
+              >
+                <XIcon size={18} aria-hidden="true" />
+              </DialogClose>
+            </div>
+            <DialogDescription>{t("ledger.pageSubtitle")}</DialogDescription>
+          </DialogHeader>
+          <StorageLedgerPanel
+            headingId="storage-ledger-modal-title"
+            storageId={storage.id}
+            enabled={historyOpen}
+            showHeading={false}
+            className="storage-ledger-modal__panel"
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

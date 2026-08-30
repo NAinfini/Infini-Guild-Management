@@ -43,10 +43,12 @@ type ActiveBoard = {
 let stamp: number;
 let title: string;
 let eventId: string;
+let ownedEventIds = new Set<string>();
 let viewer: { id: string; display_name: string };
 let member: { id: string; display_name: string };
 
 test.beforeEach(async ({ api }) => {
+  ownedEventIds = new Set();
   stamp = Date.now();
   title = `${SYSTEM_TEST_CONTENT_MARKER} War ${stamp}`;
 
@@ -75,17 +77,14 @@ test.beforeEach(async ({ api }) => {
     "创建公会战活动",
   ) as { id: string };
   eventId = created.id;
+  ownedEventIds.add(eventId);
 });
 
 test.afterEach(async ({ api }) => {
   /* destroy 会连带清掉 war_team_members / war_teams / war_pool_members / event_participants，
      所以板子上造出来的东西不需要单独收尾——但这也意味着漏删一条活动就会留下一整套残留。 */
-  const list = await readJson(
-    await api.get(`/api/events?search=${stamp}&limit=50`),
-    "回读待清理的活动",
-  ) as { data: { id: string }[] };
-  for (const entry of list.data) {
-    const response = await api.delete(`/api/events/${entry.id}/destroy`);
+  for (const id of ownedEventIds) {
+    const response = await api.delete(`/api/events/${id}/destroy`);
     expect([200, 204, 404], `清理活动返回 ${response.status()}`).toContain(response.status());
   }
 });
@@ -127,7 +126,7 @@ async function openBoard(page: Page): Promise<void> {
   await expect(select).toBeVisible();
   await select.click();
   await page.getByRole("option", { name: new RegExp(escapeForRegExp(title)) }).click();
-  await expect(select).toHaveValue(new RegExp(escapeForRegExp(title)));
+  await expect(select).toContainText(title);
   await expect(poolColumn(page)).toBeVisible();
 }
 
@@ -220,11 +219,9 @@ test("加人进池：选完人确认后池子和服务端一起加一", async ({
   const confirm = modal.getByRole("button", { name: /^Add \d+ members? to pool$/ });
   await expect(confirm, "一个人都没选就能提交，等于放行一次空操作").toBeDisabled();
 
-  await field(modal, "Available members").fill(member.display_name);
-  await page.getByRole("option", { name: member.display_name, exact: true }).click();
+  await modal.getByRole("textbox", { name: "Search and select members", exact: true }).fill(member.display_name);
+  await modal.getByRole("checkbox", { name: member.display_name, exact: true }).check();
   await expect(modal.getByText("1 selected", { exact: true })).toBeVisible();
-  // MultiSelect 选完不会自己收起下拉（还要继续选人），而下拉正好盖住确认按钮。
-  await page.keyboard.press("Escape");
 
   await flow.click(modal.getByRole("button", { name: "Add 1 member to pool", exact: true }), MOVE_MEMBER);
   await expectNoDialog(page);
@@ -249,18 +246,16 @@ test("建队、改名、上锁、删队：每一步都被自动保存写回服�
   const teamId = teams[0]!.id;
   await expect(teamColumns(page)).toHaveCount(1);
 
-  // 改名：点标题进入编辑态，回车提交。名字只存在草稿里，靠 350ms 自动保存落库。
+  // 改名：统一在队伍设置弹窗里编辑。名字只存在草稿里，靠 350ms 自动保存落库。
   const renamed = `Vanguard ${stamp}`;
-  await teamColumns(page).getByRole("button", { name: "Edit team name Team 1", exact: true }).click();
-  /* 只能按前缀取：这个输入框的无障碍名是「Team name for <当前名字>」，
-     名字又是随输入实时变的，敲第一个字它就不再叫 Team 1 了。 */
-  const nameInput = teamColumns(page).getByLabel(/^Team name for /);
+  await teamColumns(page).getByRole("button", { name: "Edit team", exact: true }).click();
+  const teamEditor = page.getByRole("dialog", { name: "Edit team", exact: true });
+  const nameInput = teamEditor.getByLabel("Team name", { exact: true });
   reloaded = boardReloaded(page);
-  await flow.act(async () => {
-    await nameInput.fill(renamed);
-    await nameInput.press("Enter");
-  }, SAVE_TEAMS);
+  await flow.act(() => nameInput.fill(renamed), SAVE_TEAMS);
   await reloaded;
+  await teamEditor.getByRole("button", { name: "Close", exact: true }).click();
+  await expectNoDialog(page);
 
   teams = (await readBoard(api)).teams;
   expect(teams[0]!.team_name, "改名必须真的写回服务端").toBe(renamed);
@@ -359,17 +354,14 @@ test("搜索定位：只在前端高亮匹配的成员卡，不碰服务端", as
   await expect(poolColumn(page).locator(".guild-war-member-card")).toHaveCount(2);
   await expect(page.getByText("Match 1 / 1", { exact: true })).toBeVisible();
 
-  /*
-   * 搜不到人时，计数条整个消失。
-   * 注意这不是「显示 No matches」——GuildWarActiveTopCard 的渲染条件是
-   * `activeSearch && hasMatches`，而 matchLabel 只有在一个匹配都没有时才等于
-   * "No matches"，两个条件互斥，那句文案在现有代码里永远显示不出来。
-   * 这里按现状如实断言，没有替产品改行为。
-   */
+  /* 搜不到人仍保留结果状态，避免搜索像是没有响应；翻页键此时不可用。 */
   await search.fill(`nobody-${stamp}`);
   await expect(poolColumn(page).locator(".guild-war-member-card--matched")).toHaveCount(0);
   await expect(poolColumn(page).locator(".guild-war-member-card")).toHaveCount(2);
-  await expect(page.locator(".guild-war-active-top-card__matches")).toHaveCount(0);
+  const matches = page.locator(".guild-war-active-top-card__matches");
+  await expect(matches).toContainText("No matches");
+  await expect(matches.getByRole("button", { name: "Previous match" })).toBeDisabled();
+  await expect(matches.getByRole("button", { name: "Next match" })).toBeDisabled();
 });
 
 test("成员详情：点开卡片显示成员资料和排期信息", async ({ page, api }) => {

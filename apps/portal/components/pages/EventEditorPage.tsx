@@ -1,4 +1,5 @@
 import type { ImageGridEditorItem } from "@portal/types/media";
+import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
 import { Skeleton } from "@portal/components/ui/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,11 +8,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../../api/query-keys";
 import { useAppError } from "../../hooks/useAppError";
-import { useEventsFiltering } from "../../hooks/useEventsFiltering";
+import { useEventMemberDirectory } from "../../hooks/data/useEventsData";
 import { useEventEditorMutations } from "../../hooks/useEventMutations";
 import { useAttachmentService } from "../../services/AttachmentService";
 import { EventService, fetchEventDetail, isApiRequestError } from "../../services/EventService";
 import { useAuthStore } from "../../stores/auth";
+import { buildAvailabilityHeatData } from "../../utils/availability";
 import { resolveMediaUrl } from "../../utils/media";
 import { EventFormContent } from "../feature/events/EventFormContent";
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
@@ -50,7 +52,15 @@ export function EventEditorPage({ mode }: EventEditorPageProps) {
     () => new EventService({ attachmentService, queryClient }),
     [attachmentService, queryClient],
   );
-  const filtering = useEventsFiltering({ currentUserId: user?.id });
+  const usersQuery = useEventMemberDirectory({
+    currentUserId: user?.id,
+    publicMemberProjection: !user,
+    enabled: Boolean(user),
+  });
+  const availabilityHeatData = useMemo(
+    () => buildAvailabilityHeatData(usersQuery.data?.data ?? []),
+    [usersQuery.data],
+  );
   const detailQuery = useQuery({
     queryKey: queryKeys.events.detail(eventId ?? ""),
     queryFn: () => fetchEventDetail(eventId as string),
@@ -134,6 +144,7 @@ export function EventEditorPage({ mode }: EventEditorPageProps) {
     mutations.saveEvent({
       mode: editor.editorMode,
       editingEventId: editor.editingEventId,
+      expectedUpdatedAt: editor.editingExpectedUpdatedAt,
       eventType: editor.editorType,
       title: editor.editorTitle,
       description: editor.editorDescription,
@@ -153,10 +164,13 @@ export function EventEditorPage({ mode }: EventEditorPageProps) {
     });
   }, [editor, mutations]);
 
+  const detailBlockingError = mode === "edit" && detailQuery.isError && !detailQuery.data;
+  const detailRefreshError = mode === "edit" && detailQuery.isError && Boolean(detailQuery.data);
+
   if (mode === "edit" && detailQuery.isLoading) {
     return <PageLayout className="events-page event-editor-page"><div className="event-route-loading"><Skeleton className="h-9" /><Skeleton className="h-105" /></div></PageLayout>;
   }
-  if (mode === "edit" && (detailQuery.isError || !detailQuery.data)) {
+  if (detailBlockingError) {
     const missing = isApiRequestError(detailQuery.error) && detailQuery.error.status === 404;
     return (
       <PageLayout className="events-page event-editor-page">
@@ -176,6 +190,9 @@ export function EventEditorPage({ mode }: EventEditorPageProps) {
       </PageLayout>
     );
   }
+  if (mode === "edit" && !detailQuery.data) {
+    return <PageLayout className="events-page event-editor-page"><div className="event-route-loading"><Skeleton className="h-9" /><Skeleton className="h-105" /></div></PageLayout>;
+  }
   if (!editor.editorOpen) {
     return <PageLayout className="events-page event-editor-page"><Skeleton className="h-105" /></PageLayout>;
   }
@@ -183,6 +200,17 @@ export function EventEditorPage({ mode }: EventEditorPageProps) {
   return (
     <PageLayout className="events-page event-editor-page">
       <div className="event-route-stack event-editor-page__stack">
+        {detailRefreshError ? (
+          <Alert variant="destructive">
+            <AlertTitle>{t("common:loadError")}</AlertTitle>
+            <AlertDescription>
+              <span>{t("common:loadErrorRetry")}</span>
+              <Button size="sm" variant="outline" loading={detailQuery.isFetching} onClick={() => { void detailQuery.refetch(); }}>
+                {t("common:action.retry")}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : null}
         <header className="event-route-header event-route-header--sticky event-editor-page__header">
           <div className="event-route-header__title">
             <Button
@@ -194,7 +222,7 @@ export function EventEditorPage({ mode }: EventEditorPageProps) {
               <ArrowLeftIcon size={15} />
               {mode === "edit" ? t("editor.backToEvent") : t("view.events")}
             </Button>
-            <h1>{mode === "create" ? t("editor.createTitle") : t("editor.editTitle")}</h1>
+            <h2>{mode === "create" ? t("editor.createTitle") : t("editor.editTitle")}</h2>
           </div>
         </header>
         <EventFormContent
@@ -228,9 +256,9 @@ export function EventEditorPage({ mode }: EventEditorPageProps) {
             onAttachmentsChange={handleAttachmentItemsChange}
             onFilesSelected={handleFilesSelected}
             onAttachmentDelete={handleAttachmentDelete}
-            availabilityDaysWithAny={filtering.availabilityHeatData.daysWithAny}
-            availabilityMaxCount={filtering.availabilityHeatData.maxCount}
-            availabilityMemberCount={filtering.availabilityHeatData.memberCount}
+            availabilityDaysWithAny={availabilityHeatData.daysWithAny}
+            availabilityMaxCount={availabilityHeatData.maxCount}
+            availabilityMemberCount={availabilityHeatData.memberCount}
             confirmLoading={mutations.savePending}
             onCancel={returnFromEditor}
             onSave={handleSave}

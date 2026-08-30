@@ -1,5 +1,4 @@
 export {
-  adminUpdateProfile,
   batchDeactivateAdminUsers,
   batchDeleteAdminUsers,
   batchReactivateAdminUsers,
@@ -9,18 +8,17 @@ export {
   deactivateAdminUser,
   deleteAdminInviteLink,
   reactivateAdminUser,
-  resetAdminUserLoginLock,
   resetAdminUserPassword,
   revokeAdminInviteLink,
+  updateAdminMember,
   updateAdminUserRole,
 } from "../api/mutations/admin";
 export type {
-  AdminUpdateProfilePayload,
   BatchDeactivatePayload,
   BatchRoleChangePayload,
   CreateAdminMemberPayload,
   CreateInviteLinkPayload,
-  ResetAdminUserLoginLockResponse,
+  UpdateAdminMemberPayload,
 } from "../api/mutations/admin";
 export { createRole, deleteRole, updateRole } from "../api/mutations/roles";
 export type { CreateRolePayload, UpdateRolePayload } from "../api/mutations/roles";
@@ -36,6 +34,7 @@ export type { CreateBadgePayload, UpdateBadgePayload } from "../api/mutations/ba
 export {
   downloadAdminAuditArchiveFile,
   downloadAdminAuditLogExport,
+  fetchAdminAuditArchiveFiles,
   fetchAdminAuditArchiveMonths,
   fetchAdminAuditLog,
   fetchAdminInviteLinks,
@@ -43,18 +42,15 @@ export {
   fetchAdminOperations,
   fetchAdminStatus,
   fetchBlobReconciliationPage,
-  fetchAdminUserLoginLock,
-  requestAdminAuditArchiveDownload,
 } from "../api/queries/admin";
 export { fetchBadgeAssignments, fetchBadges } from "../api/queries/badges";
 export type {
-  AdminAuditArchiveDownloadFile,
-  AdminAuditArchiveDownloadResponse,
+  AdminAuditArchiveFile,
+  AdminAuditArchiveFilesResponse,
   AdminAuditExportParams,
   AdminInviteLinksResponse,
   AdminOperationsResponse,
   AdminStatus,
-  AdminLoginLockState,
   InviteVisibility,
   InviteLinkStatsSummary,
 } from "../api/queries/admin";

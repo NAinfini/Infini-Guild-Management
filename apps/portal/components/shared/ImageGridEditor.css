@@ -9,7 +9,7 @@
 }
 
 .image-grid-editor__delete {
-  border-radius: 999px;
+  border-radius: var(--shape-pill);
 }
 
 .image-grid-editor__add {

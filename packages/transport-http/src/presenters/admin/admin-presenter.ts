@@ -1,16 +1,12 @@
 import {
   adminRoleSchema,
   inviteLinkSchema,
-  loginLockStateSchema,
   permissionSetToRecord,
-  resetLoginLockResponseSchema,
 } from "@guild/shared";
-import type { InviteRecord, LoginLockState, RoleRecord } from "@guild/server/modules/auth";
+import type { InviteRecord, RoleRecord } from "@guild/server/modules/auth";
 
-type InviteWithCode = InviteRecord & Readonly<{ code: string }>;
-
-export function presentInvite(invite: InviteWithCode) {
-  return inviteLinkSchema.parse({
+function inviteWire(invite: InviteRecord) {
+  return {
     id: invite.id,
     code: invite.code,
     created_by: invite.createdBy,
@@ -23,11 +19,15 @@ export function presentInvite(invite: InviteWithCode) {
     expires_at: invite.expiresAt,
     created_at: invite.createdAt,
     revoked_at: invite.revokedAt,
-  });
+  };
+}
+
+export function presentInvite(invite: InviteRecord) {
+  return inviteLinkSchema.parse(inviteWire(invite));
 }
 
 export function presentInvitePage(page: Readonly<{
-  data: readonly InviteWithCode[];
+  data: readonly InviteRecord[];
   nextCursor: string | null;
   total: number;
 }>) {
@@ -48,18 +48,6 @@ export function presentRole(role: RoleRecord) {
     assigned_user_count: role.assignedUserCount,
     created_at: role.createdAt,
     updated_at: role.updatedAt,
+    revision_token: role.revisionToken,
   });
-}
-
-export function presentLoginLock(state: LoginLockState) {
-  return loginLockStateSchema.parse({
-    fail_count: state.failCount,
-    locked_until: state.lockedUntil,
-    is_locked: state.isLocked,
-    retry_after_seconds: state.retryAfterSeconds,
-  });
-}
-
-export function presentResetLoginLock(state: LoginLockState & { ok: true }) {
-  return resetLoginLockResponseSchema.parse({ ok: true, ...presentLoginLock(state) });
 }

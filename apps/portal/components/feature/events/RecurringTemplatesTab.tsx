@@ -9,7 +9,6 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@portal/components/ui/input-group";
-import { Label } from "@portal/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
 import { Skeleton } from "@portal/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
@@ -22,7 +21,11 @@ import {
   XIcon,
   UsersIcon,
 } from "@portal/components/icons";
-import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
+import {
+  ContentFilterGroup,
+  ContentFilterOption,
+  ContentFilterToolbar,
+} from "@portal/components/shared/ContentFilterToolbar";
 import { formatCalendarDate } from "../../../utils/datetime";
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -110,14 +113,14 @@ export function RecurringTemplatesTab({ canManage, templates, loading, onCreateT
   );
   const filterControls = <>
     <ContentFilterGroup label={t("recurring.filter.status")}>
-      <div className="recurring-template-filter-status" role="group" aria-label={t("recurring.filter.status")}>
-        {(["all", "active", "paused"] as const).map((value) => <Button key={value} size="sm" variant={statusFilter === value ? "default" : "ghost"} aria-pressed={statusFilter === value} onClick={() => setStatusFilter(value)}>{value === "all" ? t("recurring.filter.all") : t(`recurring.status.${value}`)}</Button>)}
-      </div>
+      <RadioGroup value={statusFilter} onValueChange={(value) => setStatusFilter(value as TemplateStatusFilter)} aria-label={t("recurring.filter.status")} className="content-filter-toolbar__option-list content-filter-toolbar__option-list--columns">
+        {(["all", "active", "paused"] as const).map((value) => <ContentFilterOption key={value}><RadioGroupItem value={value} /><span>{value === "all" ? t("recurring.filter.all") : t(`recurring.status.${value}`)}</span></ContentFilterOption>)}
+      </RadioGroup>
     </ContentFilterGroup>
     <ContentFilterGroup label={t("recurring.filter.type")}>
-      <RadioGroup value={typeFilter ?? "all"} onValueChange={(value) => setTypeFilter(value === "all" ? null : value)} aria-label={t("recurring.filter.type")} className="recurring-template-type-options">
-        <Label className="recurring-template-type-option"><RadioGroupItem value="all" />{t("recurring.filter.all")}</Label>
-        {DEFAULT_GAME_RULES.events.types.filter((definition) => definition.enabled).map((definition) => <Label key={definition.id} className="recurring-template-type-option"><RadioGroupItem value={definition.id} />{getEventTypeLabel(definition.id, i18n.language)}</Label>)}
+      <RadioGroup value={typeFilter ?? "all"} onValueChange={(value) => setTypeFilter(value === "all" ? null : value)} aria-label={t("recurring.filter.type")} className="content-filter-toolbar__option-list content-filter-toolbar__option-list--columns">
+        <ContentFilterOption><RadioGroupItem value="all" /><span>{t("recurring.filter.all")}</span></ContentFilterOption>
+        {DEFAULT_GAME_RULES.events.types.filter((definition) => definition.enabled).map((definition) => <ContentFilterOption key={definition.id}><RadioGroupItem value={definition.id} /><span>{getEventTypeLabel(definition.id, i18n.language)}</span></ContentFilterOption>)}
       </RadioGroup>
     </ContentFilterGroup>
   </>;

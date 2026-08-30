@@ -1,7 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "./api/client";
-import { resolveRouteSession, type RouteSession } from "./router-session";
+import {
+  createRouteSessionResolver,
+  resolveRouteSession,
+  type RouteSession,
+} from "./router-session";
 
 const session = {
   user: { id: "user-1", display_name: "member" },
@@ -42,5 +46,27 @@ describe("resolveRouteSession", () => {
 
     await expect(resolveRouteSession(deps)).resolves.toBe(session);
     expect(deps.transitionSession).toHaveBeenCalledWith(session);
+  });
+
+  it("shares one anonymous probe between root and protected route resolution", async () => {
+    let sessionResolved = false;
+    const requestSession = vi.fn().mockRejectedValue(new ApiRequestError("expired", { status: 401 }));
+    const deps = {
+      ...createDeps(requestSession),
+      isSessionResolved: () => sessionResolved,
+      markSessionResolved: vi.fn(() => {
+        sessionResolved = true;
+      }),
+    };
+    const resolver = createRouteSessionResolver(deps);
+
+    const rootResolution = resolver.resolve();
+    const protectedResolution = resolver.resolve();
+
+    expect(protectedResolution).toBe(rootResolution);
+    await expect(Promise.all([rootResolution, protectedResolution])).resolves.toEqual([null, null]);
+    expect(requestSession).toHaveBeenCalledOnce();
+    await expect(resolver.resolve()).resolves.toBeNull();
+    expect(requestSession).toHaveBeenCalledOnce();
   });
 });

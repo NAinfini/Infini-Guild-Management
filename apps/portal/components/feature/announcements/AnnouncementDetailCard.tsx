@@ -1,50 +1,37 @@
+import { ANNOUNCEMENT_CATEGORIES, type Announcement, type AnnouncementAttachment } from "@guild/shared";
+import type { AnnouncementCategory } from "@guild/shared/constants/announcements";
 import {
-  ANNOUNCEMENT_ATTACHMENT_FILE_ACCEPT,
-  type Announcement,
-  type AnnouncementAttachment,
-} from "@guild/shared";
-import {
-  ArchiveIcon,
-  CalendarTimeIcon,
-  ChevronDownIcon,
   FileTextIcon,
-  NoteIcon,
-  PencilIcon,
   PinIcon,
-  SendIcon,
   TrashIcon,
-  UploadIcon,
-  XIcon,
 } from "@portal/components/icons";
-import { Alert, AlertTitle } from "@portal/components/ui/alert";
-import { Avatar, AvatarFallback, AvatarImage } from "@portal/components/ui/avatar";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@portal/components/ui/dropdown-menu";
 import { Input } from "@portal/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@portal/components/ui/select";
 import { Separator } from "@portal/components/ui/separator";
 import { Skeleton } from "@portal/components/ui/skeleton";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@portal/components/ui/tooltip";
+import { Switch } from "@portal/components/ui/switch";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
 import { resolveMediaUrl } from "@portal/utils/media";
-import { lazy, Suspense, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
 import { buildTipTapEditorLabels } from "../../shared/tiptap-meta";
+import { ContentDetailHeader } from "../../shared/ContentDetailHeader";
 import { EmptyState } from "../../shared/EmptyState";
 import { NativeDateTimeInput } from "../../shared/NativeDateTimeInput";
 import { AnnouncementAttachmentItem } from "./AnnouncementAttachmentItem";
+import { AnnouncementEditorAttachments } from "./AnnouncementEditorAttachments";
+import { AnnouncementDetailHeaderActions } from "./AnnouncementDetailHeaderActions";
 
 const LazyTipTapEditor = lazy(() =>
   import("@portal/components/shared/TipTapEditor").then((module) => ({ default: module.TipTapEditor })),
@@ -53,32 +40,32 @@ const LazyTipTapEditor = lazy(() =>
 type StatusMode = "none" | "draft" | "archived" | "scheduled";
 
 type AnnouncementDetailCardProps = {
+  navigation: ReactNode;
   title: ReactNode;
   canEdit: boolean;
+  canCreate: boolean;
+  canArchive: boolean;
+  canDelete: boolean;
   selectedId: string | null;
   selected: Announcement | null;
   isLoading: boolean;
-  isError: boolean;
-  warningMessage: ReactNode;
   savePending: boolean;
   titleValue: string;
   onTitleChange: (value: string) => void;
+  category: AnnouncementCategory;
+  onCategoryChange: (value: AnnouncementCategory) => void;
   bodyJson: string;
   onBodyJsonChange: (value: string) => void;
   pinned: boolean;
   onPinnedChange: (value: boolean) => void;
-  scheduleEnabled: boolean;
-  onScheduleEnabledChange: (value: boolean) => void;
   publishAt: string;
   onPublishAtChange: (value: string) => void;
-  onFinish: (mode: StatusMode) => void;
-  onDelete: () => void;
+  onStartEditing: () => void;
+  onFinish: (mode: StatusMode) => Promise<boolean>;
+  onDelete: () => Promise<boolean>;
   onCloseEditor: () => void;
+  archivePending: boolean;
   deletePending: boolean;
-  draftEnabled: boolean;
-  onDraftEnabledChange: (value: boolean) => void;
-  archived: boolean;
-  onArchivedChange: (value: boolean) => void;
   onImageUpload: (file: File) => Promise<string>;
   attachments: AnnouncementAttachment[];
   attachmentUploading: boolean;
@@ -103,30 +90,32 @@ function EditorSkeleton() {
 }
 
 export function AnnouncementDetailCard({
+  navigation,
   title,
   canEdit,
+  canCreate,
+  canArchive,
+  canDelete,
   selectedId,
   selected,
   isLoading,
-  isError,
-  warningMessage,
   savePending,
   titleValue,
   onTitleChange,
+  category,
+  onCategoryChange,
   bodyJson,
   onBodyJsonChange,
   pinned,
   onPinnedChange,
-  onScheduleEnabledChange,
   publishAt,
   onPublishAtChange,
+  onStartEditing,
   onFinish,
   onDelete,
   onCloseEditor,
+  archivePending,
   deletePending,
-  onDraftEnabledChange,
-  archived,
-  onArchivedChange,
   onImageUpload,
   attachments,
   attachmentUploading,
@@ -144,14 +133,15 @@ export function AnnouncementDetailCard({
   const editorLabels = useMemo(() => buildTipTapEditorLabels(translateEditor), [translateEditor]);
   const isCreateMode = selectedId === "new" && !selected;
   const [editing, setEditing] = useState(isCreateMode);
-  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const [archiveToggleChecked, setArchiveToggleChecked] = useState(false);
 
   useEffect(() => {
     setEditing(isCreateMode);
-  }, [isCreateMode]);
+    setArchiveToggleChecked(false);
+  }, [isCreateMode, selectedId]);
 
-  const validateAndFinish = (mode: StatusMode) => {
-    if (!isPublishReady) return;
+  const validateAndFinish = async (mode: Exclude<StatusMode, "archived">) => {
+    if (!isPublishReady || attachmentUploading) return;
 
     if (mode === "scheduled" && publishAt) {
       const scheduledDate = new Date(publishAt);
@@ -161,11 +151,30 @@ export function AnnouncementDetailCard({
       }
     }
 
-    onDraftEnabledChange(mode === "draft");
-    onScheduleEnabledChange(mode === "scheduled");
-    onArchivedChange(mode === "archived");
-    onFinish(mode);
-    setEditing(false);
+    if (await onFinish(mode)) setEditing(false);
+  };
+
+  const handleArchiveConfirm = async (): Promise<boolean> => {
+    const confirmed = await confirm({
+      title: t("modal.archiveAnnouncement"),
+      description: t("confirm.archive"),
+      confirmLabel: t("action.archive"),
+      cancelLabel: t("action.cancel"),
+      intent: "danger",
+    });
+    if (!confirmed) return false;
+    const archived = await onFinish("archived");
+    if (archived) setEditing(false);
+    return archived;
+  };
+
+  const handleArchiveToggle = async (checked: boolean) => {
+    if (!checked) {
+      setArchiveToggleChecked(false);
+      return;
+    }
+    setArchiveToggleChecked(true);
+    if (!await handleArchiveConfirm()) setArchiveToggleChecked(false);
   };
 
   const handleDeleteConfirm = async () => {
@@ -177,8 +186,7 @@ export function AnnouncementDetailCard({
       intent: "danger",
     });
     if (confirmed) {
-      onDelete();
-      setEditing(false);
+      if (await onDelete()) setEditing(false);
     }
   };
 
@@ -187,140 +195,76 @@ export function AnnouncementDetailCard({
     onCloseEditor();
   };
 
-  const handleAttachmentChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const input = event.currentTarget;
-    const file = input.files?.[0];
-    if (!file) return;
-    void onAttachmentUpload(file).finally(() => {
-      input.value = "";
-    });
+  const handleStartEditing = () => {
+    onStartEditing();
+    setEditing(true);
   };
 
   const isReader = !editing && selected !== null;
-  const canShowEditorActions = canEdit && (selected !== null || isCreateMode);
+  const canUseEditor = isCreateMode ? canCreate : canEdit;
+  const canShowEditorActions = canUseEditor && (selected !== null || isCreateMode);
+  const headerActions = (
+    <AnnouncementDetailHeaderActions
+      isReader={isReader}
+      selectedStatus={selected?.status}
+      canEdit={canEdit}
+      canArchive={canArchive}
+      canDelete={canDelete}
+      canShowEditorActions={canShowEditorActions}
+      editing={editing}
+      isPublishReady={isPublishReady}
+      isDirty={isDirty}
+      savePending={savePending}
+      attachmentUploading={attachmentUploading}
+      archivePending={archivePending}
+      deletePending={deletePending}
+      onStartEditing={handleStartEditing}
+      onPublish={(mode) => { void validateAndFinish(mode); }}
+      onArchive={() => { void handleArchiveConfirm(); }}
+      onDelete={() => { void handleDeleteConfirm(); }}
+      onCancelEditing={handleCloseEditor}
+    />
+  );
 
   return (
     <Card className="announcements-detail-card">
-      <div className="announcements-detail-card__content announcements-card-scroll">
-        <header
-          className={`announcements-detail-card__header ${isReader ? "announcement-reader-header" : ""}`.trim()}
-        >
-          {isReader ? (
-            <div className="announcement-reader-heading">
-              <div className="announcement-reader-title-row">
-                {selected.pinned ? (
-                  <Badge variant="outline" className="announcement-important-badge">
-                    {t("status.important")}
-                  </Badge>
-                ) : null}
-                <h2 className="announcement-reader-title">{selected.title}</h2>
-              </div>
-              <div className="announcement-reader-author-row">
-                <Avatar size="lg">
-                  {selected.author.avatar_media_id ? (
-                    <AvatarImage src={resolveMediaUrl(selected.author.avatar_media_id)} alt="" />
-                  ) : null}
-                  <AvatarFallback>{selected.author.display_name.trim().charAt(0).toUpperCase()}</AvatarFallback>
-                </Avatar>
-                <div className="announcement-reader-author-copy">
-                  <strong>{selected.author.display_name}</strong>
-                  <div className="announcement-reader-meta-row">
-                    <span className="announcement-reader-publish-time">
-                      {t(selected.status === "scheduled"
-                        ? "meta.scheduled"
-                        : selected.status === "draft"
-                          ? "meta.created"
-                          : "meta.published", {
-                        datetime: formatDateTimeWithTimeZone(selected.publish_at ?? selected.created_at),
-                      })}
-                    </span>
-                    {canEdit && selected.status === "scheduled" && selected.publish_at ? (
-                      <Badge variant="outline" className="announcement-status-badge announcement-status-badge--scheduled">
-                        {t("status.scheduled")}
-                      </Badge>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <h2 className="announcements-detail-card__title">{title}</h2>
-          )}
+      <div className={`announcements-detail-card__content announcements-card-scroll${isReader ? " announcements-detail-card__content--reader" : ""}`}>
+        {!isReader ? <div className="announcements-detail-navigation">{navigation}</div> : null}
 
-          {canShowEditorActions ? (
-            editing ? (
-              <div className="announcement-editor-header-actions">
-                {!isPublishReady ? (
-                  <Badge variant="outline" className="announcement-save-state announcement-save-state--idle">
-                    {t("status.notReady")}
-                  </Badge>
-                ) : isDirty ? (
-                  <Badge variant="outline" className="announcement-save-state announcement-save-state--dirty">
-                    {t("status.unsaved")}
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="announcement-save-state announcement-save-state--saved">
-                    {t("status.saved")}
-                  </Badge>
-                )}
-                <div className="announcement-publish-actions">
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={savePending || !isPublishReady}
-                    aria-busy={savePending || undefined}
-                    onClick={() => validateAndFinish("none")}
-                  >
-                    <SendIcon size={14} aria-hidden="true" />
-                    {t("action.publish")}
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={(
-                        <Button
-                          type="button"
-                          size="icon-sm"
-                          disabled={savePending || !isPublishReady}
-                          aria-label={`${t("action.saveAsDraft")} / ${t("action.postScheduled")}`}
-                        />
-                      )}
-                    >
-                      <ChevronDownIcon size={14} aria-hidden="true" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="announcement-publish-menu">
-                      <DropdownMenuItem onClick={() => validateAndFinish("draft")}>
-                        <NoteIcon size={16} aria-hidden="true" />
-                        {t("action.saveAsDraft")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => validateAndFinish("scheduled")}>
-                        <CalendarTimeIcon size={16} aria-hidden="true" />
-                        {t("action.postScheduled")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={handleCloseEditor}>
-                  <XIcon size={14} aria-hidden="true" />
-                  {t("action.cancel")}
-                </Button>
-              </div>
-            ) : (
-              <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
-                <PencilIcon size={14} aria-hidden="true" />
-                {t("action.edit")}
-              </Button>
-            )
-          ) : null}
-        </header>
+        {isReader ? (
+          <ContentDetailHeader
+            domain="announce"
+            navigation={navigation}
+            category={t(`category.${selected.category}`)}
+            states={selected.pinned ? (
+              <Badge variant="outline" className="content-detail-header__state">
+                <PinIcon size={13} aria-hidden="true" />
+                {t("status.pinned")}
+              </Badge>
+            ) : undefined}
+            title={selected.title}
+            titleClassName="announcement-reader-title"
+            authorLabel={t("meta.author")}
+            authorName={selected.author.display_name}
+            authorAvatarUrl={selected.author.avatar_media_id
+              ? resolveMediaUrl(selected.author.avatar_media_id)
+              : null}
+            timestampLabel={t("meta.releaseTimeLabel")}
+            timestamp={formatDateTimeWithTimeZone(selected.publish_at ?? selected.created_at)}
+            timestampDateTime={selected.publish_at ?? selected.created_at}
+            viewsLabel={t("meta.viewsLabel")}
+            viewCount={selected.view_count}
+            actions={headerActions}
+          />
+        ) : (
+          <header className="announcements-detail-card__header">
+            <h2 className="announcements-detail-card__title">{title}</h2>
+            {headerActions}
+          </header>
+        )}
 
         {isLoading ? <EditorSkeleton /> : null}
-        {isError ? (
-          <Alert variant="destructive">
-            <AlertTitle>{warningMessage}</AlertTitle>
-          </Alert>
-        ) : null}
-
-        {!isLoading && !isError && selected && !editing ? (
+        {!isLoading && selected && !editing ? (
           <div className="announcement-reader-content">
             <Separator />
             <Suspense fallback={<EditorSkeleton />}>
@@ -357,141 +301,104 @@ export function AnnouncementDetailCard({
               </section>
             ) : null}
 
-            <p className="announcement-reader-updated">
-              {t("meta.updated", { datetime: formatDateTimeWithTimeZone(selected.updated_at) })}
-            </p>
           </div>
         ) : null}
 
-        {!isLoading && !isError && (selected || isCreateMode) && editing ? (
+        {!isLoading && (selected || isCreateMode) && editing && canUseEditor ? (
           <div className="announcement-editor-layout">
             <div className="announcement-editor-main">
-              <Input
-                value={titleValue}
-                onChange={(event) => onTitleChange(event.currentTarget.value)}
-                placeholder={t("field.title")}
-                aria-label={t("aria.title")}
-                className="announcement-editor-title-input"
-              />
-              <Suspense fallback={<EditorSkeleton />}>
-                <LazyTipTapEditor
-                  value={bodyJson}
-                  onChange={onBodyJsonChange}
-                  placeholder={t("field.body")}
-                  ariaLabel={t("field.body")}
-                  editable
-                  onImageUpload={onImageUpload}
-                  labels={editorLabels}
-                />
-              </Suspense>
-
-              <section
-                className="announcement-editor-attachments"
-                aria-labelledby="announcement-editor-attachments-title"
-              >
-                <div className="announcement-editor-attachments__header">
-                  <div>
-                    <div className="announcement-attachments-heading">
-                      <h3 id="announcement-editor-attachments-title" className="announcement-attachments-title">
-                        {t("section.attachments")}
-                      </h3>
-                      {attachments.length > 0 ? <Badge variant="secondary">{attachments.length}</Badge> : null}
-                    </div>
-                    <p className="announcement-attachment-help">
-                      {t("attachment.help", {
-                        count: attachmentQuota,
-                        size: Math.floor(attachmentMaxBytes / 1024 / 1024),
-                      })}
-                    </p>
-                  </div>
-                  <input
-                    ref={attachmentInputRef}
-                    type="file"
-                    accept={ANNOUNCEMENT_ATTACHMENT_FILE_ACCEPT}
-                    className="sr-only"
-                    tabIndex={-1}
-                    aria-hidden="true"
-                    onChange={handleAttachmentChange}
+              <div className="announcement-editor-document-fields">
+                <div className="announcement-editor-title-field">
+                  <span className="announcement-editor-field-label">{t("field.title")}</span>
+                  <Input
+                    value={titleValue}
+                    onChange={(event) => onTitleChange(event.currentTarget.value)}
+                    placeholder={t("field.title")}
+                    aria-label={t("aria.title")}
+                    className="announcement-editor-title-input"
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={attachmentUploading}
-                    aria-busy={attachmentUploading || undefined}
-                    onClick={() => attachmentInputRef.current?.click()}
-                  >
-                    <UploadIcon size={16} aria-hidden="true" />
-                    {t("action.addAttachment")}
-                  </Button>
                 </div>
-                {attachments.length > 0 ? (
-                  <div className="announcement-attachments-grid announcement-attachments-grid--editor">
-                    {attachments.map((attachment) => (
-                      <AnnouncementAttachmentItem
-                        key={attachment.media_id}
-                        attachment={attachment}
-                        removeLabel={t("action.removeAttachment", { name: attachment.name })}
-                        downloadLabel=""
-                        onRemove={onAttachmentRemove}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="announcement-attachments-empty">{t("attachment.empty")}</p>
-                )}
-              </section>
+                <div className="announcement-editor-category-field">
+                  <span className="announcement-editor-field-label">{t("field.category")}</span>
+                  <Select
+                    items={ANNOUNCEMENT_CATEGORIES.map((value) => ({
+                      value,
+                      label: t(`category.${value}`),
+                    }))}
+                    value={category}
+                    onValueChange={(value) => onCategoryChange(value as AnnouncementCategory)}
+                  >
+                    <SelectTrigger aria-label={t("aria.category")}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="start">
+                      {ANNOUNCEMENT_CATEGORIES.map((value) => (
+                        <SelectItem key={value} value={value}>{t(`category.${value}`)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="announcement-editor-composer">
+                <span className="announcement-editor-field-label">{t("field.body")}</span>
+                <Suspense fallback={<EditorSkeleton />}>
+                  <LazyTipTapEditor
+                    value={bodyJson}
+                    onChange={onBodyJsonChange}
+                    placeholder={t("field.body")}
+                    ariaLabel={t("field.body")}
+                    editable
+                    onImageUpload={onImageUpload}
+                    labels={editorLabels}
+                  />
+                </Suspense>
+              </div>
+
+              <AnnouncementEditorAttachments
+                attachments={attachments}
+                attachmentUploading={attachmentUploading}
+                attachmentMaxBytes={attachmentMaxBytes}
+                attachmentQuota={attachmentQuota}
+                onAttachmentUpload={onAttachmentUpload}
+                onAttachmentRemove={onAttachmentRemove}
+              />
             </div>
 
             <aside className="announcement-editor-sidebar" aria-label={t("detail.title")}>
-              <div className="announcement-editor-icon-actions">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={(
-                      <Button
-                        type="button"
-                        variant={pinned ? "secondary" : "outline"}
-                        size="icon"
-                        aria-pressed={pinned}
-                        aria-label={pinned ? t("action.unpin") : t("action.pin")}
-                        onClick={() => onPinnedChange(!pinned)}
-                      />
-                    )}
-                  >
-                    <PinIcon size={16} aria-hidden="true" />
-                  </TooltipTrigger>
-                  <TooltipContent>{pinned ? t("action.unpin") : t("action.pin")}</TooltipContent>
-                </Tooltip>
-                {!isCreateMode ? (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={(
-                        <Button
-                          type="button"
-                          variant={archived ? "secondary" : "outline"}
-                          size="icon"
-                          aria-pressed={archived}
-                          aria-label={t("action.archive")}
-                          onClick={() => onArchivedChange(!archived)}
-                        />
-                      )}
-                    >
-                      <ArchiveIcon size={16} aria-hidden="true" />
-                    </TooltipTrigger>
-                    <TooltipContent>{t("action.archive")}</TooltipContent>
-                  </Tooltip>
+              <h3 className="announcement-editor-sidebar__title">{t("section.publishing")}</h3>
+              <div className="announcement-editor-sidebar-actions">
+                <div className="announcement-editor-toggle">
+                  <span>{t("action.pin")}</span>
+                  <Switch
+                    checked={pinned}
+                    onCheckedChange={(checked) => onPinnedChange(checked)}
+                    disabled={savePending || attachmentUploading}
+                    aria-label={t("action.pin")}
+                  />
+                </div>
+                {!isCreateMode && canArchive && selected?.status !== "archived" ? (
+                  <div className="announcement-editor-toggle">
+                    <span>{t("action.archive")}</span>
+                    <Switch
+                      checked={archiveToggleChecked}
+                      onCheckedChange={(checked) => { void handleArchiveToggle(checked); }}
+                      disabled={archivePending}
+                      aria-busy={archivePending || undefined}
+                      aria-label={t("action.archive")}
+                    />
+                  </div>
                 ) : null}
-                {!isCreateMode ? (
+                {!isCreateMode && canDelete ? (
                   <Button
                     type="button"
                     variant="destructive"
-                    size="icon"
-                    aria-label={t("action.delete")}
+                    size="sm"
                     disabled={deletePending}
                     aria-busy={deletePending || undefined}
                     onClick={() => void handleDeleteConfirm()}
                   >
                     <TrashIcon size={16} aria-hidden="true" />
+                    {t("action.delete")}
                   </Button>
                 ) : null}
               </div>
@@ -521,7 +428,7 @@ export function AnnouncementDetailCard({
           </div>
         ) : null}
 
-        {!isLoading && !isError && !selected && selectedId !== "new" ? <EmptyState title={emptyTitle} /> : null}
+        {!isLoading && !selected && selectedId !== "new" ? <EmptyState title={emptyTitle} /> : null}
       </div>
     </Card>
   );

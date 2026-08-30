@@ -119,7 +119,7 @@ export interface GuildWarStore {
     actorUserId: string;
     now: string;
     audit: AuditMutation;
-  }>): Promise<boolean>;
+  }>): Promise<GuildWarAggregate | null>;
   replaceRoster(input: Readonly<{
     warId: string;
     eventId: string;
@@ -159,7 +159,7 @@ export interface GuildWarStore {
     now: string;
     patch: HistoryPatch;
     audit: AuditMutation;
-  }>): Promise<boolean>;
+  }>): Promise<GuildWarRecord | null>;
   deleteHistory(input: Readonly<{ warId: string; expectedVersion: number; audit: AuditMutation }>): Promise<boolean>;
   deleteHistories(input: Readonly<{
     rows: readonly Readonly<{ warId: string; expectedVersion: number; audit: AuditMutation }>[];
@@ -171,9 +171,14 @@ export interface GuildWarStore {
     now: string;
     updates: readonly Readonly<{ userId: string; stats?: MemberStats; note?: string | null }>[];
     audit: AuditMutation;
-  }>): Promise<boolean>;
+  }>): Promise<readonly WarMemberRecord[] | null>;
   readAnalytics(warIds: readonly string[], userIds: readonly string[]): Promise<AnalyticsRead>;
-  exportHistory(filters: Readonly<{ eventId?: string; dateFrom?: string; dateTo?: string }>): Promise<readonly GuildWarRecord[]>;
+  exportHistory(filters: Readonly<{
+    historyId?: string;
+    eventId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }>): Promise<readonly GuildWarRecord[]>;
 }
 
 export interface GuildWarEventRosterStore {
@@ -181,6 +186,8 @@ export interface GuildWarEventRosterStore {
     warId: string;
     eventId: string;
     expectedVersion: number;
+    expectedEventUpdatedAt: string;
+    updatedEventAt: string;
     actorUserId: string;
     now: string;
     moves: readonly Readonly<{

@@ -77,7 +77,6 @@ import {
   EmailVerificationService,
   WikiService,
   OAuthService,
-  createInviteTokenCodec,
   type RuntimeHealthPort,
   type AdminOperationsRuntimePort,
 } from "@guild/server";
@@ -98,7 +97,6 @@ export type ApplicationServicePorts = Readonly<{
 }>;
 
 export type ApplicationServiceConfig = Readonly<{
-  inviteTokenSecret: string;
   passwordIterations: number;
   publicUrl: string;
   oauth: OAuthRuntimeConfig;
@@ -116,7 +114,11 @@ export function createApplicationServices(
     notifications,
     ports.deferred,
   );
-  const importantNotices = new ImportantNoticeService(new SqliteImportantNoticeStore(ports.sql));
+  const importantNotices = new ImportantNoticeService(
+    new SqliteImportantNoticeStore(ports.sql),
+    notifications,
+    ports.deferred,
+  );
 
   const mediaStore = new SqliteMediaStore(ports.sql);
   const media = new MediaService(mediaStore, ports.blobs);
@@ -145,12 +147,10 @@ export function createApplicationServices(
 
   const authStore = new SqliteAuthStore(db, ports.sql);
   const accountProvisioning = new SqliteAccountProvisioningStore(db, ports.sql);
-  const inviteTokens = createInviteTokenCodec(config.inviteTokenSecret);
   const auth = new AuthService({
     store: authStore,
     provisioning: accountProvisioning,
     profiles: members,
-    inviteTokens,
     loginIpRateLimiter: ports.authIpRateLimiter,
     loginNameRateLimiter: ports.authRateLimiter,
     passwordIterations: config.passwordIterations,
@@ -160,7 +160,7 @@ export function createApplicationServices(
   const identityAdmin = new IdentityAdminService({
     store: authStore,
     provisioning: accountProvisioning,
-    inviteTokens,
+    memberProfiles: membersStore,
     passwordIterations: config.passwordIterations,
     notifications,
     deferred: ports.deferred,
@@ -225,6 +225,8 @@ export function createApplicationServices(
     siteConfig,
     clients: oauthClients,
     publicUrl: config.publicUrl,
+    notifications,
+    deferred: ports.deferred,
   });
   const emailVerification = new EmailVerificationService({
     store: new SqliteEmailVerificationStore(ports.sql),

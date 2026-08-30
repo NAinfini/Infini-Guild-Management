@@ -25,16 +25,12 @@ function downloadFileBlob(filename: string, blob: Blob) {
 type UseGuildWarMutationsParams = {
   selectedEventId: string | undefined;
   selectedHistoryId: string;
-  historyDateFrom: string;
-  historyDateTo: string;
   setSelectedHistoryId: (value: string) => void;
 };
 
 export function useGuildWarMutations({
   selectedEventId,
   selectedHistoryId,
-  historyDateFrom,
-  historyDateTo,
   setSelectedHistoryId,
 }: UseGuildWarMutationsParams) {
   const { t } = useTranslation("guild-war");
@@ -62,9 +58,7 @@ export function useGuildWarMutations({
     mutationFn: async (format: "csv" | "json") =>
       downloadGuildWarExport({
         format,
-        event_id: selectedEventId,
-        date_from: historyDateFrom ? `${historyDateFrom}T00:00:00.000Z` : undefined,
-        date_to: historyDateTo ? `${historyDateTo}T23:59:59.999Z` : undefined,
+        history_id: selectedHistoryId,
       }),
     onSuccess: ({ filename, blob }) => {
       downloadFileBlob(filename, blob);
@@ -79,13 +73,16 @@ export function useGuildWarMutations({
     mutationFn: ({
       historyId,
       updates,
+      etag,
     }: {
       historyId: string;
       updates: HistoryMemberStatsUpdate[];
+      etag: string;
     }) =>
       batchUpdateGuildWarMemberStats(
         historyId,
         updates.map((update) => ({ user_id: update.userId, stats: { stats: update.payload as Record<string, number | null> } })),
+        etag,
       ),
     onSuccess: async () => {
       notifySuccess(t("history.saveStatsSuccess"));
@@ -118,13 +115,14 @@ export function useGuildWarMutations({
     },
   });
 
-  const saveHistoryMemberStats = async (updates: HistoryMemberStatsUpdate[]) => {
+  const saveHistoryMemberStats = async (updates: HistoryMemberStatsUpdate[], etag: string) => {
     if (!selectedHistoryId || updates.length === 0) {
       return;
     }
     await updateMemberStatsMutation.mutateAsync({
       historyId: selectedHistoryId,
       updates,
+      etag,
     });
   };
 

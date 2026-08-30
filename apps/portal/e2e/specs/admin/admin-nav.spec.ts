@@ -13,7 +13,7 @@ const ADMIN_AREAS = [
   { tab: "classes", label: "Classes" },
   { tab: "badges", label: "Badges" },
   { tab: "siteConfig", label: "Site Config" },
-  { tab: "importantNotices", label: "Important Notices" },
+  { tab: "importantNotices", label: "Notices" },
   { tab: "operations", label: "Operations Overview" },
   { tab: "diagnostics", label: "Diagnostic Tools" },
   { tab: "audit", label: "Audit Log" },
@@ -47,6 +47,14 @@ test.beforeEach(async ({ page }) => {
   await page.waitForLoadState("networkidle");
 });
 
+test("门户跳转链接把键盘焦点移到主工作区", async ({ page }) => {
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#main-content")).toBeFocused();
+});
+
 test("十个后台区都在侧栏中，逐个切换后只保留当前工作区", async ({ page }) => {
   await expect(page.locator(".app-sider .app-nav-item"), "十个后台入口都必须可达").toHaveCount(ADMIN_AREAS.length);
 
@@ -77,7 +85,7 @@ test("侧栏导航和地址栏双向同步", async ({ page }) => {
   await expect(navigationItem(page, "Member Mgmt")).toHaveAttribute("aria-current", "page");
 });
 
-test("侧栏徽章显示已加载的成员、角色和邀请码统计", async ({ page, api }) => {
+test("侧栏徽章显示已加载的成员、角色和邀请链接统计", async ({ page, api }) => {
   const users = await readJson(await api.get("/api/users?page=1&limit=500"), "读取成员") as { total: number };
   const roles = await readJson(await api.get("/api/admin/roles"), "读取角色") as unknown[];
   const inviteStats = await readJson(await api.get("/api/admin/invite-links/stats"), "读取邀请统计") as { active: number };
@@ -94,7 +102,7 @@ test("Operations 入口在健康检查完成后给出可访问的状态", async 
     db: string; r2: string; ws: string; crons: string;
   };
   const operations = navigationItem(page, "Operations Overview");
-  const indicator = operations.getByRole("img");
+  const indicator = operations.locator(".app-nav-status");
 
   await expect(indicator).toHaveAccessibleName("Checking");
   await operations.click();

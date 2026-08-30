@@ -127,7 +127,7 @@ describe("AdminService mutations", () => {
   });
 
   it("createAdminInviteLink sends POST with payload", async () => {
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ id: "inv-1", code: "A1b2C3d4E5" }));
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ id: "inv-1", code: "A1B2C3D4E5" }));
     await createAdminInviteLink({ role_id: "member", max_uses: 10 });
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/invite-links");

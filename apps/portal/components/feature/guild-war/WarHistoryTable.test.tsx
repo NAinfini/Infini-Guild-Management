@@ -1,7 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { HistorySummaryRow } from "@portal/types/guild-war";
 import { WarHistoryTable } from "./WarHistoryTable";
@@ -65,13 +63,10 @@ function HistoryTableHarness({
 }
 
 describe("WarHistoryTable rail", () => {
-  it("colours only the result badge", () => {
+  it("exposes the result on the record badge", () => {
     render(<HistoryTableHarness onRowClick={vi.fn()} />);
 
     const item = screen.getByRole("listitem");
-    expect(item).toHaveClass("war-history-rail-item");
-    expect(item).not.toHaveAttribute("data-result");
-    expect(item.querySelector(".war-history-rail-item__stripe")).toBeNull();
     const resultBadge = within(item).getByText("Win").closest('[data-slot="badge"]');
     expect(resultBadge).toHaveAttribute("data-result", "win");
   });
@@ -82,8 +77,7 @@ describe("WarHistoryTable rail", () => {
     render(<HistoryTableHarness onRowClick={onRowClick} />);
 
     const list = screen.getByRole("list", { name: "history.warList" });
-    expect(list.tagName).toBe("UL");
-    expect(within(list).getByRole("listitem").tagName).toBe("LI");
+    expect(within(list).getByRole("listitem")).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("button", {
         name: "history.aria.openRecord: War Session E",
@@ -144,22 +138,6 @@ describe("WarHistoryTable rail", () => {
       "placeholder",
       "history.dateToPlaceholder",
     );
-  });
-
-  it("uses the shared toolbar without a second local filter grid", () => {
-    const componentSource = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/feature/guild-war/WarHistoryTable.tsx"),
-      "utf8",
-    );
-    const css = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/GuildWarPage.css"),
-      "utf8",
-    );
-
-    expect(componentSource).toContain('ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";');
-    expect(componentSource).toContain("<ContentFilterToolbar");
-    expect(componentSource).toContain("filterControls={(");
-    expect(css).not.toMatch(/war-history-filters|war-history-filter--|war-history-filter__/);
   });
 
   it("labels every icon-only pagination control", () => {

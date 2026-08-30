@@ -3,7 +3,10 @@ import { LIMITS } from "../config/limits";
 import {
   badgeAssignmentsCursorResponseSchema,
   badgeAssignmentsListQuerySchema,
+  assignBadgeResponseSchema,
   createMemberBadgeSchema,
+  reorderMemberBadgesSchema,
+  unassignBadgeResponseSchema,
   updateMemberBadgeSchema,
 } from "./badge";
 
@@ -40,11 +43,22 @@ describe("badge assignment pagination contract", () => {
 
 describe("badge write contracts", () => {
   it("allows PATCH to clear a description without widening create", () => {
-    expect(updateMemberBadgeSchema.parse({ description: null })).toEqual({ description: null });
+    expect(updateMemberBadgeSchema.safeParse({ description: null }).success).toBe(false);
+    expect(updateMemberBadgeSchema.parse({
+      description: null,
+      expected_updated_at: "2026-08-09T12:00:00.000Z",
+    })).toMatchObject({ expected_updated_at: "2026-08-09T12:00:00.000Z" });
     expect(createMemberBadgeSchema.safeParse({
       name: "Veteran",
       label_html: "Veteran",
       description: null,
     }).success).toBe(false);
+  });
+
+  it("returns aggregate revisions for assignment commands and requires the full reorder baseline", () => {
+    expect(assignBadgeResponseSchema.parse({ assigned: 1, updated_at: "2026-08-09T12:00:00.000Z" }))
+      .toMatchObject({ assigned: 1 });
+    expect(unassignBadgeResponseSchema.safeParse({ removed: 1 }).success).toBe(false);
+    expect(reorderMemberBadgesSchema.safeParse({ order: ["badge-1"] }).success).toBe(false);
   });
 });

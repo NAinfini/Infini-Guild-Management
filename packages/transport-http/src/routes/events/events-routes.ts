@@ -1,4 +1,4 @@
-import { AppError, type RequestContext } from "@guild/kernel";
+import { AppError, type PermissionId, type RequestContext } from "@guild/kernel";
 import type { EventsService } from "@guild/server/modules/events";
 import {
   createEventSchema,
@@ -9,6 +9,8 @@ import {
   updateEventSchema,
   updateTemplateSchema,
 } from "@guild/shared";
+import { PERMISSION_ID } from "@guild/shared/constants/roles";
+import { LIMITS, MAX_OFFSET_PAGE } from "@guild/shared/config/limits";
 import { Hono } from "hono";
 import { z } from "zod";
 import { parseFormData, parseJsonBody, type ParsedMultipartForm } from "../../core/parsing.js";
@@ -42,8 +44,8 @@ export function createEventsRoutes(dependencies: EventsRouteDependencies): Hono<
   routes.get("/", async (context) => {
     const request = requestContext(context);
     return context.json(presentEventList(await dependencies.service.list(request, {
-      page: integerQuery(context.req.query("page"), 1),
-      limit: integerQuery(context.req.query("limit"), 20),
+      page: integerQuery(context.req.query("page"), 1, MAX_OFFSET_PAGE, "page"),
+      limit: integerQuery(context.req.query("limit"), 20, LIMITS.pagination.events, "limit"),
       ...(context.req.query("type") ? { type: context.req.query("type")! } : {}),
       ...optionalBooleanQuery("archived", context.req.query("archived")),
       ...optionalBooleanQuery("pinned", context.req.query("pinned")),
@@ -70,19 +72,31 @@ export function createEventsRoutes(dependencies: EventsRouteDependencies): Hono<
 
   routes.post("/templates", async (context) => {
     const request = requestContext(context);
-    const parsed = createTemplateSchema.safeParse(await jsonBody(context.req.raw));
+    const { body, uploaded } = await imageMutationBody(
+      context.req.raw, request, PERMISSION_ID.EVENTS_TEMPLATES, dependencies.stageEventImages,
+    );
+    const parsed = createTemplateSchema.safeParse(body);
     if (!parsed.success) throw invalidPayload("Invalid template payload", parsed.error.flatten());
-    return context.json(presentTemplate(await dependencies.service.createTemplate(request, parsed.data)), 201);
+    const input = uploaded.length === 0
+      ? parsed.data
+      : { ...parsed.data, attachments: [...(parsed.data.attachments ?? []), ...uploaded] };
+    return context.json(presentTemplate(await dependencies.service.createTemplate(request, input)), 201);
   });
 
   routes.patch("/templates/:id", async (context) => {
     const request = requestContext(context);
-    const parsed = updateTemplateSchema.safeParse(await jsonBody(context.req.raw));
+    const { body, uploaded } = await imageMutationBody(
+      context.req.raw, request, PERMISSION_ID.EVENTS_TEMPLATES, dependencies.stageEventImages,
+    );
+    const parsed = updateTemplateSchema.safeParse(body);
     if (!parsed.success) throw invalidPayload("Invalid template update payload", parsed.error.flatten());
+    const input = uploaded.length === 0
+      ? parsed.data
+      : { ...parsed.data, attachments: [...(parsed.data.attachments ?? []), ...uploaded] };
     return context.json(presentTemplate(await dependencies.service.updateTemplate(
       request,
       context.req.param("id"),
-      parsed.data,
+      input,
     )));
   });
 
@@ -106,27 +120,9 @@ export function createEventsRoutes(dependencies: EventsRouteDependencies): Hono<
 
   routes.post("/", async (context) => {
     const request = requestContext(context);
-    const contentType = context.req.header("content-type") ?? "";
-    let body: unknown;
-    let uploaded: readonly string[] = [];
-    if (contentType.includes("multipart/form-data")) {
-      let form: ParsedMultipartForm;
-      try {
-        form = await parseFormData(context.req.raw);
-      } catch (cause) {
-        throw invalidPayload("Invalid or missing form data", undefined, cause);
-      }
-      const raw = form.get("data");
-      if (typeof raw !== "string" || !raw.trim()) throw invalidPayload("Missing data payload");
-      try {
-        body = JSON.parse(raw);
-      } catch (cause) {
-        throw invalidPayload("Invalid JSON body", undefined, cause);
-      }
-      uploaded = await dependencies.stageEventImages(request, form);
-    } else {
-      body = await jsonBody(context.req.raw);
-    }
+    const { body, uploaded } = await imageMutationBody(
+      context.req.raw, request, PERMISSION_ID.EVENTS_CREATE, dependencies.stageEventImages,
+    );
     const parsed = createEventSchema.safeParse(body);
     if (!parsed.success) throw invalidPayload("Invalid create event payload", parsed.error.flatten());
     const input = uploaded.length === 0
@@ -142,9 +138,15 @@ export function createEventsRoutes(dependencies: EventsRouteDependencies): Hono<
 
   routes.patch("/:id", async (context) => {
     const request = requestContext(context);
-    const parsed = updateEventSchema.safeParse(await jsonBody(context.req.raw));
+    const { body, uploaded } = await imageMutationBody(
+      context.req.raw, request, PERMISSION_ID.EVENTS_EDIT, dependencies.stageEventImages,
+    );
+    const parsed = updateEventSchema.safeParse(body);
     if (!parsed.success) throw invalidPayload("Invalid update event payload", parsed.error.flatten());
-    return context.json(presentEvent(await dependencies.service.update(request, context.req.param("id"), parsed.data)));
+    const input = uploaded.length === 0
+      ? parsed.data
+      : { ...parsed.data, attachments: [...(parsed.data.attachments ?? []), ...uploaded] };
+    return context.json(presentEvent(await dependencies.service.update(request, context.req.param("id"), input)));
   });
 
   routes.delete("/:id", async (context) => {
@@ -161,16 +163,18 @@ export function createEventsRoutes(dependencies: EventsRouteDependencies): Hono<
 
   routes.post("/:id/images", async (context) => {
     const request = requestContext(context);
+    request.authorization.require(PERMISSION_ID.EVENTS_EDIT);
     let form: ParsedMultipartForm;
     try {
       form = await parseFormData(context.req.raw);
     } catch (cause) {
       throw invalidPayload("Invalid or missing form data", undefined, cause);
     }
+    const revision = z.string().datetime().safeParse(form.get("expected_updated_at"));
+    if (!revision.success) throw invalidPayload("Invalid or missing event revision", revision.error.flatten());
     const mediaIds = await dependencies.stageEventImages(request, form);
-    return context.json(presentEventMediaIds(
-      await dependencies.service.uploadImages(request, context.req.param("id"), mediaIds),
-    ), 201);
+    const uploaded = await dependencies.service.uploadImages(request, context.req.param("id"), mediaIds, revision.data);
+    return context.json(presentEventMediaIds(uploaded.mediaIds, uploaded.updatedAt), 201);
   });
 
   routes.post("/:id/join", async (context) => {
@@ -218,12 +222,43 @@ export function createEventsRoutes(dependencies: EventsRouteDependencies): Hono<
   return routes;
 }
 
+async function imageMutationBody(
+  rawRequest: Request,
+  context: RequestContext,
+  permission: PermissionId,
+  stageImages: EventsRouteDependencies["stageEventImages"],
+): Promise<{ body: unknown; uploaded: readonly string[] }> {
+  if (!rawRequest.headers.get("content-type")?.includes("multipart/form-data")) {
+    return { body: await jsonBody(rawRequest), uploaded: [] };
+  }
+  context.authorization.require(permission);
+  let form: ParsedMultipartForm;
+  try {
+    form = await parseFormData(rawRequest);
+  } catch (cause) {
+    throw invalidPayload("Invalid or missing form data", undefined, cause);
+  }
+  const raw = form.get("data");
+  if (typeof raw !== "string" || !raw.trim()) throw invalidPayload("Missing data payload");
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch (cause) {
+    throw invalidPayload("Invalid JSON body", undefined, cause);
+  }
+  return { body, uploaded: await stageImages(context, form) };
+}
+
 async function jsonBody(request: Request): Promise<unknown> {
   return parseJsonBody(request, z.unknown(), "Invalid JSON body");
 }
 
-function integerQuery(value: string | undefined, fallback: number): number {
-  return value === undefined ? fallback : Number(value);
+function integerQuery(value: string | undefined, fallback: number, maximum: number, name: string): number {
+  const parsed = value === undefined ? fallback : Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw invalidPayload(`${name} must be an integer between 1 and ${maximum}`);
+  }
+  return parsed;
 }
 
 function optionalBooleanQuery(key: "archived" | "pinned" | "locked", value: string | undefined) {

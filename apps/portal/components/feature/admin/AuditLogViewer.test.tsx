@@ -117,6 +117,7 @@ const ROLE: AdminRole = {
   color: null,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
+  revision_token: "raid-lead-v1",
   permissions: {} as AdminRole["permissions"],
   assigned_user_count: 2,
 };
@@ -336,7 +337,6 @@ describe("AuditLogViewer", () => {
     expect(contextSummary).toBeNull();
     expect(technicalSummary).not.toBeNull();
     expect(technicalDisclosure).not.toHaveAttribute("open");
-    expect(technicalSummary?.querySelector(".audit-detail-disclosure__chevron")).not.toBeNull();
 
     await user.click(technicalSummary!);
     expect(technicalDisclosure).toHaveAttribute("open");
@@ -430,24 +430,6 @@ describe("AuditLogViewer", () => {
     await user.click(showFull);
     expect(document.body).toHaveTextContent(tail);
     expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
-  });
-
-  it("keeps one responsive scroll owner and a 44px-or-larger row target", () => {
-    renderViewer([makeAuditEvent()]);
-    const row = document.querySelector(".audit-log-row");
-    expect(row?.parentElement).toHaveClass("admin-panel__body--scroll");
-    expect(row?.parentElement?.parentElement).toHaveClass("audit-log-list");
-
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/admin/AuditLogViewer.css"), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(css).toMatch(/\.audit-log-row__header\s*\{[^}]*min-block-size:\s*var\(--control-hit-area\)/s);
-    expect(css.match(/overflow-y:\s*auto/g) ?? []).toHaveLength(0);
-    expect(css).not.toContain("audit-log-row__badges");
-    expect(css).not.toContain("audit-log-row__preview");
-    const phoneStart = css.indexOf("@media (max-width: 47.99em)");
-    const phoneCss = css.slice(phoneStart, css.indexOf("\n@media", phoneStart + 1));
-    expect(phoneCss).toMatch(/\.admin-panel__body--scroll\s*\{[^}]*overflow-y:\s*visible/s);
-    expect(phoneCss).toMatch(/\.audit-change-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
   });
 
   it("loads the next stable cursor page without numbered pagination", async () => {

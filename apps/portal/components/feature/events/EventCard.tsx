@@ -53,7 +53,7 @@ type EventCardProps = {
   onTogglePinEvent: (event: Event) => void;
   onToggleLockEvent: (event: Event) => void;
   onArchiveEvent: (eventId: string) => void;
-  onUnarchiveEvent: (eventId: string) => void;
+  onUnarchiveEvent: (event: Event) => void;
   onDeleteEvent: (event: Event) => void;
 };
 
@@ -192,7 +192,7 @@ export function EventCard({
           <DropdownMenuItem
             onClick={() => {
               if (event.archived_at) {
-                onUnarchiveEvent(event.id);
+                onUnarchiveEvent(event);
                 return;
               }
               void requestArchiveEvent();

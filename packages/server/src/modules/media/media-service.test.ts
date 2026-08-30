@@ -26,6 +26,7 @@ const facts: MediaReadFacts = {
   mediaType: "image",
   originalName: null,
   entityTypes: [],
+  contentReadable: false,
   audience: "public",
 };
 
@@ -49,6 +50,10 @@ describe("MediaService reads", () => {
     });
 
     expect(describeRead).toHaveBeenCalledOnce();
+    expect(describeRead).toHaveBeenCalledWith("media-1", "view", NOW, {
+      announcement: { kind: "public" },
+      wikiArticle: { kind: "public" },
+    });
     expect(get).toHaveBeenCalledOnce();
     expect(get).toHaveBeenCalledWith(metadata.key, { offset: 2, length: 4 });
     expect(head).not.toHaveBeenCalled();
@@ -122,7 +127,7 @@ describe("MediaService reads", () => {
 
     const authenticated = mediaService({ audience: "authenticated" }, { head });
     await expect(authenticated.service.head(authenticatedContext(), "media-1", "view"))
-      .resolves.toEqual({ metadata, audience: "authenticated" });
+      .resolves.toEqual({ metadata, audience: "authenticated", entityTypes: [] });
   });
 
   it("rejects private media before touching BlobStore", async () => {
@@ -135,10 +140,62 @@ describe("MediaService reads", () => {
     expect(head).not.toHaveBeenCalled();
     expect(get).not.toHaveBeenCalled();
   });
+
+  it("uses parent content scope instead of create permission or upload ownership for private content", async () => {
+    const head = vi.fn().mockResolvedValue(metadata);
+    const otherAuthor = mediaService({
+      audience: "private",
+      ownerUserId: "author-b",
+      entityTypes: ["announcement"],
+      contentReadable: false,
+    }, { head });
+    await expect(otherAuthor.service.head(
+      authenticatedContext("author-a", ["announcements.create"]),
+      "media-1",
+      "view",
+    )).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(otherAuthor.describeRead).toHaveBeenCalledWith("media-1", "view", NOW, {
+      announcement: { kind: "owned", ownerUserId: "author-a" },
+      wikiArticle: { kind: "public" },
+    });
+
+    const ownContent = mediaService({
+      audience: "private",
+      ownerUserId: "author-b",
+      entityTypes: ["announcement"],
+      contentReadable: true,
+    }, { head });
+    await expect(ownContent.service.head(
+      authenticatedContext("author-a", ["announcements.create"]),
+      "media-1",
+      "view",
+    )).resolves.toEqual({ metadata, audience: "private", entityTypes: ["announcement"] });
+
+    const revokedCreator = mediaService({
+      audience: "private",
+      ownerUserId: "author-a",
+      entityTypes: ["announcement"],
+      contentReadable: false,
+    }, { head });
+    await expect(revokedCreator.service.head(authenticatedContext("author-a"), "media-1", "view"))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const manager = mediaService({
+      audience: "private",
+      ownerUserId: "author-b",
+      entityTypes: ["announcement"],
+      contentReadable: true,
+    }, { head });
+    await expect(manager.service.head(
+      authenticatedContext("manager", ["announcements.edit"]),
+      "media-1",
+      "view",
+    )).resolves.toEqual({ metadata, audience: "private", entityTypes: ["announcement"] });
+  });
 });
 
 describe("MediaService uploads", () => {
-  it("stages a validated PDF announcement attachment as one full file variant", async () => {
+  it("stages any announcement attachment as an opaque full file variant", async () => {
     const reserveUploads = vi.fn().mockResolvedValue(undefined);
     const markStaged = vi.fn().mockResolvedValue(undefined);
     const putIfAbsent = vi.fn(async (key: string, input: Parameters<BlobStore["putIfAbsent"]>[1]) => ({
@@ -153,19 +210,35 @@ describe("MediaService uploads", () => {
       { reserveUploads, markStaged } as unknown as MediaStore,
       { putIfAbsent } as unknown as BlobStore,
     );
-    const bytes = new TextEncoder().encode("%PDF-1.7");
+    const bytes = new Uint8Array([0x00, 0x01, 0x02, 0xff]);
 
     const attachment = await service.uploadAnnouncementAttachment(authenticatedContext(), {
       bytes,
-      originalName: "Guild guide.pdf",
-      contentType: "application/pdf",
+      originalName: "Guild strategy.pack",
+      contentType: "application/x-guild-pack",
     }, 1_024);
 
-    expect(attachment).toMatchObject({ name: "Guild guide.pdf", content_type: "application/pdf", byte_size: bytes.byteLength });
+    expect(attachment).toMatchObject({
+      name: "Guild strategy.pack",
+      content_type: "application/octet-stream",
+      byte_size: bytes.byteLength,
+    });
     const reservation = reserveUploads.mock.calls[0]?.[0][0];
-    expect(reservation).toMatchObject({ purpose: "announcement_attachment", mediaType: "file", originalName: "Guild guide.pdf" });
-    expect(reservation.variants).toEqual([expect.objectContaining({ variant: "full", contentType: "application/pdf", width: null, height: null })]);
-    expect(putIfAbsent).toHaveBeenCalledWith(expect.stringMatching(/\/full\.pdf$/), expect.objectContaining({ contentType: "application/pdf" }));
+    expect(reservation).toMatchObject({
+      purpose: "announcement_attachment",
+      mediaType: "file",
+      originalName: "Guild strategy.pack",
+    });
+    expect(reservation.variants).toEqual([expect.objectContaining({
+      variant: "full",
+      contentType: "application/octet-stream",
+      width: null,
+      height: null,
+    })]);
+    expect(putIfAbsent).toHaveBeenCalledWith(
+      expect.stringMatching(/\/full\.bin$/),
+      expect.objectContaining({ contentType: "application/octet-stream" }),
+    );
   });
 
   it("reserves and stages one batch while writing immutable objects sequentially", async () => {
@@ -203,8 +276,9 @@ describe("MediaService uploads", () => {
 
     expect(ids).toHaveLength(3);
     expect(reserveUploads).toHaveBeenCalledOnce();
-    expect(reserveUploads.mock.calls[0]).toHaveLength(1);
+    expect(reserveUploads.mock.calls[0]).toHaveLength(2);
     expect(reserveUploads.mock.calls[0]?.[0]).toHaveLength(3);
+    expect(reserveUploads.mock.calls[0]?.[1]).toBe("request-media-upload");
     expect(putIfAbsent).toHaveBeenCalledTimes(6);
     expect(maxActive).toBe(1);
     expect(markStaged).toHaveBeenCalledOnce();
@@ -290,6 +364,7 @@ describe("MediaService garbage collection", () => {
         message: "Media garbage collection deleted 2 item(s) and failed 1: media-2",
       });
 
+    expect(claimGarbage).toHaveBeenCalledWith(NOW, 10);
     expect(deleteObjects).toHaveBeenCalledTimes(3);
     expect(finalizeDeletion).toHaveBeenCalledTimes(2);
     expect(finalizeDeletion.mock.calls.map(([mediaId]) => mediaId)).toEqual(["media-1", "media-3"]);
@@ -313,15 +388,15 @@ function anonymousContext() {
   });
 }
 
-function authenticatedContext() {
+function authenticatedContext(userId = "owner-1", permissions: readonly string[] = []) {
   return createRequestContext({
     requestId: "request-media-upload",
     authorization: createAuthorizationContext({
-      userId: "owner-1",
+      userId,
       sessionId: "session-1",
       roleId: "member",
       roleLevel: 1,
-      permissions: new Set(),
+      permissions,
     }),
     now: NOW,
   });
@@ -337,11 +412,8 @@ function stream(value: string): ReadableStream<Uint8Array> {
 }
 
 function minimalWebP(): Uint8Array {
-  const bytes = new Uint8Array(26);
-  bytes.set(new TextEncoder().encode("RIFF"), 0);
-  new DataView(bytes.buffer).setUint32(4, bytes.byteLength - 8, true);
-  bytes.set(new TextEncoder().encode("WEBPVP8L"), 8);
-  new DataView(bytes.buffer).setUint32(16, 5, true);
-  bytes[20] = 0x2f;
-  return bytes;
+  return Uint8Array.from(
+    atob("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=="),
+    (value) => value.charCodeAt(0),
+  );
 }

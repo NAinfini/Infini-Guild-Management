@@ -1,15 +1,18 @@
 import { AppError, type RequestContext } from "@guild/kernel";
 import type {
+  ClassIconUpdate,
+  ClassIconMutationSnapshot,
   MemberMediaPort,
   MemberMediaRecord,
 } from "@guild/server/modules/members";
 import type { MediaService } from "@guild/server/modules/media";
 import { LIMITS } from "@guild/shared/config/limits";
+import { memberProfileMediaRevisionToken } from "@guild/shared";
 import type { AuditEventWrite as AuditMutation } from "@guild/server/modules/audit";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlRow, SqlValue } from "@guild/kernel";
 import { auditInsertSelectStatement, auditInsertStatement } from "./audit-statement.js";
 import { assertMediaAttachments, replaceMediaLinksStatements } from "./media-link-statements.js";
-import { returnedRowCount } from "./sql-result.js";
+import { returnedRowCount, returnedRows } from "./sql-result.js";
 
 const READ_CHUNK_SIZE = 100;
 
@@ -73,6 +76,7 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
     userId: string,
     uploads: Parameters<MemberMediaPort["uploadProfileImages"]>[2],
     audit: AuditMutation,
+    expectedProfileRevisionToken: string,
   ): Promise<readonly string[]> {
     const actor = context.authorization.requireAuthenticated();
     const limits = validLimits(await this.getLimits());
@@ -103,11 +107,12 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
       slot: "image",
       audience: "public",
       mediaIds: desired,
-    }, memberGuard(userId));
+    }, memberGuard(userId, expectedProfileRevisionToken));
     const results = await this.sql.batch([
       ...business,
-      auditInsertStatement(audit, memberGuard(userId)),
-      operationOutcome(audit.eventId),
+      auditInsertStatement(audit, memberGuard(userId, expectedProfileRevisionToken)),
+      advanceMemberProfileRevision(context, userId, audit.eventId, expectedProfileRevisionToken),
+      profileRevisionOutcome(userId, audit.eventId, expectedProfileRevisionToken),
     ]);
     if (returnedRowCount(results.at(-1)) !== 1) throw targetChanged();
     return uploaded;
@@ -118,22 +123,27 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
     userId: string,
     mediaIds: readonly string[],
     audit: AuditMutation,
+    expectedProfileRevisionToken: string,
   ): Promise<number> {
     context.authorization.requireAuthenticated();
     const ids = uniqueBounded(mediaIds, LIMITS.content.profileImagesDeleteBatch.max, "Profile image delete", false);
     const results = await this.sql.batch([
-      profileImageDeletionAuditStatement(audit, userId, ids),
+      profileImageDeletionAuditStatement(audit, userId, ids, expectedProfileRevisionToken),
       {
         method: "all",
         sql: `DELETE FROM media_links
           WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = 'image'
             AND media_id IN (${placeholders(ids)})
             AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
+            AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)
           RETURNING media_id AS media_id`,
-        params: [userId, ...ids, audit.eventId],
+        params: [userId, ...ids, audit.eventId, userId, expectedProfileRevisionToken],
         columns: ["media_id"],
       },
+      advanceMemberProfileRevision(context, userId, audit.eventId, expectedProfileRevisionToken),
+      profileRevisionOutcome(userId, audit.eventId, expectedProfileRevisionToken),
     ]);
+    if (returnedRowCount(results.at(-1)) !== 1) throw targetChanged();
     return returnedRowCount(results[1]);
   }
 
@@ -142,16 +152,22 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
     userId: string,
     upload: Parameters<MemberMediaPort["uploadAvatar"]>[2],
     audit: AuditMutation,
+    expectedProfileRevisionToken: string,
   ): Promise<string> {
     const limits = validLimits(await this.getLimits());
     const [mediaId] = await this.media.uploadImages(context, "member_avatar", [upload], limits.maxProfileImageBytes);
     if (!mediaId) throw corrupt("Avatar upload returned no media");
-    await this.replaceSingle(context, userId, "avatar", "member_avatar", mediaId, audit);
+    await this.replaceSingle(context, userId, "avatar", "member_avatar", mediaId, audit, expectedProfileRevisionToken);
     return mediaId;
   }
 
-  deleteAvatar(context: RequestContext, userId: string, audit: AuditMutation): Promise<void> {
-    return this.deleteMemberSlot(context, userId, "avatar", audit);
+  deleteAvatar(
+    context: RequestContext,
+    userId: string,
+    audit: AuditMutation,
+    expectedProfileRevisionToken: string,
+  ): Promise<boolean> {
+    return this.deleteMemberSlot(context, userId, "avatar", audit, expectedProfileRevisionToken);
   }
 
   async uploadAudio(
@@ -159,23 +175,30 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
     userId: string,
     upload: Parameters<MemberMediaPort["uploadAudio"]>[2],
     audit: AuditMutation,
+    expectedProfileRevisionToken: string,
   ): Promise<string> {
     const limits = validLimits(await this.getLimits());
     const mediaId = await this.media.uploadAudio(context, upload, limits.maxProfileAudioBytes);
-    await this.replaceSingle(context, userId, "audio", "member_audio", mediaId, audit);
+    await this.replaceSingle(context, userId, "audio", "member_audio", mediaId, audit, expectedProfileRevisionToken);
     return mediaId;
   }
 
-  deleteAudio(context: RequestContext, userId: string, audit: AuditMutation): Promise<void> {
-    return this.deleteMemberSlot(context, userId, "audio", audit);
+  deleteAudio(
+    context: RequestContext,
+    userId: string,
+    audit: AuditMutation,
+    expectedProfileRevisionToken: string,
+  ): Promise<boolean> {
+    return this.deleteMemberSlot(context, userId, "audio", audit, expectedProfileRevisionToken);
   }
 
   async uploadClassIcon(
     context: RequestContext,
     classId: string,
     upload: Parameters<MemberMediaPort["uploadClassIcon"]>[2],
+    update: ClassIconUpdate,
     audit: AuditMutation,
-  ): Promise<string> {
+  ): Promise<ClassIconMutationSnapshot> {
     const actor = context.authorization.requireAuthenticated();
     const limits = validLimits(await this.getLimits());
     const [mediaId] = await this.media.uploadImages(context, "class_icon", [upload], limits.maxClassIconBytes);
@@ -199,33 +222,39 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
       mediaIds: [mediaId],
     }, operationGuard);
     const results = await this.sql.batch([
-      auditInsertStatement(audit, classGuard(classId)),
+      auditInsertStatement(audit, classGuard(classId, update.expectedUpdatedAt)),
       {
         method: "run",
         sql: `UPDATE class_catalog SET icon_type = 'image', vector_icon = NULL, updated_at = ?
-          WHERE id = ? AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
-        params: [context.now, classId, audit.eventId],
+          WHERE id = ? AND updated_at = ? AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
+        params: [update.updatedAt, classId, update.expectedUpdatedAt, audit.eventId],
       },
       ...business,
       operationOutcome(audit.eventId),
+      classIconMutationSnapshot(classId),
     ]);
-    if (returnedRowCount(results.at(-1)) !== 1) throw targetChanged();
-    return mediaId;
+    if (returnedRowCount(results.at(-2)) !== 1) throw targetChanged();
+    return readClassIconMutationSnapshot(results.at(-1));
   }
 
-  async deleteClassIcon(context: RequestContext, classId: string, audit: AuditMutation): Promise<void> {
+  async deleteClassIcon(
+    context: RequestContext,
+    classId: string,
+    update: ClassIconUpdate,
+    audit: AuditMutation,
+  ): Promise<ClassIconMutationSnapshot> {
     context.authorization.requireAuthenticated();
     const operationGuard = auditGuard(audit.eventId);
     const results = await this.sql.batch([
       auditInsertStatement(audit, {
-        sql: "SELECT 1 FROM class_catalog WHERE id = ? AND icon_type = 'image'",
-        params: [classId],
+        sql: "SELECT 1 FROM class_catalog WHERE id = ? AND icon_type = 'image' AND updated_at = ?",
+        params: [classId, update.expectedUpdatedAt],
       }),
       {
         method: "run",
         sql: `UPDATE class_catalog SET icon_type = 'vector', vector_icon = 'sword', updated_at = ?
-          WHERE id = ? AND icon_type = 'image' AND EXISTS (${operationGuard.sql})`,
-        params: [context.now, classId, ...operationGuard.params],
+          WHERE id = ? AND icon_type = 'image' AND updated_at = ? AND EXISTS (${operationGuard.sql})`,
+        params: [update.updatedAt, classId, update.expectedUpdatedAt, ...operationGuard.params],
       },
       {
         method: "run",
@@ -235,8 +264,10 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
         params: [classId, ...operationGuard.params],
       },
       operationOutcome(audit.eventId),
+      classIconMutationSnapshot(classId),
     ]);
-    if (returnedRowCount(results.at(-1)) !== 1) throw targetChanged();
+    if (returnedRowCount(results.at(-2)) !== 1) throw targetChanged();
+    return readClassIconMutationSnapshot(results.at(-1));
   }
 
   async listClassIcons(classIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
@@ -263,6 +294,7 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
     purpose: "member_avatar" | "member_audio",
     mediaId: string,
     audit: AuditMutation,
+    expectedProfileRevisionToken: string,
   ): Promise<void> {
     const actor = context.authorization.requireAuthenticated();
     await assertMediaAttachments(this.sql, {
@@ -275,7 +307,7 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
       mediaIds: [mediaId],
       maxItems: 1,
     });
-    const guard = memberGuard(userId);
+    const guard = memberGuard(userId, expectedProfileRevisionToken);
     const business = replaceMediaLinksStatements({
       entityType: "member_profile",
       entityId: userId,
@@ -286,7 +318,8 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
     const results = await this.sql.batch([
       ...business,
       auditInsertStatement(audit, guard),
-      operationOutcome(audit.eventId),
+      advanceMemberProfileRevision(context, userId, audit.eventId, expectedProfileRevisionToken),
+      profileRevisionOutcome(userId, audit.eventId, expectedProfileRevisionToken),
     ]);
     if (returnedRowCount(results.at(-1)) !== 1) throw targetChanged();
   }
@@ -296,22 +329,31 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
     userId: string,
     slot: "avatar" | "audio",
     audit: AuditMutation,
-  ): Promise<void> {
+    expectedProfileRevisionToken: string,
+  ): Promise<boolean> {
     context.authorization.requireAuthenticated();
-    await this.sql.batch([
+    const results = await this.sql.batch([
       auditInsertStatement(audit, {
         sql: `SELECT 1 FROM media_links
-          WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = ?`,
-        params: [userId, slot],
+          WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = ?
+            AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)`,
+        params: [userId, slot, userId, expectedProfileRevisionToken],
       }),
       {
-        method: "run",
+        method: "all",
         sql: `DELETE FROM media_links
           WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = ?
-            AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
-        params: [userId, slot, audit.eventId],
+            AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
+            AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)
+          RETURNING 1 AS applied`,
+        params: [userId, slot, audit.eventId, userId, expectedProfileRevisionToken],
+        columns: ["applied"],
       },
+      advanceMemberProfileRevision(context, userId, audit.eventId, expectedProfileRevisionToken),
+      profileRevisionOutcome(userId, audit.eventId, expectedProfileRevisionToken),
     ]);
+    if (returnedRowCount(results.at(-1)) !== 1) throw targetChanged();
+    return returnedRowCount(results[1]) === 1;
   }
 }
 
@@ -345,6 +387,7 @@ function profileImageDeletionAuditStatement(
   audit: AuditMutation,
   userId: string,
   mediaIds: readonly string[],
+  expectedProfileRevisionToken: string,
 ): SqlBatchStatement {
   return auditInsertSelectStatement(
     `WITH matched AS (
@@ -362,7 +405,8 @@ function profileImageDeletionAuditStatement(
            'value', json_object('type', 'number', 'value', (SELECT count(*) FROM matched))
          )
        ), ?
-     WHERE EXISTS (SELECT 1 FROM matched)`,
+     WHERE EXISTS (SELECT 1 FROM matched)
+       AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)`,
     [
       userId,
       ...mediaIds,
@@ -379,6 +423,8 @@ function profileImageDeletionAuditStatement(
       audit.action,
       JSON.stringify(audit.payload),
       audit.occurredAt,
+      userId,
+      expectedProfileRevisionToken,
     ],
   );
 }
@@ -387,16 +433,22 @@ function placeholders(values: readonly unknown[]): string {
   return values.map(() => "?").join(", ");
 }
 
-function memberGuard(userId: string) {
-  return { sql: "SELECT 1 FROM member_profiles WHERE user_id = ?", params: [userId] } as const;
+function memberGuard(userId: string, expectedProfileRevisionToken: string) {
+  return {
+    sql: "SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?",
+    params: [userId, expectedProfileRevisionToken],
+  } as const;
 }
 
 function auditGuard(auditId: string) {
   return { sql: "SELECT 1 FROM audit_log WHERE id = ?", params: [auditId] } as const;
 }
 
-function classGuard(classId: string) {
-  return { sql: "SELECT 1 FROM class_catalog WHERE id = ?", params: [classId] } as const;
+function classGuard(classId: string, expectedUpdatedAt: string) {
+  return {
+    sql: "SELECT 1 FROM class_catalog WHERE id = ? AND updated_at = ?",
+    params: [classId, expectedUpdatedAt],
+  } as const;
 }
 
 function operationOutcome(auditId: string): SqlBatchStatement {
@@ -405,6 +457,82 @@ function operationOutcome(auditId: string): SqlBatchStatement {
     columns: ["applied"],
     sql: "SELECT 1 AS applied FROM audit_log WHERE id = ?",
     params: [auditId],
+  };
+}
+
+function classIconMutationSnapshot(classId: string): SqlBatchStatement {
+  return {
+    method: "get",
+    columns: ["icon_type", "vector_icon", "updated_at", "icon_media_id"],
+    sql: `SELECT classes.icon_type, classes.vector_icon, classes.updated_at,
+      (
+        SELECT media_id FROM media_links
+        WHERE entity_type = 'class_catalog' AND entity_id = classes.id AND slot = 'icon'
+        ORDER BY sort_order, media_id LIMIT 1
+      ) AS icon_media_id
+      FROM class_catalog AS classes WHERE classes.id = ?`,
+    params: [classId],
+  };
+}
+
+function readClassIconMutationSnapshot(result: SqlResult | undefined): ClassIconMutationSnapshot {
+  const rows = returnedRows(result);
+  if (rows.length !== 1) throw corrupt("Class icon mutation returned no class snapshot");
+  const [iconType, vectorIcon, updatedAt, iconMediaId] = rows[0] ?? [];
+  if (iconType === "image" && vectorIcon === null && typeof updatedAt === "string" && typeof iconMediaId === "string") {
+    return { iconType, vectorIcon: null, updatedAt, iconMediaId };
+  }
+  if (iconType === "vector" && typeof vectorIcon === "string" && typeof updatedAt === "string" && iconMediaId === null) {
+    return {
+      iconType,
+      vectorIcon: vectorIcon as ClassIconMutationSnapshot["vectorIcon"],
+      updatedAt,
+      iconMediaId: null,
+    };
+  }
+  throw corrupt("Class icon mutation returned an invalid class snapshot");
+}
+
+/**
+ * The profile is the aggregate root for its media links. Prefixing the audit
+ * UUID keeps the database's minimum-token invariant true for focused tests
+ * that deliberately use short deterministic audit ids.
+ */
+function advanceMemberProfileRevision(
+  context: RequestContext,
+  userId: string,
+  auditId: string,
+  expectedProfileRevisionToken: string,
+): SqlBatchStatement {
+  return {
+    method: "run",
+    sql: `UPDATE member_profiles
+      SET updated_at = ?, revision_token = ?
+      WHERE user_id = ? AND revision_token = ? AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
+    params: [context.now, memberProfileMediaRevisionToken(auditId), userId, expectedProfileRevisionToken, auditId],
+  };
+}
+
+function profileRevisionOutcome(
+  userId: string,
+  auditId: string,
+  expectedProfileRevisionToken: string,
+): SqlBatchStatement {
+  return {
+    method: "get",
+    columns: ["applied"],
+    sql: `SELECT 1 AS applied FROM member_profiles
+      WHERE user_id = ? AND (
+        (revision_token = ? AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?))
+        OR (revision_token = ? AND NOT EXISTS (SELECT 1 FROM audit_log WHERE id = ?))
+      )`,
+    params: [
+      userId,
+      memberProfileMediaRevisionToken(auditId),
+      auditId,
+      expectedProfileRevisionToken,
+      auditId,
+    ],
   };
 }
 

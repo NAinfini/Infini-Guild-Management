@@ -41,7 +41,7 @@ type EventCardsViewProps = {
   onTogglePinEvent: (event: Event) => void;
   onToggleLockEvent: (event: Event) => void;
   onArchiveEvent: (eventId: string) => void;
-  onUnarchiveEvent: (eventId: string) => void;
+  onUnarchiveEvent: (event: Event) => void;
   onDeleteEvent: (event: Event) => void;
   onOpenEvent: (event: Event) => void;
 };

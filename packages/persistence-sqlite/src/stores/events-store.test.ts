@@ -2,16 +2,16 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
+import { MAX_SQL_BATCH_STATEMENTS, createAuthorizationContext, createRequestContext } from "@guild/kernel";
 import { createAuditEvent, type AuditEventWrite } from "@guild/server/modules/audit";
-import { type TemplateCreateWrite } from "@guild/server/modules/events";
+import type { EventUpdateWrite, TemplateCreateWrite, TemplateUpdateWrite } from "@guild/server/modules/events";
 import {
   createSchedulerAuditFactory,
   ScheduledRaffleAutoDrawJob,
 } from "@guild/server/modules/jobs";
 import { LIMITS } from "@guild/shared";
 import { createAppDatabase } from "../database.js";
-import type { SqlExecutor, SqlStatement } from "@guild/kernel";
+import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlStatement } from "@guild/kernel";
 import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteEventMediaPort, SqliteEventsStore } from "./events-store.js";
 import { SqliteRaffleAutoDrawStore } from "./scheduled-job-store.js";
@@ -130,6 +130,28 @@ const RENDERED_EVENT_INVARIANTS = EVENT_INVARIANTS.replaceAll(
   String(LIMITS.content.eventParticipantsPerEvent.max),
 );
 
+class RejectSnapshotExecutor implements SqlExecutor {
+  constructor(
+    private readonly delegate: SqliteTestExecutor,
+    private readonly rejects: (statement: SqlBatchStatement) => boolean,
+  ) {}
+
+  async execute(statement: SqlStatement): Promise<SqlResult> {
+    return this.delegate.execute(statement);
+  }
+
+  async batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
+    return this.delegate.batch(statements.map((statement): SqlBatchStatement => this.rejects(statement)
+      ? {
+          method: "all",
+          columns: ["snapshot_failure"],
+          sql: "SELECT missing_event_snapshot_column",
+          params: [],
+        }
+      : statement));
+  }
+}
+
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
 });
@@ -191,6 +213,19 @@ function eventAudit(requestId: string, eventId: string, action: "create" | "raff
     subjectId: eventId,
     subjectLabel: eventId,
     action,
+  });
+}
+
+function updateAudit(
+  requestId: string,
+  subjectType: "event" | "recurring_template",
+  subjectId: string,
+): AuditEventWrite {
+  return createAuditEvent(context(requestId), {
+    subjectType,
+    subjectId,
+    subjectLabel: subjectId,
+    action: "update",
   });
 }
 
@@ -311,20 +346,24 @@ describe("SqliteEventsStore raffle claims", () => {
       { userId: "user-1", rowId: "winner-a", audit: eventAudit("draw-a", "raffle-1", "raffle_draw") },
       { userId: "user-2", rowId: "winner-b", audit: eventAudit("draw-b", "raffle-1", "raffle_draw") },
     ];
-    const outcomes = await Promise.allSettled(candidates.map((candidate) => store.drawRaffle(
-      "raffle-1",
-      [candidate.userId],
-      [candidate.rowId],
-      NOW,
-      "admin-1",
-      candidate.audit,
-    )));
+    const outcomes = await Promise.allSettled(candidates.map((candidate) => store.drawRaffle({
+      eventId: "raffle-1",
+      winnerIds: [candidate.userId],
+      winnerRowIds: [candidate.rowId],
+      now: NOW,
+      actorUserId: "admin-1",
+      expectedUpdatedAt: NOW,
+      updatedAt: "2026-08-09T13:00:00.001Z",
+      audit: candidate.audit,
+    })));
     expect(outcomes.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
     const winner = candidates[outcomes.findIndex(({ status }) => status === "fulfilled")]!;
     expect(text(database, "SELECT user_id FROM event_raffle_winners WHERE event_id = 'raffle-1'")).toBe(winner.userId);
     expect(text(database, "SELECT mutation_token FROM event_raffle_draws WHERE event_id = 'raffle-1'")).toBe(winner.audit.eventId);
     expect(text(database, "SELECT request_id FROM audit_log WHERE action = 'raffle_draw'")).toBe(winner.audit.requestId);
     expect(scalar(database, "SELECT signup_locked FROM events WHERE id = 'raffle-1'")).toBe(1);
+    expect(text(database, "SELECT updated_at FROM events WHERE id = 'raffle-1'"))
+      .toBe("2026-08-09T13:00:00.001Z");
     expect(scalar(database, "SELECT count(*) FROM event_raffle_winners")).toBe(1);
     expect(scalar(database, "SELECT count(*) FROM audit_log WHERE action = 'raffle_draw'")).toBe(1);
     expect(auditContext(database, winner.audit.requestId, "winner_count")).toEqual({ type: "number", value: 1 });
@@ -359,14 +398,16 @@ describe("SqliteEventsStore raffle claims", () => {
       limit: 25,
       audit: createSchedulerAuditFactory("scheduled-raffle", drawNow),
     });
-    const manual = store.drawRaffle(
-      "raffle-1",
-      ["user-2"],
-      ["manual-winner-1"],
-      drawNow,
-      "admin-1",
-      eventAudit("manual-raffle", "raffle-1", "raffle_draw"),
-    );
+    const manual = store.drawRaffle({
+      eventId: "raffle-1",
+      winnerIds: ["user-2"],
+      winnerRowIds: ["manual-winner-1"],
+      now: drawNow,
+      actorUserId: "admin-1",
+      expectedUpdatedAt: NOW,
+      updatedAt: drawNow,
+      audit: eventAudit("manual-raffle", "raffle-1", "raffle_draw"),
+    });
     const [scheduledResult, manualResult] = await Promise.allSettled([scheduled, manual]);
 
     expect(scheduledResult.status).toBe("fulfilled");
@@ -375,6 +416,7 @@ describe("SqliteEventsStore raffle claims", () => {
     expect(scalar(database, "SELECT count(*) FROM event_raffle_draws WHERE event_id = 'raffle-1'")).toBe(1);
     expect(scalar(database, "SELECT count(*) FROM event_raffle_winners WHERE event_id = 'raffle-1'")).toBe(1);
     expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_id = 'raffle-1' AND action = 'raffle_draw'")).toBe(1);
+    expect(text(database, "SELECT updated_at FROM events WHERE id = 'raffle-1'")).toBe(drawNow);
 
     database.prepare(`INSERT INTO events (
       id, type, title, start_at, end_at, signup_locked, winner_count, created_by, created_at, updated_at
@@ -402,6 +444,54 @@ describe("SqliteEventsStore raffle claims", () => {
 });
 
 describe("SqliteEventsStore media transaction", () => {
+  it("rolls the event and audit back when its in-batch aggregate snapshot fails", async () => {
+    const { database, executor } = harness();
+    const failingExecutor = new RejectSnapshotExecutor(
+      executor,
+      (statement) => statement.columns?.includes("startAt") === true && statement.sql.includes("FROM events AS event"),
+    );
+    const store = new SqliteEventsStore(createAppDatabase(failingExecutor), failingExecutor);
+
+    await expect(store.create({
+      id: "event-snapshot-failure",
+      type: "social",
+      title: "Snapshot failure",
+      description: null,
+      startAt: "2026-08-10T12:00:00.000Z",
+      endAt: null,
+      capacity: null,
+      autoArchive: false,
+      winnerCount: null,
+      actorUserId: "admin-1",
+      now: NOW,
+      quotas: [],
+      poll: null,
+      mediaIds: [],
+      audit: eventAudit("event-snapshot-failure", "event-snapshot-failure", "create"),
+    })).rejects.toThrow(/missing_event_snapshot_column/);
+
+    expect(scalar(database, "SELECT count(*) FROM events WHERE id = 'event-snapshot-failure'")).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_id = 'event-snapshot-failure'")).toBe(0);
+  });
+
+  it("rolls the template and audit back when its in-batch aggregate snapshot fails", async () => {
+    const { database, executor } = harness();
+    const failingExecutor = new RejectSnapshotExecutor(
+      executor,
+      (statement) => statement.columns?.includes("startTime") === true
+        && statement.sql.includes("FROM recurring_templates AS template"),
+    );
+    const store = new SqliteEventsStore(createAppDatabase(failingExecutor), failingExecutor);
+
+    await expect(store.createTemplate(templateWrite(
+      "template-snapshot-failure",
+      templateAudit("template-snapshot-failure", "template-snapshot-failure"),
+    ))).rejects.toThrow(/missing_event_snapshot_column/);
+
+    expect(scalar(database, "SELECT count(*) FROM recurring_templates WHERE id = 'template-snapshot-failure'")).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_id = 'template-snapshot-failure'")).toBe(0);
+  });
+
   it("rolls back the parent and link when the audited create fails", async () => {
     const { database, store } = harness();
     database.prepare(`INSERT INTO media_assets (
@@ -450,6 +540,94 @@ describe("SqliteEventsStore media transaction", () => {
   });
 });
 
+describe("SqliteEventsStore edit revisions", () => {
+  it("updates an event once, then rejects a raced stale write without deleting its quota or inserting an audit row", async () => {
+    const { database, executor, store } = harness();
+    const initialUpdatedAt = "2026-08-09T12:00:00.000Z";
+    const savedUpdatedAt = "2026-08-09T12:00:00.001Z";
+    database.prepare(`INSERT INTO events (
+      id, type, title, start_at, created_by, created_at, updated_at
+    ) VALUES ('revision-event', 'social', 'Original', '2026-08-10T12:00:00.000Z', 'admin-1', ?, ?)`)
+      .run(NOW, initialUpdatedAt);
+    const savedAudit = updateAudit("event-revision-saved", "event", "revision-event");
+    const savedWrite: EventUpdateWrite = {
+      eventId: "revision-event",
+      actorUserId: "admin-1",
+      now: NOW,
+      expectedUpdatedAt: initialUpdatedAt,
+      updatedAt: savedUpdatedAt,
+      patch: { title: "Saved" },
+      replacePollOptions: false,
+      audit: savedAudit,
+    };
+
+    await expect(store.update(savedWrite)).resolves.toMatchObject({ event: { title: "Saved", updatedAt: savedUpdatedAt } });
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [savedAudit.eventId])).toBe(1);
+
+    database.prepare("INSERT INTO class_tags (id, label, sort_order, owner_kind, owner_id) VALUES ('revision-tag', 'Revision', 0, 'event', 'revision-event')").run();
+    database.prepare("INSERT INTO event_class_quotas (event_id, tag_id, required) VALUES ('revision-event', 'revision-tag', 1)").run();
+    executor.beforeNextBatch = () => {
+      database.prepare("UPDATE events SET title = 'Concurrent', updated_at = ? WHERE id = 'revision-event'")
+        .run("2026-08-09T12:00:00.002Z");
+    };
+    const staleAudit = updateAudit("event-revision-stale", "event", "revision-event");
+
+    await expect(store.update({
+      ...savedWrite,
+      expectedUpdatedAt: savedUpdatedAt,
+      updatedAt: "2026-08-09T12:00:00.003Z",
+      patch: { title: "Stale" },
+      quotas: [],
+      audit: staleAudit,
+    })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(text(database, "SELECT title FROM events WHERE id = 'revision-event'")).toBe("Concurrent");
+    expect(scalar(database, "SELECT count(*) FROM event_class_quotas WHERE event_id = 'revision-event'")).toBe(1);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [staleAudit.eventId])).toBe(0);
+  });
+
+  it("updates a template once, then rejects a raced stale write without replacing weekdays or inserting an audit row", async () => {
+    const { database, executor, store } = harness();
+    const initialUpdatedAt = "2026-08-01T09:00:00.000Z";
+    const savedUpdatedAt = "2026-08-09T13:00:00.000Z";
+    seedTemplate(database, { id: "revision-template" });
+    const savedAudit = updateAudit("template-revision-saved", "recurring_template", "revision-template");
+    const savedWrite: TemplateUpdateWrite = {
+      templateId: "revision-template",
+      actorUserId: "admin-1",
+      now: NOW,
+      expectedUpdatedAt: initialUpdatedAt,
+      updatedAt: savedUpdatedAt,
+      patch: { title: "Saved template" },
+      audit: savedAudit,
+    };
+
+    await expect(store.updateTemplate(savedWrite)).resolves.toMatchObject({
+      template: { title: "Saved template", updatedAt: savedUpdatedAt },
+    });
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [savedAudit.eventId])).toBe(1);
+
+    database.prepare("INSERT INTO recurring_template_weekdays (template_id, weekday) VALUES ('revision-template', 2)").run();
+    executor.beforeNextBatch = () => {
+      database.prepare("UPDATE recurring_templates SET title = 'Concurrent', updated_at = ? WHERE id = 'revision-template'")
+        .run("2026-08-09T13:00:00.001Z");
+    };
+    const staleAudit = updateAudit("template-revision-stale", "recurring_template", "revision-template");
+
+    await expect(store.updateTemplate({
+      ...savedWrite,
+      expectedUpdatedAt: savedUpdatedAt,
+      updatedAt: "2026-08-09T13:00:00.002Z",
+      patch: { recurrenceRule: { frequency: "weekly", interval: 1, daysOfWeek: [1] } },
+      audit: staleAudit,
+    })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(text(database, "SELECT title FROM recurring_templates WHERE id = 'revision-template'")).toBe("Concurrent");
+    expect(scalar(database, "SELECT count(*) FROM recurring_template_weekdays WHERE template_id = 'revision-template'")).toBe(1);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [staleAudit.eventId])).toBe(0);
+  });
+});
+
 describe("SqliteEventsStore participant audit no-ops", () => {
   it("audits only participants changed by the same batch and skips all no-ops", async () => {
     const { database, store } = harness();
@@ -458,30 +636,44 @@ describe("SqliteEventsStore participant audit no-ops", () => {
     ) VALUES ('participant-event', 'social', 'Participant event',
       '2027-08-10T12:00:00.000Z', '2027-08-11T12:00:00.000Z', 'admin-1', ?, ?)`).run(NOW, NOW);
 
-    await store.addParticipants(
-      "participant-event",
-      ["user-1"],
-      ["participant-1"],
-      NOW,
-      "moderator",
-      participantAudit("participant-add-1", "participant-event", "user-1", "join"),
-    );
-    await store.addParticipants(
-      "participant-event",
-      ["user-1", "user-2"],
-      ["participant-duplicate", "participant-2"],
-      NOW,
-      "moderator",
-      participantAudit("participant-add-2", "participant-event", "user-1", "batch_add_by_moderator"),
-    );
-    await store.addParticipants(
-      "participant-event",
-      ["user-1", "user-2"],
-      ["participant-noop-1", "participant-noop-2"],
-      NOW,
-      "moderator",
-      participantAudit("participant-add-3", "participant-event", "user-1", "batch_add_by_moderator"),
-    );
+    await store.addParticipants({
+      eventId: "participant-event",
+      userIds: ["user-1"],
+      participantIds: ["participant-1"],
+      now: NOW,
+      mode: "moderator",
+      actorUserId: "admin-1",
+      expectedUpdatedAt: NOW,
+      updatedAt: "2026-08-09T13:00:00.001Z",
+      audit: participantAudit("participant-add-1", "participant-event", "user-1", "join"),
+    });
+    const afterFirstAdd = text(database, "SELECT updated_at FROM events WHERE id = 'participant-event'");
+    expect(afterFirstAdd).not.toBe(NOW);
+    await store.addParticipants({
+      eventId: "participant-event",
+      userIds: ["user-1", "user-2"],
+      participantIds: ["participant-duplicate", "participant-2"],
+      now: NOW,
+      mode: "moderator",
+      actorUserId: "admin-1",
+      expectedUpdatedAt: "2026-08-09T13:00:00.001Z",
+      updatedAt: "2026-08-09T13:00:00.002Z",
+      audit: participantAudit("participant-add-2", "participant-event", "user-1", "batch_add_by_moderator"),
+    });
+    const afterSecondAdd = text(database, "SELECT updated_at FROM events WHERE id = 'participant-event'");
+    expect(afterSecondAdd).not.toBe(afterFirstAdd);
+    await store.addParticipants({
+      eventId: "participant-event",
+      userIds: ["user-1", "user-2"],
+      participantIds: ["participant-noop-1", "participant-noop-2"],
+      now: NOW,
+      mode: "moderator",
+      actorUserId: "admin-1",
+      expectedUpdatedAt: "2026-08-09T13:00:00.002Z",
+      updatedAt: "2026-08-09T13:00:00.003Z",
+      audit: participantAudit("participant-add-3", "participant-event", "user-1", "batch_add_by_moderator"),
+    });
+    expect(text(database, "SELECT updated_at FROM events WHERE id = 'participant-event'")).toBe(afterSecondAdd);
     expect(scalar(database, "SELECT count(*) FROM event_participants WHERE event_id = 'participant-event'")).toBe(2);
     expect(scalar(database, "SELECT count(*) FROM audit_log WHERE action = 'batch_add_by_moderator'")).toBe(1);
     expect(auditContext(database, "participant-add-2", "user_count")).toEqual({ type: "number", value: 1 });
@@ -490,22 +682,258 @@ describe("SqliteEventsStore participant audit no-ops", () => {
       value: [{ type: "reference", value: { id: "user-2", label: "Two" } }],
     });
 
-    await expect(store.removeParticipants(
-      "participant-event",
-      ["user-1", "admin-1"],
-      participantAudit("participant-remove-1", "participant-event", "user-1", "batch_remove_by_moderator"),
-    )).resolves.toBe(1);
-    await expect(store.removeParticipants(
-      "participant-event",
-      ["user-1", "admin-1"],
-      participantAudit("participant-remove-2", "participant-event", "user-1", "batch_remove_by_moderator"),
-    )).resolves.toBe(0);
+    await expect(store.removeParticipants({
+      eventId: "participant-event",
+      userIds: ["user-1", "admin-1"],
+      actorUserId: "admin-1",
+      expectedUpdatedAt: "2026-08-09T13:00:00.002Z",
+      updatedAt: "2026-08-09T13:00:00.003Z",
+      audit: participantAudit("participant-remove-1", "participant-event", "user-1", "batch_remove_by_moderator"),
+    })).resolves.toBe(1);
+    const afterRemove = text(database, "SELECT updated_at FROM events WHERE id = 'participant-event'");
+    expect(afterRemove).not.toBe(afterSecondAdd);
+    await expect(store.removeParticipants({
+      eventId: "participant-event",
+      userIds: ["user-1", "admin-1"],
+      actorUserId: "admin-1",
+      expectedUpdatedAt: "2026-08-09T13:00:00.003Z",
+      updatedAt: "2026-08-09T13:00:00.004Z",
+      audit: participantAudit("participant-remove-2", "participant-event", "user-1", "batch_remove_by_moderator"),
+    })).resolves.toBe(0);
+    expect(text(database, "SELECT updated_at FROM events WHERE id = 'participant-event'")).toBe(afterRemove);
     expect(scalar(database, "SELECT count(*) FROM audit_log WHERE action = 'batch_remove_by_moderator'")).toBe(1);
     expect(auditContext(database, "participant-remove-1", "user_count")).toEqual({ type: "number", value: 1 });
     expect(auditContext(database, "participant-remove-1", "user_ids")).toEqual({
       type: "list",
       value: [{ type: "reference", value: { id: "user-1", label: "One" } }],
     });
+  });
+
+  it("removes the 99-user request boundary with fixed-size D1 bindings", async () => {
+    const { database, executor, store } = harness();
+    const eventId = "participant-boundary";
+    const userIds = Array.from(
+      { length: LIMITS.content.eventParticipantsBatch.max },
+      (_, index) => `participant-boundary-user-${String(index).padStart(2, "0")}`,
+    );
+    database.prepare(`INSERT INTO events (
+      id, type, title, start_at, end_at, created_by, created_at, updated_at
+    ) VALUES (?, 'social', 'Participant boundary', '2027-08-10T12:00:00.000Z',
+      '2027-08-11T12:00:00.000Z', 'admin-1', ?, ?)`).run(eventId, NOW, NOW);
+    const insertUser = database.prepare(
+      "INSERT INTO users (id, display_name) VALUES (?, ?)",
+    );
+    const insertParticipant = database.prepare(`INSERT INTO event_participants (id, event_id, user_id, joined_at)
+      VALUES (?, ?, ?, ?)`);
+    database.exec("BEGIN");
+    try {
+      for (const [index, userId] of userIds.entries()) {
+        insertUser.run(userId, `Participant ${index}`);
+        insertParticipant.run(`participant-boundary-row-${index}`, eventId, userId, NOW);
+      }
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+
+    await expect(store.removeParticipants({
+      eventId,
+      userIds,
+      actorUserId: "admin-1",
+      expectedUpdatedAt: NOW,
+      updatedAt: "2026-08-09T13:00:00.001Z",
+      audit: participantAudit("participant-boundary-removal", eventId, "admin-1", "batch_remove_by_moderator"),
+    })).resolves.toBe(userIds.length);
+
+    const batch = executor.batches.at(-1);
+    expect(batch).toHaveLength(3);
+    expect(batch?.every((statement) => (statement.params?.length ?? 0) <= 100)).toBe(true);
+    expect(batch?.[0]?.params).toHaveLength(5);
+    expect(batch?.[2]?.params).toHaveLength(4);
+    expect(batch?.[0]?.sql).toContain("json_each(?)");
+    expect(batch?.[2]?.sql).toContain("json_each(?)");
+    expect(scalar(database, "SELECT count(*) FROM event_participants WHERE event_id = ?", [eventId])).toBe(0);
+  });
+});
+
+describe("SqliteEventsStore aggregate revision races", () => {
+  it("rejects stale participant additions without creating a participant or audit row", async () => {
+    const { database, executor, store } = harness();
+    const initialUpdatedAt = "2026-08-09T12:00:00.000Z";
+    database.prepare(`INSERT INTO events (
+      id, type, title, start_at, end_at, created_by, created_at, updated_at
+    ) VALUES ('participants-race', 'social', 'Original', '2027-08-10T12:00:00.000Z',
+      '2027-08-11T12:00:00.000Z', 'admin-1', ?, ?)`).run(NOW, initialUpdatedAt);
+    const audit = participantAudit("participants-race-add", "participants-race", "user-1", "join");
+    executor.beforeNextBatch = () => {
+      database.prepare("UPDATE events SET title = 'Concurrent', updated_at = ? WHERE id = 'participants-race'")
+        .run("2026-08-09T12:00:00.001Z");
+    };
+
+    await expect(store.addParticipants({
+      eventId: "participants-race",
+      userIds: ["user-1"],
+      participantIds: ["participants-race-1"],
+      now: NOW,
+      mode: "moderator",
+      actorUserId: "admin-1",
+      expectedUpdatedAt: initialUpdatedAt,
+      updatedAt: "2026-08-09T12:00:00.002Z",
+      audit,
+    })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(scalar(database, "SELECT count(*) FROM event_participants WHERE event_id = 'participants-race'")).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [audit.eventId])).toBe(0);
+    expect(text(database, "SELECT title FROM events WHERE id = 'participants-race'")).toBe("Concurrent");
+  });
+
+  it("rejects stale participant removals without deleting a participant or auditing", async () => {
+    const { database, executor, store } = harness();
+    const initialUpdatedAt = "2026-08-09T12:00:00.000Z";
+    database.prepare(`INSERT INTO events (
+      id, type, title, start_at, end_at, created_by, created_at, updated_at
+    ) VALUES ('participants-remove-race', 'social', 'Original', '2027-08-10T12:00:00.000Z',
+      '2027-08-11T12:00:00.000Z', 'admin-1', ?, ?)`).run(NOW, initialUpdatedAt);
+    database.prepare(`INSERT INTO event_participants (id, event_id, user_id, joined_at)
+      VALUES ('participants-remove-race-1', 'participants-remove-race', 'user-1', ?)`).run(NOW);
+    const audit = participantAudit("participants-race-remove", "participants-remove-race", "user-1", "leave");
+    executor.beforeNextBatch = () => {
+      database.prepare("UPDATE events SET title = 'Concurrent', updated_at = ? WHERE id = 'participants-remove-race'")
+        .run("2026-08-09T12:00:00.001Z");
+    };
+
+    await expect(store.removeParticipants({
+      eventId: "participants-remove-race",
+      userIds: ["user-1"],
+      actorUserId: "admin-1",
+      expectedUpdatedAt: initialUpdatedAt,
+      updatedAt: "2026-08-09T12:00:00.002Z",
+      audit,
+    })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(scalar(database, "SELECT count(*) FROM event_participants WHERE event_id = 'participants-remove-race'")).toBe(1);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [audit.eventId])).toBe(0);
+    expect(text(database, "SELECT title FROM events WHERE id = 'participants-remove-race'")).toBe("Concurrent");
+  });
+
+  it("advances the poll revision only for a changed selection", async () => {
+    const { database, store } = harness();
+    const initialUpdatedAt = "2026-08-09T12:00:00.000Z";
+    const changedUpdatedAt = "2026-08-09T12:00:00.001Z";
+    database.prepare(`INSERT INTO events (
+      id, type, title, start_at, end_at, created_by, created_at, updated_at
+    ) VALUES ('poll-noop', 'poll', 'Poll', '2027-08-10T12:00:00.000Z',
+      '2027-08-11T12:00:00.000Z', 'admin-1', ?, ?)`).run(NOW, initialUpdatedAt);
+    database.prepare(`INSERT INTO event_polls (event_id, results_visibility, show_voter_names, created_at, updated_at)
+      VALUES ('poll-noop', 'after_vote', 0, ?, ?)`).run(NOW, NOW);
+    database.prepare(`INSERT INTO event_poll_options (id, event_id, label, sort_order, created_at)
+      VALUES ('option-1', 'poll-noop', 'One', 0, ?)`).run(NOW);
+    const changedAudit = createAuditEvent(context("poll-noop-changed"), {
+      subjectType: "event_poll_vote",
+      subjectId: "poll-noop:user-1",
+      subjectLabel: "Poll",
+      action: "vote",
+    });
+
+    await expect(store.replacePollVote({
+      eventId: "poll-noop",
+      userId: "user-1",
+      optionIds: ["option-1"],
+      now: NOW,
+      expectedUpdatedAt: initialUpdatedAt,
+      updatedAt: changedUpdatedAt,
+      audit: changedAudit,
+    })).resolves.toBe(true);
+    expect(text(database, "SELECT updated_at FROM events WHERE id = 'poll-noop'")).toBe(changedUpdatedAt);
+
+    const noopAudit = createAuditEvent(context("poll-noop-unchanged"), {
+      subjectType: "event_poll_vote",
+      subjectId: "poll-noop:user-1",
+      subjectLabel: "Poll",
+      action: "vote",
+    });
+    await expect(store.replacePollVote({
+      eventId: "poll-noop",
+      userId: "user-1",
+      optionIds: ["option-1"],
+      now: NOW,
+      expectedUpdatedAt: changedUpdatedAt,
+      updatedAt: "2026-08-09T12:00:00.002Z",
+      audit: noopAudit,
+    })).resolves.toBe(false);
+    expect(text(database, "SELECT updated_at FROM events WHERE id = 'poll-noop'")).toBe(changedUpdatedAt);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_id = 'poll-noop:user-1'")).toBe(1);
+  });
+
+  it("rejects stale poll votes without replacing votes or auditing", async () => {
+    const { database, executor, store } = harness();
+    const initialUpdatedAt = "2026-08-09T12:00:00.000Z";
+    database.prepare(`INSERT INTO events (
+      id, type, title, start_at, end_at, created_by, created_at, updated_at
+    ) VALUES ('poll-race', 'poll', 'Original', '2027-08-10T12:00:00.000Z',
+      '2027-08-11T12:00:00.000Z', 'admin-1', ?, ?)`).run(NOW, initialUpdatedAt);
+    database.prepare(`INSERT INTO event_polls (event_id, results_visibility, show_voter_names, created_at, updated_at)
+      VALUES ('poll-race', 'after_vote', 0, ?, ?)`).run(NOW, NOW);
+    database.prepare(`INSERT INTO event_poll_options (id, event_id, label, sort_order, created_at)
+      VALUES ('option-1', 'poll-race', 'One', 0, ?)`).run(NOW);
+    const audit = createAuditEvent(context("poll-race-vote"), {
+      subjectType: "event_poll_vote",
+      subjectId: "poll-race:user-1",
+      subjectLabel: "Original",
+      action: "vote",
+    });
+    executor.beforeNextBatch = () => {
+      database.prepare("UPDATE events SET title = 'Concurrent', updated_at = ? WHERE id = 'poll-race'")
+        .run("2026-08-09T12:00:00.001Z");
+    };
+
+    await expect(store.replacePollVote({
+      eventId: "poll-race",
+      userId: "user-1",
+      optionIds: ["option-1"],
+      now: NOW,
+      expectedUpdatedAt: initialUpdatedAt,
+      updatedAt: "2026-08-09T12:00:00.002Z",
+      audit,
+    }))
+      .rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(scalar(database, "SELECT count(*) FROM event_poll_votes WHERE event_id = 'poll-race'")).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [audit.eventId])).toBe(0);
+    expect(text(database, "SELECT title FROM events WHERE id = 'poll-race'")).toBe("Concurrent");
+  });
+
+  it("rejects a stale raffle draw before creating draw, winner, or audit rows", async () => {
+    const { database, executor, store } = harness();
+    const initialUpdatedAt = "2026-08-09T12:00:00.000Z";
+    database.prepare(`INSERT INTO events (
+      id, type, title, start_at, end_at, winner_count, created_by, created_at, updated_at
+    ) VALUES ('raffle-race', 'raffle', 'Original', '2027-08-10T12:00:00.000Z',
+      '2027-08-11T12:00:00.000Z', 1, 'admin-1', ?, ?)`).run(NOW, initialUpdatedAt);
+    database.prepare(`INSERT INTO event_participants (id, event_id, user_id, joined_at)
+      VALUES ('raffle-race-1', 'raffle-race', 'user-1', ?)`).run(NOW);
+    const audit = eventAudit("raffle-race-draw", "raffle-race", "raffle_draw");
+    executor.beforeNextBatch = () => {
+      database.prepare("UPDATE events SET title = 'Concurrent', updated_at = ? WHERE id = 'raffle-race'")
+        .run("2026-08-09T12:00:00.001Z");
+    };
+
+    await expect(store.drawRaffle({
+      eventId: "raffle-race",
+      winnerIds: ["user-1"],
+      winnerRowIds: ["raffle-race-winner"],
+      now: NOW,
+      actorUserId: "admin-1",
+      expectedUpdatedAt: initialUpdatedAt,
+      updatedAt: "2026-08-09T12:00:00.002Z",
+      audit,
+    })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(scalar(database, "SELECT count(*) FROM event_raffle_draws WHERE event_id = 'raffle-race'")).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM event_raffle_winners WHERE event_id = 'raffle-race'")).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [audit.eventId])).toBe(0);
+    expect(text(database, "SELECT title FROM events WHERE id = 'raffle-race'")).toBe("Concurrent");
   });
 });
 
@@ -720,7 +1148,7 @@ describe("SqliteEventsStore statement budgets", () => {
       mediaIds: [],
       audit: eventAudit("event-budget", "event-budget", "create"),
     });
-    expect(executor.batches.at(-1)?.length ?? 0).toBeLessThanOrEqual(10);
+    expect(executor.batches.at(-1)?.length ?? 0).toBeLessThanOrEqual(MAX_SQL_BATCH_STATEMENTS);
   });
 });
 

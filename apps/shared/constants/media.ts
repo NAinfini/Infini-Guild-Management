@@ -107,15 +107,12 @@ export const CLASS_ICON_FILE_ACCEPT = CLASS_ICON_SELECTABLE_TYPES.join(",");
 export const AUDIO_FILE_ACCEPT = "audio/*";
 
 export const ANNOUNCEMENT_ATTACHMENT_CONTENT_TYPES = [
+  "application/octet-stream",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ] as const;
 
-export const ANNOUNCEMENT_ATTACHMENT_FILE_ACCEPT = [
-  ...ANNOUNCEMENT_ATTACHMENT_CONTENT_TYPES,
-  ".pdf",
-  ".xlsx",
-].join(",");
+export type AnnouncementAttachmentContentType = (typeof ANNOUNCEMENT_ATTACHMENT_CONTENT_TYPES)[number];
 
 export type MediaImageDimensions = { width: number; height: number };
 

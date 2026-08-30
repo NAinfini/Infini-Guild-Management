@@ -2,6 +2,7 @@ import { identityNameSchema } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { useMutation } from "@tanstack/react-query";
 import { LogOutIcon, SaveIcon } from "@portal/components/icons";
+import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
 import {
@@ -27,11 +28,14 @@ import {
   resendEmailVerification,
   startOAuth,
   unlinkOAuth,
+  isApiRequestError,
   type OAuthProvider,
 } from "../../../services/AuthService";
 import { useSiteConfigStore } from "../../../stores/site-config";
 import { notifyError, notifySuccess } from "../../../utils/notifications";
+import { newPasswordValidationKey } from "../../../utils/password-validation";
 import { SectionHeader } from "../../shared/SectionHeader";
+import { PasswordRequirements } from "../../shared/PasswordRequirements";
 
 const OAUTH_PROVIDERS: readonly OAuthProvider[] = ["google", "discord", "kook", "wechat"];
 
@@ -50,6 +54,13 @@ type SensitiveAction =
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function notifyAccountMutationError(error: unknown, fallback: string): void {
+  if (isApiRequestError(error) && error.status === 0) {
+    return;
+  }
+  notifyError(errorMessage(error, fallback));
 }
 
 function validIdentityName(value: string): boolean {
@@ -87,7 +98,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       notifySuccess(t("message.passwordChanged"));
       credentialChanged("expired");
     },
-    onError: (error) => notifyError(errorMessage(error, t("message.passwordChangeFailed"))),
+    onError: (error) => notifyAccountMutationError(error, t("message.passwordChangeFailed")),
   });
   const changeLoginNameMutation = useMutation({
     mutationFn: () => changeLoginName({ currentPassword, login_name: loginName.trim() }),
@@ -95,12 +106,12 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       notifySuccess(t("account.message.loginNameChanged"));
       credentialChanged();
     },
-    onError: (error) => notifyError(errorMessage(error, t("account.message.loginNameChangeFailed"))),
+    onError: (error) => notifyAccountMutationError(error, t("account.message.loginNameChangeFailed")),
   });
   const linkOAuthMutation = useMutation({
     mutationFn: (provider: OAuthProvider) => startOAuth(provider, currentPassword),
     onSuccess: ({ authorization_url }) => window.location.assign(authorization_url),
-    onError: (error) => notifyError(errorMessage(error, t("account.message.oauthFailed"))),
+    onError: (error) => notifyAccountMutationError(error, t("account.message.oauthFailed")),
   });
   const unlinkOAuthMutation = useMutation({
     mutationFn: (provider: OAuthProvider) => unlinkOAuth(provider, currentPassword),
@@ -109,7 +120,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       void invalidateSecurity();
       notifySuccess(t("account.message.oauthUnlinked"));
     },
-    onError: (error) => notifyError(errorMessage(error, t("account.message.oauthFailed"))),
+    onError: (error) => notifyAccountMutationError(error, t("account.message.oauthFailed")),
   });
   const requestEmailMutation = useMutation({
     mutationFn: () => requestEmailVerification({ current_password: currentPassword, email }),
@@ -117,7 +128,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       finishSensitiveAction();
       notifySuccess(t("account.message.emailSent"));
     },
-    onError: (error) => notifyError(errorMessage(error, t("account.message.emailFailed"))),
+    onError: (error) => notifyAccountMutationError(error, t("account.message.emailFailed")),
   });
   const resendEmailMutation = useMutation({
     mutationFn: () => resendEmailVerification({ current_password: currentPassword }),
@@ -125,7 +136,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       finishSensitiveAction();
       notifySuccess(t("account.message.emailSent"));
     },
-    onError: (error) => notifyError(errorMessage(error, t("account.message.emailFailed"))),
+    onError: (error) => notifyAccountMutationError(error, t("account.message.emailFailed")),
   });
   const removeEmailMutation = useMutation({
     mutationFn: () => removeEmail(currentPassword),
@@ -134,11 +145,13 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       void invalidateSecurity();
       notifySuccess(t("account.message.emailRemoved"));
     },
-    onError: (error) => notifyError(errorMessage(error, t("account.message.emailFailed"))),
+    onError: (error) => notifyAccountMutationError(error, t("account.message.emailFailed")),
   });
 
-  const canChangePassword = newPassword.length >= LIMITS.content.password.min
-    && newPassword === confirmNewPassword;
+  const passwordError = newPasswordValidationKey(newPassword);
+  const showPasswordError = newPassword.length > 0 && passwordError !== null;
+  const passwordsMismatch = confirmNewPassword.length > 0 && newPassword !== confirmNewPassword;
+  const canChangePassword = passwordError === null && newPassword === confirmNewPassword;
   const linkedProviders = new Set(securityQuery.data?.oauth_providers ?? []);
   const loginNameChanged = loginName.trim() !== (securityQuery.data?.login_name ?? "");
   const confirmationPending = changePasswordMutation.isPending
@@ -148,6 +161,8 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
     || requestEmailMutation.isPending
     || resendEmailMutation.isPending
     || removeEmailMutation.isPending;
+  const securityBlockingError = securityQuery.isError && securityQuery.data === undefined;
+  const securityRefreshError = securityQuery.isError && securityQuery.data !== undefined;
 
   const requestConfirmation = (action: SensitiveAction) => {
     setCurrentPassword("");
@@ -175,7 +190,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       </div>
     );
   }
-  if (securityQuery.isError || !securityQuery.data) {
+  if (securityBlockingError) {
     return (
       <Card className="profile-account__error gap-0 py-0">
         <div>
@@ -187,9 +202,28 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       </Card>
     );
   }
+  if (!securityQuery.data) {
+    return (
+      <div className="profile-account__loading" aria-label={t("common:message.loading")} aria-busy="true">
+        <Skeleton className="profile-account__loading-card profile-account__loading-card--large" />
+        <Skeleton className="profile-account__loading-card" />
+      </div>
+    );
+  }
 
   return (
     <div className="profile-account">
+      {securityRefreshError ? (
+        <Alert variant="destructive">
+          <AlertTitle>{t("common:loadError")}</AlertTitle>
+          <AlertDescription>
+            <span>{t("common:loadErrorRetry")}</span>
+            <Button size="sm" variant="outline" loading={securityQuery.isFetching} onClick={() => void securityQuery.refetch()}>
+              {t("common:action.retry")}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <div className="profile-account__layout">
         <div className="profile-account__stack">
           <Card className="profile-account__card gap-0 py-0">
@@ -222,28 +256,47 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
           <Card className="profile-account__card gap-0 py-0">
             <SectionHeader title={t("account.section.passwordSecurity")} headingLevel={2} />
             <div className="profile-account__card-body">
-              <div className="profile-account__password-fields">
-                <div className="profile-field">
-                  <Label htmlFor="profile-new-password">{t("account.field.newPassword")}</Label>
-                  <PasswordInput
-                    id="profile-new-password"
-                    value={newPassword}
-                    onChange={(event) => setNewPassword(event.currentTarget.value)}
-                    autoComplete="new-password"
-                    showPasswordLabel={t("auth:aria.showPassword")}
-                    hidePasswordLabel={t("auth:aria.hidePassword")}
-                  />
-                </div>
-                <div className="profile-field">
-                  <Label htmlFor="profile-confirm-password">{t("account.field.confirmNewPassword")}</Label>
-                  <PasswordInput
-                    id="profile-confirm-password"
-                    value={confirmNewPassword}
-                    onChange={(event) => setConfirmNewPassword(event.currentTarget.value)}
-                    autoComplete="new-password"
-                    showPasswordLabel={t("auth:aria.showPassword")}
-                    hidePasswordLabel={t("auth:aria.hidePassword")}
-                  />
+              <div className="password-setup">
+                <div className="password-setup__layout">
+                  <div className="password-setup__fields">
+                    <div className="profile-field">
+                      <Label htmlFor="profile-new-password">{t("account.field.newPassword")}</Label>
+                      <PasswordInput
+                        id="profile-new-password"
+                        value={newPassword}
+                        onChange={(event) => setNewPassword(event.currentTarget.value)}
+                        autoComplete="new-password"
+                        aria-describedby={`profile-password-requirements${showPasswordError ? " profile-password-error" : ""}`}
+                        aria-invalid={showPasswordError}
+                        showPasswordLabel={t("auth:aria.showPassword")}
+                        hidePasswordLabel={t("auth:aria.hidePassword")}
+                      />
+                      {showPasswordError ? (
+                        <p id="profile-password-error" className="text-sm text-destructive">
+                          {t(passwordError, LIMITS.content.password)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="profile-field">
+                      <Label htmlFor="profile-confirm-password">{t("account.field.confirmNewPassword")}</Label>
+                      <PasswordInput
+                        id="profile-confirm-password"
+                        value={confirmNewPassword}
+                        onChange={(event) => setConfirmNewPassword(event.currentTarget.value)}
+                        autoComplete="new-password"
+                        aria-describedby={passwordsMismatch ? "profile-password-mismatch" : undefined}
+                        aria-invalid={passwordsMismatch}
+                        showPasswordLabel={t("auth:aria.showPassword")}
+                        hidePasswordLabel={t("auth:aria.hidePassword")}
+                      />
+                      {passwordsMismatch ? (
+                        <p id="profile-password-mismatch" className="text-sm text-destructive">
+                          {t("auth:validation.passwordMismatch")}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <PasswordRequirements id="profile-password-requirements" password={newPassword} confirmation={confirmNewPassword} />
                 </div>
               </div>
               <div className="profile-account__action-row">

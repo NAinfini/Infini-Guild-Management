@@ -102,7 +102,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.listAnnouncements"), method: "GET", path: "/api/announcements?page=1&limit=5" },
         { label: t("status.api.ep.createAnnouncement"), method: "POST", path: "/api/announcements" },
         { label: t("status.api.ep.getAnnouncement"), method: "GET", path: "/api/announcements/:id" },
-        { label: t("status.api.ep.uploadAnnouncementImages"), method: "POST", path: "/api/announcements/:id/images" },
+        { label: t("status.api.ep.uploadAnnouncementImages"), method: "POST", path: "/api/announcements/images" },
         {
           label: t("status.api.ep.getAnnouncementImage"),
           method: "GET",
@@ -112,6 +112,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         },
         { label: t("status.api.ep.updateAnnouncement"), method: "PATCH", path: "/api/announcements/:id" },
         { label: t("status.api.ep.archiveAnnouncement"), method: "DELETE", path: "/api/announcements/:id" },
+        { label: t("status.api.ep.getAnnouncement"), method: "GET", path: "/api/announcements/:id?fixture=after-archive" },
         { label: t("status.api.ep.deleteAnnouncement"), method: "DELETE", path: "/api/announcements/:id/permanent" },
       ],
     },
@@ -128,6 +129,8 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
           mediaIdContext: "galleryImageMediaId",
           mediaVariant: "view",
         },
+        { label: t("status.api.ep.likeGalleryItem"), method: "PUT", path: "/api/gallery/:id/like" },
+        { label: t("status.api.ep.unlikeGalleryItem"), method: "DELETE", path: "/api/gallery/:id/like" },
         { label: t("status.api.ep.addVideo"), method: "POST", path: "/api/gallery/videos" },
         { label: t("status.api.ep.batchDeleteGallery"), method: "POST", path: "/api/gallery/batch-delete" },
         { label: t("status.api.ep.deleteGalleryItem"), method: "DELETE", path: "/api/gallery/:id" },
@@ -150,7 +153,9 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.batchHistoryDetails"), method: "GET", path: "/api/guild-war/history/batch" },
         { label: t("status.api.ep.analytics"), method: "GET", path: "/api/guild-war/analytics" },
         { label: t("status.api.ep.concludeWar"), method: "POST", path: "/api/guild-war/conclude" },
+        { label: t("status.api.ep.historyDetail"), method: "GET", path: "/api/guild-war/history/:id?fixture=concluded" },
         { label: t("status.api.ep.updateMemberStats"), method: "PATCH", path: "/api/guild-war/history/:id/member-stats/:userId" },
+        { label: t("status.api.ep.historyDetail"), method: "GET", path: "/api/guild-war/history/:id?fixture=after-member-stats" },
         { label: t("status.api.ep.batchMemberStats"), method: "PATCH", path: "/api/guild-war/history/:id/member-stats/batch" },
         { label: t("status.api.ep.updateHistory"), method: "PATCH", path: "/api/guild-war/history/:id" },
         { label: t("status.api.ep.batchDeleteHistory"), method: "POST", path: "/api/guild-war/history/batch-delete" },
@@ -163,7 +168,9 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       endpoints: [
         { label: t("status.api.ep.listCategories"), method: "GET", path: "/api/wiki/categories" },
         { label: t("status.api.ep.createCategory"), method: "POST", path: "/api/wiki/categories" },
+        { label: t("status.api.ep.listCategories"), method: "GET", path: "/api/wiki/categories?fixture=after-create" },
         { label: t("status.api.ep.updateCategory"), method: "PATCH", path: "/api/wiki/categories/:id" },
+        { label: t("status.api.ep.listCategories"), method: "GET", path: "/api/wiki/categories?fixture=after-update" },
         { label: t("status.api.ep.batchUpdateCategories"), method: "PATCH", path: "/api/wiki/categories/batch" },
         { label: t("status.api.ep.listArticles"), method: "GET", path: "/api/wiki/articles?page=1&limit=5" },
         { label: t("status.api.ep.createArticle"), method: "POST", path: "/api/wiki/articles" },
@@ -181,6 +188,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
           mediaVariant: "view",
         },
         { label: t("status.api.ep.archiveArticle"), method: "DELETE", path: "/api/wiki/articles/:id" },
+        { label: t("status.api.ep.getArticle"), method: "GET", path: "/api/wiki/articles/:slug?fixture=after-archive" },
         { label: t("status.api.ep.deleteArticle"), method: "DELETE", path: "/api/wiki/articles/:id/permanent" },
         { label: t("status.api.ep.deleteCategory"), method: "DELETE", path: "/api/wiki/categories/:id" },
       ],
@@ -286,8 +294,8 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.auditLog"), method: "GET", path: "/api/admin/audit-log?page=1&limit=5" },
         { label: t("status.api.ep.auditLogExport"), method: "GET", path: "/api/admin/audit-log/export?format=json" },
         { label: t("status.api.ep.archiveMonths"), method: "GET", path: "/api/admin/audit-archive/months" },
-        { label: t("status.api.ep.archiveDownload"), method: "GET", path: "/api/admin/audit-archive/download" },
-        { label: t("status.api.ep.archiveDownloadFile"), method: "GET", path: "/api/admin/audit-archive/download/file" },
+        { label: t("status.api.ep.archiveDownload"), method: "GET", path: "/api/admin/audit-archive/files" },
+        { label: t("status.api.ep.archiveDownloadFile"), method: "GET", path: "/api/admin/audit-archive/files/:archiveId" },
       ],
     },
     {
@@ -301,7 +309,6 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.deactivateUser"), method: "PATCH", path: "/api/admin/users/:id/deactivate" },
         { label: t("status.api.ep.reactivateUser"), method: "PATCH", path: "/api/admin/users/:id/reactivate" },
         { label: t("status.api.ep.resetPassword"), method: "POST", path: "/api/admin/users/:id/reset-password" },
-        { label: t("status.api.ep.resetLoginLock"), method: "POST", path: "/api/admin/users/:id/reset-login-lock" },
         { label: t("status.api.ep.batchRoleChange"), method: "PATCH", path: "/api/admin/users/batch/role" },
         { label: t("status.api.ep.batchDeactivate"), method: "PATCH", path: "/api/admin/users/batch/deactivate" },
         { label: t("status.api.ep.batchReactivate"), method: "PATCH", path: "/api/admin/users/batch/reactivate" },
@@ -423,7 +430,7 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
     if (endpoint.path.includes("role")) return requiresAll("admin.users.edit", "admin.users.role", "admin.users.delete");
     if (endpoint.path.includes("deactivate") || endpoint.path.includes("reactivate")) return requiresAll("admin.users.edit", "admin.users.activate", "admin.users.delete");
     if (endpoint.path.includes("delete")) return requiresAll("admin.users.edit", "admin.users.delete");
-    if (endpoint.path.includes("reset-password") || endpoint.path.includes("reset-login-lock")) return requiresAll("admin.users.edit", "admin.users.password", "admin.users.delete");
+    if (endpoint.path.includes("reset-password")) return requiresAll("admin.users.edit", "admin.users.password", "admin.users.delete");
     return requiresAll("admin.users.edit", "admin.users.delete");
   }
   if (endpoint.path.startsWith("/api/admin/roles")) {
@@ -464,6 +471,7 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
       : requiresAll("announcements.archive");
   }
   if (endpoint.path.startsWith("/api/gallery")) {
+    if (endpoint.path.endsWith("/like")) return publicEndpoint();
     if (endpoint.path.includes("batch-delete")) return requiresAll("gallery.upload", "gallery.delete");
     if (endpoint.method === "POST" && (endpoint.path.includes("/images") || endpoint.path.includes("/videos"))) return requiresAll("gallery.upload");
     if (endpoint.method === "DELETE") return requiresAll("gallery.upload", "gallery.delete");

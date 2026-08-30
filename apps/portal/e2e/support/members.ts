@@ -12,7 +12,7 @@ import { readJson } from "./test";
  *
  * 走 POST /api/admin/users 建出来的账号会被登记进本次运行的清理注册表，
  * 收尾时按 id 硬删，连带 member_profiles、user_credentials、会话、
- * 审计行和 login_failures 一起清掉，所以怎么折腾都不留痕。
+ * 审计行会一起清掉，所以怎么折腾都不留痕。
  */
 
 export type ThrowawayMember = {

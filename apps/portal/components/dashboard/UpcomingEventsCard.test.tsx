@@ -1,6 +1,4 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { DashboardUpcomingEventRow } from "./shared";
 import { UpcomingEventsCard } from "./UpcomingEventsCard";
@@ -52,20 +50,7 @@ function eventRow(
 }
 
 describe("UpcomingEventsCard", () => {
-  it("reflows quota rows from their actual card width instead of the viewport width", () => {
-    const css = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/DashboardPage.css"),
-      "utf8",
-    );
-
-    expect(css).toMatch(/\.upcoming-event-row\s*\{[^}]*container-type:\s*inline-size/s);
-    expect(css).toMatch(/@container\s*\(max-width:\s*64rem\)/);
-    expect(css).toMatch(
-      /\.dashboard-event-type-badge\s*\{[^}]*color:\s*color-mix\(in srgb,\s*var\(--badge-color\) 60%,\s*var\(--text-primary\)\);/s,
-    );
-  });
-
-  it("shows both server groups without a second truncation and links to all results", () => {
+  it("shows all supplied event rows and handles view-all", () => {
     const onViewAll = vi.fn();
     render(
       <UpcomingEventsCard

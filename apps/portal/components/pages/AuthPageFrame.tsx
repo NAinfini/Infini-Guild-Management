@@ -1,5 +1,6 @@
 import { buttonVariants } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -16,11 +17,9 @@ type AuthPageFrameProps = {
 const MODE_COPY = {
   login: {
     title: "title.login",
-    description: "login.form.description",
   },
   register: {
     title: "title.register",
-    description: "register.form.description",
   },
   reset: {
     title: "reset.title",
@@ -42,7 +41,7 @@ export function AuthPageFrame({ mode, children }: AuthPageFrameProps) {
     <div className="login-page">
       <VisualThemeScene
         className="login-page__scene"
-        variant="access"
+        variant={mode === "register" ? "access-register" : "access-login"}
         loading="eager"
         fetchPriority="high"
       />
@@ -65,14 +64,21 @@ export function AuthPageFrame({ mode, children }: AuthPageFrameProps) {
                 aria-hidden="true"
                 className="login-page__card-emblem"
               />
-              <span className="login-page__card-site-name" title={siteName}>{siteName}</span>
+              <Tooltip>
+                <TooltipTrigger render={<span className="login-page__card-site-name" tabIndex={0} />}>
+                  {siteName}
+                </TooltipTrigger>
+                <TooltipContent>{siteName}</TooltipContent>
+              </Tooltip>
             </div>
             <h1>
               {t(copy.title)}
             </h1>
-            <p className="login-page__form-description">
-              {t(copy.description)}
-            </p>
+            {"description" in copy ? (
+              <p className="login-page__form-description">
+                {t(copy.description)}
+              </p>
+            ) : null}
           </header>
           {children}
         </Card>

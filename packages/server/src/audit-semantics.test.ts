@@ -27,7 +27,7 @@ const CRITICAL_SOURCE_FIELDS = [
   {
     source: "auth/identity-admin-service.ts",
     additionalSources: ["packages/persistence-sqlite/src/stores/auth-store.ts"],
-    fields: ["role_id", "max_uses", "used_count", "expires_at", "status", "failed_attempts", "locked_until"],
+    fields: ["role_id", "max_uses", "used_count", "expires_at", "status"],
   },
   {
     source: "events/events-service.ts",

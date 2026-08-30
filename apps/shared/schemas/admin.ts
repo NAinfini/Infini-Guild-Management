@@ -5,6 +5,7 @@ import { LIMITS } from "../config/limits";
 import { roleIdSchema, roleMetadataSchema } from "./role";
 import { siteAnalyticsModifierWeightsSchema } from "./site-config";
 import { identityNameSchema, inviteCodeSchema } from "./auth";
+import { adminUpdateProfileSchema } from "./user";
 
 const L_admin = LIMITS.content;
 const permissionKeySchema = z.enum(PERMISSIONS);
@@ -115,6 +116,39 @@ export const createAdminMemberSchema = z.object({
   login_name: identityNameSchema,
   display_name: identityNameSchema,
   role_id: roleIdSchema,
+  notes: z.string().max(L_admin.profileNotes.max).nullable().optional(),
+}).strict();
+
+const adminMemberProfileEditSchema = adminUpdateProfileSchema.pick({
+  power: true,
+  classes: true,
+  title_html: true,
+  bio: true,
+  availability: true,
+  notes: true,
+}).required().strict();
+
+const revisionTokenSchema = z.string().min(1).max(200);
+
+export const updateAdminMemberSchema = z.object({
+  expected_user_revision_token: revisionTokenSchema,
+  expected_profile_revision_token: revisionTokenSchema,
+  display_name: identityNameSchema.optional(),
+  profile: adminMemberProfileEditSchema.optional(),
+  role_id: roleIdSchema.optional(),
+  is_active: z.boolean().optional(),
+}).strict().refine(({
+  expected_user_revision_token: _userRevisionToken,
+  expected_profile_revision_token: _profileRevisionToken,
+  ...changes
+}) => Object.keys(changes).length > 0, {
+  message: "At least one member field is required",
+});
+
+export const updateAdminMemberResponseSchema = z.object({
+  ok: z.literal(true),
+  user_revision_token: revisionTokenSchema,
+  profile_revision_token: revisionTokenSchema,
 }).strict();
 
 export const adminUserLifecycleSchema = z.object({
@@ -139,17 +173,6 @@ export const resetAdminPasswordResponseSchema = z.object({
   temporary_password: z.string(),
 }).strict();
 
-export const loginLockStateSchema = z.object({
-  fail_count: z.number().int().min(0),
-  locked_until: z.string().datetime({ offset: true }).nullable(),
-  is_locked: z.boolean(),
-  retry_after_seconds: z.number().int().min(0),
-}).strict();
-
-export const resetLoginLockResponseSchema = loginLockStateSchema.extend({
-  ok: z.literal(true),
-}).strict();
-
 export const adminBatchMutationResponseSchema = z.object({
   ok: z.literal(true),
   updated: z.number().int().min(0),
@@ -164,6 +187,7 @@ export const adminRoleSchema = z.object({
   color: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
+  revision_token: revisionTokenSchema,
   permissions: rolePermissionsSchema,
   assigned_user_count: z.number().int().min(0),
 });
@@ -178,12 +202,13 @@ export const createRoleSchema = z.object({
 
 export const updateRoleSchema = z
   .object({
+    expected_revision_token: revisionTokenSchema,
     name: z.string().min(1).max(80).optional(),
     level: z.number().int().min(1).max(1_000).optional(),
     color: colorSchema.nullable().optional(),
     permissions: rolePermissionsSchema.optional(),
   })
-  .refine((value) => Object.keys(value).length > 0, {
+  .refine(({ expected_revision_token: _revisionToken, ...changes }) => Object.keys(changes).length > 0, {
     message: "At least one role field is required",
   });
 

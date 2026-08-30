@@ -4,6 +4,12 @@ import { readVpsRuntimeConfig } from "./runtime/config.js";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 
+const PRIVATE_UMASK = 0o077;
+
+function configureVpsProcess(): void {
+  if (process.platform !== "win32") process.umask(PRIVATE_UMASK);
+}
+
 export async function main(
   runtime: VpsServerRuntime = createVpsServerRuntime(readVpsRuntimeConfig()),
 ): Promise<void> {
@@ -41,6 +47,7 @@ export function isDirectExecution(moduleUrl: string, entry = process.argv[1]): b
 
 if (isDirectExecution(import.meta.url)) {
   try {
+    configureVpsProcess();
     await main();
   } catch (error) {
     console.error("VPS startup failed", error);

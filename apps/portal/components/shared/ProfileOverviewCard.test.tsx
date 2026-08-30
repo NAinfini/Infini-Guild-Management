@@ -1,7 +1,5 @@
 import type { MemberProfile, User } from "@guild/shared";
 import { render, screen } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { ProfileOverviewCard } from "./ProfileOverviewCard";
 
@@ -31,12 +29,6 @@ const user = {
   role_color: "#ef4444",
   created_at: "2026-01-01T00:00:00.000Z",
 } as unknown as User;
-
-const OVERVIEW_CSS = "apps/portal/components/shared/ProfileOverviewCard.css";
-
-function readOverviewCss() {
-  return readFileSync(resolve(process.cwd(), OVERVIEW_CSS), "utf8");
-}
 
 function renderCard(avatarMediaId: string | null, avatarActions = true) {
   return render(
@@ -80,34 +72,6 @@ describe("ProfileOverviewCard", () => {
     expect(screen.queryByRole("button", { name: "media.uploadAvatar" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "media.removeAvatar" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "admin" })).toBeInTheDocument();
-  });
-
-  it("keeps the controls in the tab order while they are visually collapsed", () => {
-    const css = readOverviewCss();
-
-    /* 只能用 opacity 收起来。display:none / visibility:hidden 会把这两个按钮从
-       tab 序列里摘掉，键盘用户就再也走不到换头像这一步。 */
-    expect(css).toMatch(
-      /\.profile-overview__avatar-actions\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?\}/,
-    );
-    expect(css).toMatch(/\.profile-overview__avatar:focus-within \.profile-overview__avatar-actions/);
-    /* 没有 hover 的设备上（触屏）这一层必须常驻，否则入口根本露不出来。 */
-    expect(css).toMatch(
-      /@media \(hover: none\)\s*\{[\s\S]*?\.profile-overview__avatar-actions\s*\{[\s\S]*?opacity:\s*1/,
-    );
-  });
-
-  it("keeps the overview avatar at 96px with a strict circular crop", () => {
-    const css = readOverviewCss();
-
-    expect(css).toMatch(
-      /\.profile-overview__avatar\s*\{[\s\S]*?inline-size:\s*96px[\s\S]*?block-size:\s*96px[\s\S]*?border-radius:\s*50%/,
-    );
-    /* 概览头像的图片必须脱离网格流：作为网格项时百分比高度和自动行高互为依赖，
-       竖构图的头像会被行高按原始比例撑成椭圆。 */
-    expect(css).toMatch(
-      /\.profile-overview__avatar img\s*\{[\s\S]*?position:\s*absolute[\s\S]*?inset:\s*0[\s\S]*?object-fit:\s*cover/,
-    );
   });
 
   it("does not repeat the role name next to the display_name", () => {

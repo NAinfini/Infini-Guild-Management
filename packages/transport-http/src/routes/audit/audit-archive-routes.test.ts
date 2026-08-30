@@ -5,7 +5,6 @@ import {
   type BlobRange,
   type RequestContext,
 } from "@guild/kernel";
-import { AuditArchiveDownloadTokens } from "@guild/server/modules/audit";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { createHttpErrorHandler } from "../../core/error-handler.js";
@@ -21,29 +20,28 @@ const METADATA: BlobMetadata = {
   etag: "archive-etag",
   lastModified: "2026-08-09T12:00:00.000Z",
 };
-const TOKENS = new AuditArchiveDownloadTokens(new Uint8Array(32).fill(7));
-
 describe("audit archive routes", () => {
-  it("keeps the Portal token download wire with a real expiry", async () => {
+  it("lists protected archive files and downloads them through the authenticated route", async () => {
     const { app } = testApp(authenticatedContext());
     expect(await (await app.request("/api/admin/audit-archive/months")).json())
       .toEqual({ months: ["2026-08"] });
 
-    const download = await app.request("/api/admin/audit-archive/download?month=2026-08&format=raw_ndjson_gz");
-    const payload = await download.json() as { files: Array<{ url: string; expires_at: string }> };
+    const list = await app.request("/api/admin/audit-archive/files?month=2026-08");
+    const payload = await list.json() as { files: Array<{ id: string; filename: string }> };
     expect(payload).toMatchObject({
       month: "2026-08",
-      expires_in_seconds: 300,
       files: [{
-        key: METADATA.key,
+        id: "archive-1",
+        filename: "guild-audit-archive-1.ndjson",
         row_count: 10,
         size_bytes: 3,
-        expires_at: "2026-08-09T12:05:00.000Z",
+        starts_at: "2026-06-01T00:00:00.000Z",
+        ends_at: "2026-06-02T00:00:00.000Z",
+        completed_at: METADATA.lastModified,
       }],
     });
-    expect(payload.files[0]?.url).toMatch(/^\/api\/admin\/audit-archive\/download\/file\?token=/);
 
-    const file = await app.request(payload.files[0]?.url ?? "");
+    const file = await app.request(`/api/admin/audit-archive/files/${payload.files[0]?.id ?? ""}`);
     expect(file.status).toBe(200);
     expect(file.headers.get("content-disposition")).toContain("archive-1.ndjson");
     expect(await file.text()).toBe("{}\n");
@@ -51,7 +49,7 @@ describe("audit archive routes", () => {
 
   it("supports single ranges, HEAD without opening the body, and 416 totals", async () => {
     const { app, service } = testApp(authenticatedContext());
-    const url = await downloadUrl(app);
+    const url = "/api/admin/audit-archive/files/archive-1";
 
     const range = await app.request(url, { headers: { Range: "bytes=1-2" } });
     expect(range.status).toBe(206);
@@ -72,17 +70,11 @@ describe("audit archive routes", () => {
     expect(invalid.headers.get("Content-Range")).toBe("bytes */3");
   });
 
-  it("rejects missing permission, cross-session tokens, and expired tokens", async () => {
+  it("rejects archive listing and downloads without export permission", async () => {
     const denied = testApp(authenticatedContext({ permissions: [] })).app;
     expect((await denied.request("/api/admin/audit-archive/months")).status).toBe(403);
-
-    const issuer = testApp(authenticatedContext()).app;
-    const url = await downloadUrl(issuer);
-    const otherSession = testApp(authenticatedContext({ sessionId: "session-2" })).app;
-    expect((await otherSession.request(url)).status).toBe(403);
-
-    const expired = testApp(authenticatedContext({ now: "2026-08-09T12:05:00.000Z" })).app;
-    expect((await expired.request(url)).status).toBe(403);
+    expect((await denied.request("/api/admin/audit-archive/files?month=2026-08")).status).toBe(403);
+    expect((await denied.request("/api/admin/audit-archive/files/archive-1")).status).toBe(403);
   });
 });
 
@@ -125,7 +117,7 @@ function testApp(request: RequestContext) {
     context.set("requestContext", request);
     await next();
   });
-  app.route("/api/admin", createAuditArchiveRoutes({ service, tokens: TOKENS }));
+  app.route("/api/admin", createAuditArchiveRoutes({ service }));
   return { app, service };
 }
 
@@ -145,10 +137,4 @@ function authenticatedContext(input: Readonly<{
       permissions: new Set(input.permissions ?? ["admin.audit.export"]),
     }),
   });
-}
-
-async function downloadUrl(app: Hono<HttpEnv>): Promise<string> {
-  const response = await app.request("/api/admin/audit-archive/download?month=2026-08");
-  const payload = await response.json() as { files: Array<{ url: string }> };
-  return payload.files[0]?.url ?? "";
 }

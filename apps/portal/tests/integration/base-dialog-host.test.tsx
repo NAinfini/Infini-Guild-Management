@@ -1,8 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useConfirmDialog } from "../../hooks/useConfirmDialog";
 import { PortalThemeProvider } from "../../providers/ThemeProvider";
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 
 function ConfirmDialogHarness() {
   const confirm = useConfirmDialog();

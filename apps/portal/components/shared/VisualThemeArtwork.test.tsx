@@ -1,44 +1,61 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
+import { PortalThemeProvider } from "../../providers/ThemeProvider";
+import { usePreferencesStore } from "../../stores/preferences";
 import { ACTIVE_VISUAL_THEME } from "../../visual/themes";
 import { VisualThemeScene } from "./VisualThemeArtwork";
 
-describe("VisualThemeArtwork", () => {
-  it("uses the audited landing source from the active theme", () => {
-    const { container } = render(<VisualThemeScene />);
-    expect(container.querySelector(".visual-theme-scene__environment")).toHaveAttribute(
-      "src",
-      ACTIVE_VISUAL_THEME.scenes.landing.src,
-    );
-  });
+beforeEach(() => {
+  usePreferencesStore.setState({ themeMode: "light" });
+});
 
-  it("selects responsive access and page-specific scenes from the active theme", () => {
-    const { container, rerender } = render(<VisualThemeScene variant="access" />);
+describe("VisualThemeArtwork", () => {
+  it("selects the active theme asset for landing and access variants", () => {
+    const { container, rerender } = render(
+      <PortalThemeProvider><VisualThemeScene /></PortalThemeProvider>,
+    );
     expect(container.querySelector(".visual-theme-scene__environment")).toHaveAttribute(
       "src",
-      ACTIVE_VISUAL_THEME.scenes.access.desktop.src,
+      ACTIVE_VISUAL_THEME.scenes.landing.desktop.sources.light.src,
     );
     expect(container.querySelector("source")).toHaveAttribute(
       "srcset",
-      ACTIVE_VISUAL_THEME.scenes.access.mobile.src,
+      ACTIVE_VISUAL_THEME.scenes.landing.mobile.sources.light.src,
     );
 
-    rerender(<VisualThemeScene variant="announcements" />);
+    rerender(
+      <PortalThemeProvider><VisualThemeScene variant="access-login" /></PortalThemeProvider>,
+    );
     expect(container.querySelector(".visual-theme-scene__environment")).toHaveAttribute(
       "src",
-      ACTIVE_VISUAL_THEME.scenes.routes.announcements.src,
+      ACTIVE_VISUAL_THEME.scenes.access.login.desktop.sources.light.src,
     );
   });
 
-  it("keeps decorative art out of the accessibility tree", () => {
-    const { container } = render(<VisualThemeScene />);
+  it("switches a route scene to its dark asset when the color mode changes", () => {
+    const { container } = render(
+      <PortalThemeProvider><VisualThemeScene variant="dashboard" /></PortalThemeProvider>,
+    );
+
+    act(() => usePreferencesStore.setState({ themeMode: "dark" }));
+
+    expect(container.querySelector(".visual-theme-scene__environment")).toHaveAttribute(
+      "src",
+      ACTIVE_VISUAL_THEME.scenes.routes.dashboard.sources.dark.src,
+    );
+    expect(container.querySelector(".visual-theme-scene")).toHaveAttribute(
+      "data-visual-color-mode",
+      "dark",
+    );
+  });
+
+  it("keeps decorative scene artwork out of the accessibility tree", () => {
+    const { container } = render(
+      <PortalThemeProvider><VisualThemeScene /></PortalThemeProvider>,
+    );
 
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
-    expect(container.querySelectorAll('img[alt=""]')).toHaveLength(1);
-    expect(container.querySelector(".visual-theme-scene")).toHaveAttribute("aria-hidden", "true");
-    expect(container.querySelector(".visual-theme-scene")).toHaveAttribute(
-      "data-visual-theme",
-      ACTIVE_VISUAL_THEME.id,
-    );
+    expect(container.querySelector('img[alt=""]')).toBeInTheDocument();
+    expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
   });
 });

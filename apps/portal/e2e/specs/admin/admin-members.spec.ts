@@ -1,7 +1,7 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { createThrowawayMember, uniqueTag } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
-import { ensureFiltersOpen, field, readInteger, topDialog } from "../../support/ui";
+import { appSiderNavigationItem, ensureFiltersOpen, field, readInteger, topDialog } from "../../support/ui";
 import { canAccessAdmin } from "../../../utils/permissions";
 
 /*
@@ -71,7 +71,7 @@ async function serverUserTotal(api: APIRequestContext): Promise<number> {
 
 async function openMembers(page: Page): Promise<void> {
   await page.goto("/admin");
-  await expect(page.getByRole("tab", { name: /Member Mgmt/ })).toHaveAttribute("aria-selected", "true");
+  await expect(appSiderNavigationItem(page, "Member Mgmt")).toHaveAttribute("aria-current", "page");
   await expect(searchBox(page)).toBeVisible();
   await page.waitForLoadState("networkidle");
 }
@@ -151,7 +151,7 @@ test("状态筛选：三段各自过滤可见行，而统计块按搜索结果�
   await expect(memberRows(page)).toHaveCount(2);
 });
 
-test("分页：超过一页才出现分页条，末页行数对得上，改成每页 50 之后分页条整条消失", async ({ page, api }) => {
+test("分页：末页行数正确，单页时仍可改回每页数量", async ({ page, api }) => {
   /*
    * 默认每页 20，总人数要先顶到 21 以上分页条才渲染得出来。
    *
@@ -177,14 +177,14 @@ test("分页：超过一页才出现分页条，末页行数对得上，改成�
     `末页应当只剩 ${lastPageRows} 行（总数 ${total}，每页 ${PAGE_SIZE}）`,
   ).toHaveCount(lastPageRows);
 
-  /*
-   * 每页条数是分页条自己的一部分：调到 50 之后只剩一页，整条分页条（连同这个
-   * 下拉）一起从 DOM 里消失，不刷新页面就再也调不回去了。如实记录现状。
-   */
   await field(pagination(page), "Per page").click();
   await page.getByRole("option", { name: "50", exact: true }).click();
   await expect(pagination(page).getByRole("button", { name: "Last page" })).toHaveCount(0);
-  await expect(field(pagination(page), "Per page")).toHaveCount(0);
+  await expect(field(pagination(page), "Per page")).toBeVisible();
+
+  await field(pagination(page), "Per page").click();
+  await page.getByRole("option", { name: "20", exact: true }).click();
+  await expect(pagination(page).getByRole("button", { name: "Last page" })).toBeVisible();
 });
 
 /* 多选操作通过行的右键菜单进入；本用例验证 aria-selected 对应的选择模型。 */

@@ -28,6 +28,8 @@ function fixture(options: Readonly<{
   schema?: SchemaState;
   websocketAllowed?: boolean;
   maintenanceMode?: string;
+  maintenanceReason?: string;
+  maintenanceUntil?: string;
 }> = {}) {
   const authorization = options.authenticated
     ? createAuthorizationContext({
@@ -74,7 +76,9 @@ function fixture(options: Readonly<{
     site_logo_media_id: null,
     default_site_logo_url: "/logo.svg",
   }));
-  const runSchedule = vi.fn(async (_schedule: "daily" | "quarter-hourly") => []);
+  const runSchedule = vi.fn(async (
+    _schedule: "daily" | "quarter-hourly" | "half-hourly" | "hourly-media" | "hourly-cleanup",
+  ) => []);
   const notificationFetch = vi.fn(async (_request: Request) => new Response("forwarded"));
   const composition = {
     application: {
@@ -90,8 +94,6 @@ function fixture(options: Readonly<{
       publicUrl: "https://guild.test",
       allowedOrigins: ["https://admin.guild.test"],
       sessionCookieName: "ig_session",
-      inviteTokenSecret: "x".repeat(32),
-      auditDownloadSecret: new Uint8Array(32),
       passwordIterations: 10_000,
     },
     notifications: { fetch: notificationFetch },
@@ -107,28 +109,24 @@ function fixture(options: Readonly<{
     return new Response("missing", { status: 404, headers: { "Content-Type": "text/plain" } });
   });
   const websocketLimit = vi.fn(async () => ({ success: options.websocketAllowed !== false }));
-  const cacheEntries = new Map<string, Response>();
-  const cacheMatch = vi.fn(async (request: Request) => cacheEntries.get(request.url)?.clone());
-  const cachePut = vi.fn(async (request: Request, response: Response) => {
-    cacheEntries.set(request.url, response.clone());
-  });
-  const responseCache = { match: cacheMatch, put: cachePut } as unknown as Cache;
   const environment = {
     DB: {} as D1Database,
     BLOBS: {} as R2Bucket,
     ASSETS: { fetch: assetFetch } as unknown as Fetcher,
     NOTIFICATIONS: {} as DurableObjectNamespace,
+    AUTH_LOGIN_RATE_LIMITER: {} as DurableObjectNamespace,
     AUTH_RATE_LIMITER: {} as RateLimit,
     AUTH_IP_RATE_LIMITER: {} as RateLimit,
     READ_RATE_LIMITER: {} as RateLimit,
+    CONTENT_VIEW_RATE_LIMITER: {} as RateLimit,
     MUTATION_RATE_LIMITER: {} as RateLimit,
     UPLOAD_RATE_LIMITER: {} as RateLimit,
     WEBSOCKET_RATE_LIMITER: { limit: websocketLimit } as unknown as RateLimit,
     EXPENSIVE_READ_RATE_LIMITER: {} as RateLimit,
     IG_PUBLIC_URL: "https://guild.test",
-    IG_INVITE_TOKEN_SECRET: "x".repeat(32),
-    IG_AUDIT_DOWNLOAD_SECRET: "x".repeat(32),
     IG_MAINTENANCE_MODE: options.maintenanceMode,
+    IG_MAINTENANCE_REASON: options.maintenanceReason,
+    IG_MAINTENANCE_UNTIL: options.maintenanceUntil,
   } satisfies CloudflareEnvironment;
   return {
     apiFetch,
@@ -137,9 +135,7 @@ function fixture(options: Readonly<{
     environment,
     execute,
     getPublic,
-    cacheMatch,
-    cachePut,
-    handler: createCloudflareHandler(compose, () => responseCache),
+    handler: createCloudflareHandler(compose),
     notificationFetch,
     resolveAuthorization,
     runSchedule,
@@ -205,7 +201,11 @@ describe("Cloudflare root handler", () => {
   });
 
   it("short-circuits pages, APIs, health, HEAD, and WebSockets during maintenance", async () => {
-    const runtime = fixture({ maintenanceMode: "on" });
+    const runtime = fixture({
+      maintenanceMode: "on",
+      maintenanceReason: "<database> & media update",
+      maintenanceUntil: "2026-08-30T12:00:00.000Z",
+    });
     const requests = [
       new Request("https://guild.test/login"),
       new Request("https://guild.test/api/media/public"),
@@ -221,20 +221,26 @@ describe("Cloudflare root handler", () => {
 
     expect(responses.map(({ status }) => status)).toEqual([503, 503, 200, 503, 503]);
     expect(responses[0]?.headers.get("Strict-Transport-Security")).toBe("max-age=31536000; includeSubDomains");
-    expect(await responses[0]?.text()).toContain("class=\"maintenance-scene\"");
+    const maintenancePage = await responses[0]?.text();
+    expect(maintenancePage).toContain("class=\"maintenance-scene\"");
+    expect(maintenancePage).toContain("&lt;database&gt; &amp; media update");
+    expect(maintenancePage).toContain("2026-08-30T12:00:00.000Z");
     await expect(responses[1]?.json()).resolves.toEqual(expect.objectContaining({
       error_code: "UPSTREAM_ERROR",
       message: "Maintenance in progress / 系统维护中",
     }));
-    await expect(responses[2]?.json()).resolves.toEqual({ ok: true, maintenance: true });
+    await expect(responses[2]?.json()).resolves.toEqual({
+      ok: true,
+      maintenance: true,
+      reason: "<database> & media update",
+      until: "2026-08-30T12:00:00.000Z",
+    });
     expect(await responses[3]?.text()).toBe("");
     expect(responses[4]?.headers.get("Retry-After")).toBe("300");
     expect(runtime.compose).not.toHaveBeenCalled();
     expect(runtime.execute).not.toHaveBeenCalled();
     expect(runtime.assetFetch).not.toHaveBeenCalled();
     expect(runtime.apiFetch).not.toHaveBeenCalled();
-    expect(runtime.cacheMatch).not.toHaveBeenCalled();
-    expect(runtime.cachePut).not.toHaveBeenCalled();
     expect(runtime.websocketLimit).not.toHaveBeenCalled();
     expect(runtime.notificationFetch).not.toHaveBeenCalled();
   });
@@ -334,32 +340,25 @@ describe("Cloudflare root handler", () => {
     expect(runtime.getPublic).toHaveBeenCalledOnce();
   });
 
-  it("caches only successful public GET media responses", async () => {
+  it("always sends public media requests through the authorized API", async () => {
     const runtime = fixture();
-    const firstExecution = executionContext();
     const first = await runtime.handler.fetch(
       new Request("https://guild.test/api/media/public?cache-bust=first"),
       runtime.environment,
-      firstExecution.context,
+      executionContext().context,
     );
     expect(await first.text()).toBe("public-media");
-    await Promise.all(firstExecution.pending);
 
-    const cached = await runtime.handler.fetch(
+    const second = await runtime.handler.fetch(
       new Request("https://guild.test/api/media/public?cache-bust=second"),
       runtime.environment,
       executionContext().context,
     );
-    expect(await cached.text()).toBe("public-media");
-    expect(runtime.apiFetch).toHaveBeenCalledOnce();
-    expect(runtime.cachePut).toHaveBeenCalledOnce();
-    expect(runtime.cacheMatch.mock.calls.map(([request]) => request.url)).toEqual([
-      "https://guild.test/api/media/public",
-      "https://guild.test/api/media/public",
-    ]);
+    expect(await second.text()).toBe("public-media");
+    expect(runtime.apiFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("always passes private and range media requests through to the API", async () => {
+  it("preserves private and range media API requests", async () => {
     const runtime = fixture();
     for (let index = 0; index < 2; index += 1) {
       await runtime.handler.fetch(
@@ -375,8 +374,6 @@ describe("Cloudflare root handler", () => {
     }
 
     expect(runtime.apiFetch).toHaveBeenCalledTimes(4);
-    expect(runtime.cachePut).not.toHaveBeenCalled();
-    expect(runtime.cacheMatch).toHaveBeenCalledTimes(2);
   });
 
   it("reuses one composition per environment while scoping execution to each request", async () => {

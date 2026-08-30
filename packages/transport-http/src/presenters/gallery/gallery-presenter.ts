@@ -1,4 +1,4 @@
-import { galleryItemSchema, type CursorResponse, type GalleryItem } from "@guild/shared";
+import { galleryItemSchema, galleryLikeResponseSchema, type CursorResponse, type GalleryItem } from "@guild/shared";
 import { z } from "zod";
 
 const galleryPageSchema = z.object({
@@ -27,4 +27,8 @@ export function presentGalleryOk(value: unknown): { ok: true } {
 
 export function presentGalleryBatchDelete(value: unknown): { ok: true; deleted: number } {
   return batchDeleteSchema.parse(value);
+}
+
+export function presentGalleryLike(value: unknown): { liked: boolean; like_count: number } {
+  return galleryLikeResponseSchema.parse(value);
 }

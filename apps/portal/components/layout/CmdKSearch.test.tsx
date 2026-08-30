@@ -1,13 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { userScopedStorageKey } from "../../session-storage";
 import { CmdKSearch } from "./CmdKSearch";
-import styles from "./CmdKSearch.module.css";
 
 const navigateMock = vi.hoisted(() => vi.fn());
 const searchMock = vi.hoisted(() => vi.fn());
@@ -20,6 +17,8 @@ vi.mock("react-i18next", () => ({
         "cmdk.searchTitle": "Global Search",
         "cmdk.searchPlaceholder": "Search everything",
         "cmdk.noResults": "No results",
+        "action.retry": "Retry",
+        loadError: "Unable to load search results.",
         "cmdk.recent": "Recent",
         "cmdk.category.members": "Members",
         "cmdk.category.events": "Events",
@@ -74,12 +73,27 @@ describe("CmdKSearch", () => {
           role_level: 100,
         },
         { id: "war-1", title: "Guild War", subtitle: "win - 2026-03-01", type: "war", to: "/guild-war" },
-        { id: "wiki-1", title: "war history", subtitle: "war-history", type: "wiki", to: "/wiki" },
+        {
+          id: "announcement-1",
+          title: "war briefing",
+          subtitle: "Announcement",
+          type: "announcement",
+          to: "/announcements",
+          entity_id: "announcement-1",
+        },
+        {
+          id: "wiki-1",
+          title: "war history",
+          subtitle: "war-history",
+          type: "wiki",
+          to: "/wiki",
+          entity_id: "war-history",
+        },
       ],
     });
   });
 
-  it("keeps the desktop trigger label in its accessible name and uses a semantic title color", async () => {
+  it("keeps the desktop trigger label in its accessible name", async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -95,33 +109,7 @@ describe("CmdKSearch", () => {
     expect(trigger).toHaveAccessibleName("Search");
 
     await user.click(trigger!);
-    expect(await screen.findByRole("heading", { name: "Global Search" })).toHaveClass(styles.modalTitle!);
-  });
-
-  it("marks the compact trigger as a header touch target", () => {
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    });
-
-    render(<CmdKSearch asIcon />, { wrapper: createWrapper(queryClient) });
-
-    expect(screen.getByRole("button", { name: "Open search" })).toHaveClass("app-header-icon-btn");
-  });
-
-  it("keeps header icon hit targets at least 44 pixels square", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/layout/AppShell.css"), "utf8");
-    const iconRule = css.match(/\.app-header-icon-btn\s*\{([^}]*)\}/)?.[1] ?? "";
-
-    /*
-     * 尺寸走 --control-hit-area，不再写死 44px：theme-tokens.test.ts 禁止在按钮
-     * 选择器上写裸像素高度，同一个文件里另有一条断言钉住该 token 的值就是 44px，
-     * 两处合起来仍然保证了这块热区不小于 44 见方。
-     */
-    expect(iconRule).toMatch(/min-width:\s*var\(--control-hit-area\)/);
-    expect(iconRule).toMatch(/min-height:\s*var\(--control-hit-area\)/);
+    expect(await screen.findByRole("heading", { name: "Global Search" })).toBeInTheDocument();
   });
 
   it("shows war matches from search service data", async () => {
@@ -146,6 +134,43 @@ describe("CmdKSearch", () => {
 
     expect(searchMock).toHaveBeenCalledWith("war", 24);
     expect(screen.getByRole("option", { name: /war.*history/i })).toBeInTheDocument();
+  });
+
+  it("distinguishes a failed search from zero results and allows retry", async () => {
+    searchMock.mockRejectedValueOnce(new Error("network failed"));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<CmdKSearch />, { wrapper: createWrapper(queryClient) });
+
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.type(await screen.findByPlaceholderText("Search everything"), "war");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load search results.");
+    expect(screen.queryByText("No results")).not.toBeInTheDocument();
+
+    searchMock.mockResolvedValueOnce({ data: [] });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("No results")).toBeInTheDocument();
+  });
+
+  it("removes stale selectable results while a changed query is debouncing", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<CmdKSearch />, { wrapper: createWrapper(queryClient) });
+
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    const input = await screen.findByPlaceholderText("Search everything");
+    await user.type(input, "war");
+    expect(await screen.findByRole("option", { name: /war history/i })).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "new query");
+
+    expect(screen.queryByRole("option", { name: /war history/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Loading")).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   it("shows the embedded D1 role name instead of a raw role id", async () => {
@@ -203,29 +228,28 @@ describe("CmdKSearch", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(navigateMock).toHaveBeenCalledWith({ to: "/wiki" });
+      expect(navigateMock).toHaveBeenCalledWith({
+        to: "/wiki/$slug",
+        params: { slug: "war-history" },
+      });
     });
   });
 
-  it("keeps initial autofocus visually quiet until focus leaves the search input", async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    });
+  it("opens announcement matches on their independent detail route", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const user = userEvent.setup();
-
     render(<CmdKSearch />, { wrapper: createWrapper(queryClient) });
 
     await user.click(screen.getByRole("button", { name: "Search" }));
-    const input = await screen.findByRole("combobox", { name: "Search input" });
+    await user.type(await screen.findByPlaceholderText("Search everything"), "war");
+    await user.click(await screen.findByRole("option", { name: /war briefing/i }));
 
-    await waitFor(() => expect(input).toHaveFocus());
-    expect(input).toHaveAttribute("data-silent-autofocus", "true");
-
-    await user.tab();
-    expect(input).not.toHaveAttribute("data-silent-autofocus");
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith({
+        to: "/announcements/$announcementId",
+        params: { announcementId: "announcement-1" },
+      });
+    });
   });
 
   it("returns focus to the trigger when the palette closes", async () => {

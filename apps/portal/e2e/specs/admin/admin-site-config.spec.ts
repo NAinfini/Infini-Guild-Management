@@ -1,13 +1,13 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { expect, readJson, test } from "../../support/test";
-import { field } from "../../support/ui";
+import { appSiderNavigationItem, expectToast, field } from "../../support/ui";
 
 /*
  * 后台「站点配置」页签。
  *
  * 这一页和别的页签有个本质区别：它改的是唯一一行全站配置，不是新增一条记录。
- * 收尾的清理注册表只认「本次运行创建出来的东西」，指纹又只数行数——
- * 改坏了的站点名、被关掉的功能开关，两道防线一条都拦不住，会安静地留到下一轮。
+ * 收尾的清理注册表只认「本次运行创建出来的东西」，不能替这唯一一行还原原值。
+ * 指纹会忽略 API 每次写入必然刷新的 revision_token / updated_at，但仍逐字段哈希其余配置；
  * 所以每条会写入的用例都必须自己先存快照，afterEach 无论成败都原样写回去。
  *
  * 站点标志由独立媒体接口管理，不属于通用 PATCH；这组会还原配置的用例不改它。
@@ -20,6 +20,7 @@ type SiteConfig = {
   site_description: string;
   site_logo_media_id: string | null;
   features: Record<string, boolean>;
+  oauth: Record<string, boolean>;
   media_policy: {
     max_file_size_bytes: Record<string, number>;
     quotas: Record<string, number>;
@@ -27,17 +28,22 @@ type SiteConfig = {
   storage_policy: { images_per_item: number };
   absence_policy: { max_span_days: number; max_entries_per_user: number };
 };
+type SiteConfigSnapshot = SiteConfig & { revision_token: string };
 
 /** 本条用例开跑前的全站配置。afterEach 拿它原样写回去。 */
-let baseline: SiteConfig | null = null;
+let baseline: SiteConfigSnapshot | null = null;
 
-async function readConfig(api: APIRequestContext): Promise<SiteConfig> {
-  const body = await readJson(await api.get("/api/admin/site-config"), "读取站点配置") as { site: SiteConfig };
-  return body.site;
+async function readConfig(api: APIRequestContext): Promise<SiteConfigSnapshot> {
+  const body = await readJson(await api.get("/api/admin/site-config"), "读取站点配置") as {
+    site: SiteConfig;
+    revision_token?: unknown;
+  };
+  expect(typeof body.revision_token, "站点配置响应必须在顶层提供 revision_token").toBe("string");
+  return { ...body.site, revision_token: body.revision_token as string };
 }
 
 /** 存快照。凡是会点保存的用例，第一句就得是它。 */
-async function snapshot(api: APIRequestContext): Promise<SiteConfig> {
+async function snapshot(api: APIRequestContext): Promise<SiteConfigSnapshot> {
   baseline = await readConfig(api);
   return baseline;
 }
@@ -46,12 +52,15 @@ test.afterEach(async ({ api }) => {
   if (!baseline) return;
   const previous = baseline;
   baseline = null;
+  const current = await readConfig(api);
   await readJson(
     await api.patch("/api/admin/site-config", {
       data: {
+        expected_revision_token: current.revision_token,
         site_name: previous.site_name,
         site_description: previous.site_description,
         features: previous.features,
+        oauth: previous.oauth,
         media_policy: previous.media_policy,
         storage_policy: previous.storage_policy,
         absence_policy: previous.absence_policy,
@@ -85,17 +94,22 @@ function saveButton(page: Page): Locator {
 function featureSwitch(page: Page, label: string): Locator {
   return featuresCard(page).getByRole("switch", { name: label, exact: true });
 }
-function navItem(page: Page, label: string): Locator {
-  return page.locator(".app-sider").getByRole("button", { name: label, exact: true });
-}
-
 async function openSiteConfig(page: Page): Promise<void> {
   await page.goto("/admin?tab=siteConfig");
-  await expect(page.getByRole("tab", { name: /Site Config/ })).toHaveAttribute("aria-selected", "true");
-  /* 三张卡片单列排开，没有二级导航；顺带钉住「不再有跳锚点的链接」这条。 */
-  await expect(page.locator(".site-config > .site-config-card")).toHaveCount(3);
+  await expect(appSiderNavigationItem(page, "Site Config")).toHaveAttribute("aria-current", "page");
+  await expect(field(page, "Guild Name")).toBeVisible();
   await expect(featuresCard(page)).toBeVisible();
-  await expect(page.locator('a[href^="#site-config-"]')).toHaveCount(0);
+  await page.waitForLoadState("networkidle");
+}
+
+/**
+ * 后台处于独立的管理导航上下文，产品工具页只会出现在普通门户侧栏。
+ * 用真实的「返回门户」动作切回去，既不靠旧的后台菜单名称，也能验证保存后的
+ * Site Config store 已立即影响门户导航。
+ */
+async function returnToPortal(page: Page): Promise<void> {
+  await page.locator(".app-sider").getByRole("button", { name: "Return to portal", exact: true }).click();
+  await expect(appSiderNavigationItem(page, "Dashboard")).toHaveAttribute("aria-current", "page");
   await page.waitForLoadState("networkidle");
 }
 
@@ -108,20 +122,12 @@ async function enabledCount(page: Page): Promise<number> {
 }
 
 /*
- * NumberInput 底下是 react-number-format，带后缀（「8 MB」）时直接 fill 会把后缀一起当成输入。
- * 全选再逐字符敲，走的才是控件自己的格式化路径。
+ * 这是原生 number 输入框；清空后逐字符输入，避免浏览器把旧值和新值混在一起。
  */
 async function setNumber(input: Locator, value: string): Promise<void> {
   await input.click();
   await input.press("ControlOrMeta+a");
   await input.pressSequentially(value);
-}
-
-async function expectNotified(page: Page, text: string): Promise<void> {
-  await expect(
-    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
-    `没有弹出通知「${text}」`,
-  ).toBeVisible();
 }
 
 test("保存条的出现条件：没改动时整块不在；名字空着时在但不让存；改回原样又收起来", async ({ page, api, flow }) => {
@@ -159,14 +165,14 @@ test("改站点名：保存后落库，侧栏品牌名和浏览器标签页标�
 
   await field(page, "Guild Name").fill(renamed);
   await flow.click(saveButton(page), UPDATE_CONFIG);
-  await expectNotified(page, "Site config saved");
+  await expectToast(page, "Site config saved");
 
   expect((await readConfig(api)).site_name, "服务端得真的存下新名字").toBe(renamed);
   await expect(
     page.locator(".app-brand-title"),
     "站点名是全站品牌，存完就该当场生效，而不是等下次刷新",
   ).toHaveText(renamed);
-  await expect(page).toHaveTitle(renamed);
+  await expect(page).toHaveTitle(`Site Config · ${renamed}`);
   await expect(saveBar(page), "存完之后保存条要收起来，否则会重复提交").toHaveCount(0);
 });
 
@@ -174,15 +180,15 @@ test("功能开关：关掉工具页并保存后，服务端和左侧导航同�
   const current = await snapshot(api);
   expect(current.features.tools, "这条用例的前提是工具页原本开着").toBe(true);
   await openSiteConfig(page);
-  await expect(navItem(page, "Tools"), "关掉之前左侧应当有工具页入口").toBeVisible();
 
   await flow.clickWithoutApi(featureSwitch(page, "Tools"));
   await flow.click(saveButton(page), UPDATE_CONFIG);
-  await expectNotified(page, "Site config saved");
+  await expectToast(page, "Site config saved");
 
   expect((await readConfig(api)).features.tools, "开关要真的落库").toBe(false);
+  await returnToPortal(page);
   await expect(
-    navItem(page, "Tools"),
+    appSiderNavigationItem(page, "Tools"),
     "关掉的功能必须当场从导航里消失，否则成员点进去只会撞上一个空页面",
   ).toHaveCount(0);
   expect(
@@ -190,10 +196,14 @@ test("功能开关：关掉工具页并保存后，服务端和左侧导航同�
     "只扳了工具页这一个开关，别的功能不能被顺手改掉",
   ).toBe(current.features.wiki);
 
+  await openSiteConfig(page);
+  await expect(featureSwitch(page, "Tools")).toHaveAttribute("aria-checked", "false");
   await flow.clickWithoutApi(featureSwitch(page, "Tools"));
   await flow.click(saveButton(page), UPDATE_CONFIG);
+  await expectToast(page, "Site config saved");
   expect((await readConfig(api)).features.tools).toBe(true);
-  await expect(navItem(page, "Tools"), "开回来导航项也要回来").toBeVisible();
+  await returnToPortal(page);
+  await expect(appSiderNavigationItem(page, "Tools"), "开回来导航项也要回来").toBeVisible();
 });
 
 test("上传上限与配额：MB 输入框按字节落库，配额和每件物品图片数一并生效", async ({ page, api, flow }) => {
@@ -201,12 +211,13 @@ test("上传上限与配额：MB 输入框按字节落库，配额和每件物�
   await openSiteConfig(page);
 
   await setNumber(field(limitsCard(page), "Profile image"), "8");
-  await expect(field(limitsCard(page), "Profile image"), "单位后缀要留在输入框里").toHaveValue("8 MB");
+  await expect(field(limitsCard(page), "Profile image")).toHaveValue("8");
+  await expect(limitsCard(page).locator("#site-config-file-size-profile_image-suffix")).toHaveText("MB");
   await setNumber(field(limitsCard(page), "Gallery quota"), "12");
   await setNumber(field(limitsCard(page), "Images per item"), "3");
 
   await flow.click(saveButton(page), UPDATE_CONFIG);
-  await expectNotified(page, "Site config saved");
+  await expectToast(page, "Site config saved");
 
   const saved = await readConfig(api);
   expect(saved.media_policy.max_file_size_bytes.profile_image, "界面上填的是 MB，存下去必须是字节").toBe(8 * 1024 * 1024);

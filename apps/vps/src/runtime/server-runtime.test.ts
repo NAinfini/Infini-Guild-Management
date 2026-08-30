@@ -18,12 +18,9 @@ import {
   type VpsRuntimeTimings,
 } from "./server-runtime.js";
 
-const SECRET = "0123456789abcdef0123456789abcdef";
 const PUBLIC_URL = "https://guild.example";
 const RUNTIME_CONFIG = readVpsRuntimeConfig({
   IG_PUBLIC_URL: PUBLIC_URL,
-  IG_INVITE_TOKEN_SECRET: SECRET,
-  IG_AUDIT_DOWNLOAD_SECRET: SECRET,
 }, "C:/vps-runtime-test");
 
 const AUTHENTICATED = createAuthorizationContext({
@@ -224,8 +221,6 @@ describe("VPS server composition root", () => {
       });
       const runtime = createVpsServerRuntime(readVpsRuntimeConfig({
         IG_PUBLIC_URL: PUBLIC_URL,
-        IG_INVITE_TOKEN_SECRET: SECRET,
-        IG_AUDIT_DOWNLOAD_SECRET: SECRET,
       }, directory), {
         dependencies: {
           prepareFilesystem: (config) => {
@@ -248,7 +243,14 @@ describe("VPS server composition root", () => {
 
   it("serves maintenance responses using only the HTTP boundary", async () => {
     const value = fixture({
-      config: Object.freeze({ ...RUNTIME_CONFIG, maintenanceMode: true }),
+      config: Object.freeze({
+        ...RUNTIME_CONFIG,
+        maintenanceMode: true,
+        maintenance: {
+          reason: "<database> & media update",
+          until: "2026-08-30T12:00:00.000Z",
+        },
+      }),
     });
     await value.runtime.start();
 
@@ -275,7 +277,10 @@ describe("VPS server composition root", () => {
       incoming("/login"),
     );
     expect(page.status).toBe(503);
-    expect(await page.text()).toContain("系统维护中");
+    const pageBody = await page.text();
+    expect(pageBody).toContain("系统维护中");
+    expect(pageBody).toContain("&lt;database&gt; &amp; media update");
+    expect(pageBody).toContain("2026-08-30T12:00:00.000Z");
 
     const api = await value.runtime.handleHttp(
       new Request("http://internal/api/site-config"),
@@ -289,7 +294,12 @@ describe("VPS server composition root", () => {
       incoming("/api/health"),
     );
     expect(health.status).toBe(200);
-    expect(await health.json()).toEqual({ ok: true, maintenance: true });
+    expect(await health.json()).toEqual({
+      ok: true,
+      maintenance: true,
+      reason: "<database> & media update",
+      until: "2026-08-30T12:00:00.000Z",
+    });
 
     const head = await value.runtime.handleHttp(
       new Request("http://internal/login", { method: "HEAD" }),

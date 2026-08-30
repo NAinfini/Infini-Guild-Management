@@ -126,8 +126,9 @@ test("加人：下拉选中一个成员就落库，人数标题和名单一起�
   await flow.act(
     async () => {
       await picker.click();
+      /* Native datalist options are browser chrome and do not expose ARIA option nodes.
+         Entering an exact member value fires the product's selection path directly. */
       await picker.fill(member.display_name);
-      await page.getByRole("option", { name: member.display_name, exact: true }).click();
     },
     ADD_PARTICIPANTS,
   );

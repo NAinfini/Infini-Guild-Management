@@ -11,12 +11,14 @@ describe("VPS executable entry", () => {
   it("is import-safe and installs signal handlers before awaiting startup", async () => {
     const readConfig = vi.fn();
     const createRuntime = vi.fn();
+    const setUmask = vi.spyOn(process, "umask");
     vi.doMock("./runtime/config.js", () => ({ readVpsRuntimeConfig: readConfig }));
     vi.doMock("./runtime/server-runtime.js", () => ({ createVpsServerRuntime: createRuntime }));
 
     const entry = await import("./index.js");
     expect(readConfig).not.toHaveBeenCalled();
     expect(createRuntime).not.toHaveBeenCalled();
+    expect(setUmask).not.toHaveBeenCalled();
 
     const initialInterruptHandlers = new Set(process.listeners("SIGINT"));
     const initialTerminateHandlers = new Set(process.listeners("SIGTERM"));

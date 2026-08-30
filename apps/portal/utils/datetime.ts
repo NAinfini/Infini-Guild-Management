@@ -253,6 +253,34 @@ export function localDateKey(value?: Instant): string {
   return date ? format(date, "yyyy-MM-dd") : EMPTY_TIME_TEXT;
 }
 
+function parseLocalCalendarDay(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+    ? date
+    : null;
+}
+
+/** 本地日期控件的一天起点，转成后端使用的 UTC 瞬时点。 */
+export function localDayStartIso(value: string): string | undefined {
+  return parseLocalCalendarDay(value)?.toISOString();
+}
+
+/** 本地日期控件的一天终点；用次日本地午夜减 1ms，正确跨过夏令时切换。 */
+export function localDayEndIso(value: string): string | undefined {
+  const start = parseLocalCalendarDay(value);
+  if (!start) return undefined;
+  return new Date(new Date(
+    start.getFullYear(),
+    start.getMonth(),
+    start.getDate() + 1,
+  ).getTime() - 1).toISOString();
+}
+
 /* ── <input type="datetime-local"> / <input type="date"> ────────────── */
 
 /** 瞬时点 → `yyyy-MM-ddTHH:mm`，即 datetime-local 控件要的本地挂钟串。 */

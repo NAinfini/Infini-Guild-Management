@@ -1,23 +1,14 @@
 import type { SensorDescriptor, SensorOptions } from "@dnd-kit/core";
 import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
-import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@portal/components/ui/dialog";
 import { Skeleton } from "@portal/components/ui/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Suspense, lazy, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "../../../hooks/useAppError";
-import { absenceQueryKeys, concludeGuildWar, guildWarQueryKeys, moveGuildWarMember, usersQueryKeys } from "../../../services/GuildWarService";
-import { fetchAbsencesWindow, fetchAllUsersListWithOptions } from "../../../services/UserService";
+import { absenceQueryKeys, concludeGuildWar, guildWarQueryKeys, moveGuildWarMember } from "../../../services/GuildWarService";
+import { fetchAbsencesWindow, type UsersListResponse } from "../../../services/UserService";
 import { formatDateTimeWithTimeZone, localDateKey } from "../../../utils/datetime";
 import { notifySuccess } from "../../../utils/notifications";
 import { SwordsIcon } from "../../icons";
@@ -27,7 +18,7 @@ import type { useGuildWarActiveController } from "../../feature/guild-war/useGui
 import type { useGuildWarDragController } from "../../../hooks/guild-war/useGuildWarDragController";
 import type { useGuildWarData } from "../../../hooks/data/useGuildWarData";
 import { EmptyState } from "../../shared/EmptyState";
-import { PickList } from "../../shared/PickList";
+import { GuildWarAddToPoolDialog } from "./GuildWarAddToPoolDialog";
 
 const LazyWarMemberDetailModal = lazy(() =>
   import("../../feature/guild-war/WarMemberDetailModal").then((mod) => ({ default: mod.WarMemberDetailModal })),
@@ -46,6 +37,7 @@ type GuildWarActiveTabProps = {
   selectedEventId: string | undefined;
   setSelectedEventId: (id: string) => void;
   canManageActive: boolean;
+  canRemoveParticipants: boolean;
   canViewMemberNotes: boolean;
   activeController: ReturnType<typeof useGuildWarActiveController>;
   guildWarDrag: ReturnType<typeof useGuildWarDragController>;
@@ -58,6 +50,7 @@ type GuildWarActiveTabProps = {
   sensors: SensorDescriptor<SensorOptions>[];
   concludeWarDisabled: boolean;
   concludeWarDisabledReason: string | undefined;
+  usersData: UsersListResponse["data"];
 };
 
 export function resolveGuildWarAbsenceWindow(
@@ -69,6 +62,18 @@ export function resolveGuildWarAbsenceWindow(
     return null;
   }
   return { from: day, to: day };
+}
+
+export function buildAddToPoolMove(
+  eventId: string,
+  userIds: readonly string[],
+  etag: string | undefined,
+): Parameters<typeof moveGuildWarMember>[0] {
+  return {
+    event_id: eventId,
+    moves: userIds.map((userId) => ({ user_id: userId, to: "pool" })),
+    etag,
+  };
 }
 
 type GuildWarActiveEmptyStateProps = {
@@ -142,6 +147,7 @@ export function GuildWarActiveTab({
   selectedEventId,
   setSelectedEventId,
   canManageActive,
+  canRemoveParticipants,
   canViewMemberNotes,
   activeController,
   guildWarDrag,
@@ -154,16 +160,11 @@ export function GuildWarActiveTab({
   sensors,
   concludeWarDisabled,
   concludeWarDisabledReason,
+  usersData,
 }: GuildWarActiveTabProps) {
   const { t } = useTranslation("guild-war");
   const queryClient = useQueryClient();
   const { showError } = useAppError();
-
-  const usersQuery = useQuery({
-    queryKey: usersQueryKeys.all,
-    queryFn: () => fetchAllUsersListWithOptions(),
-    staleTime: 10 * 60_000,
-  });
 
   // Absence queries use the selected war's calendar date, not today's date.
   const absenceWindow = resolveGuildWarAbsenceWindow(activeQuery.data?.event?.start_at);
@@ -197,10 +198,10 @@ export function GuildWarActiveTab({
       }
       for (const poolMember of activeData.pool) assignedIds.add(poolMember.userId);
     }
-    return (usersQuery.data?.data ?? [])
+    return usersData
       .filter((u) => !assignedIds.has(u.user.id))
       .map((u) => ({ value: u.user.id, label: u.user.display_name }));
-  }, [activeQuery.data, usersQuery.data]);
+  }, [activeQuery.data, usersData]);
   const filteredAvailableForPool = useMemo(() => {
     const query = addToPoolSearch.trim().toLocaleLowerCase();
     if (!query) return availableForPool;
@@ -214,11 +215,8 @@ export function GuildWarActiveTab({
   }, []);
 
   const addToPoolMutation = useMutation({
-    mutationFn: ({ eventId, userIds }: { eventId: string; userIds: string[] }) =>
-      moveGuildWarMember({
-        event_id: eventId,
-        moves: userIds.map((userId) => ({ user_id: userId, to: "pool" })),
-      }),
+    mutationFn: ({ eventId, userIds, etag }: { eventId: string; userIds: string[]; etag: string | undefined }) =>
+      moveGuildWarMember(buildAddToPoolMove(eventId, userIds, etag)),
     onSuccess: async (_response, variables) => {
       await queryClient.invalidateQueries({
         queryKey: guildWarQueryKeys.active(variables.eventId),
@@ -238,8 +236,9 @@ export function GuildWarActiveTab({
     addToPoolMutation.mutate({
       eventId: selectedEventId,
       userIds: [...addToPoolSelection],
+      etag: activeQuery.data?.etag ?? undefined,
     });
-  }, [addToPoolMutation, addToPoolSelection, selectedEventId]);
+  }, [activeQuery.data?.etag, addToPoolMutation, addToPoolSelection, selectedEventId]);
 
   // War conclusion state
   const [concludeWarOpen, setConcludeWarOpen] = useState(false);
@@ -248,7 +247,7 @@ export function GuildWarActiveTab({
     const activeData = activeQuery.data;
     if (!activeData) return [];
     const userMap = new Map(
-      (usersQuery.data?.data ?? []).map((u) => [u.user.id, u.user.display_name]),
+      usersData.map((u) => [u.user.id, u.user.display_name]),
     );
     const members: ConcludeWarMember[] = [];
     for (const team of activeData.teams) {
@@ -266,7 +265,7 @@ export function GuildWarActiveTab({
       }
     }
     return members;
-  }, [activeQuery.data, usersQuery.data]);
+  }, [activeQuery.data, usersData]);
 
   const concludeWarMutation = useMutation({
     mutationFn: async ({ eventId, data }: { eventId: string; data: ConcludeWarSubmitData }) => {
@@ -398,6 +397,7 @@ export function GuildWarActiveTab({
         <LazyGuildWarDragBoard
           dragColumns={guildWarDrag.dragColumns}
           canDrag={canManageActive && Boolean(selectedEventId)}
+          canRemoveParticipants={canRemoveParticipants}
           emptyText={t("empty")}
           activeSearch={activeController.activeSearch}
           activeDragItem={guildWarDrag.activeDragItem}
@@ -442,72 +442,26 @@ export function GuildWarActiveTab({
         />
       </Suspense>
 
-      <Dialog
+      <GuildWarAddToPoolDialog
         open={addToPoolOpen}
+        pending={addToPoolMutation.isPending}
+        availableCount={availableForPool.length}
+        options={filteredAvailableForPool}
+        selectedUserIds={addToPoolSelection}
+        search={addToPoolSearch}
         onOpenChange={(open) => {
           if (!open && addToPoolMutation.isPending) return;
           setAddToPoolOpen(open);
           if (!open) setAddToPoolSearch("");
         }}
-      >
-        <DialogContent
-          className="guild-war-task-modal"
-          closeLabel={t("common:action.close")}
-          closeButtonDisabled={addToPoolMutation.isPending}
-        >
-          <DialogHeader>
-            <DialogTitle>{t("active.addToPoolTitle")}</DialogTitle>
-            <DialogDescription>{t("active.addToPoolDescription")}</DialogDescription>
-          </DialogHeader>
-          <div className="guild-war-task-modal__body">
-            <div className="guild-war-task-modal__intro">
-              <span>{t("active.addToPoolField")}</span>
-              <Badge variant="secondary" className="tabular-nums">
-                {t("active.addToPoolAvailable", { count: availableForPool.length })}
-              </Badge>
-            </div>
-            <PickList
-              className="guild-war-task-modal__pick-list"
-              options={filteredAvailableForPool.map((option) => ({
-                id: option.value,
-                label: option.label,
-              }))}
-              selected={new Set(addToPoolSelection)}
-              onToggle={togglePoolSelection}
-              search={{
-                value: addToPoolSearch,
-                onChange: setAddToPoolSearch,
-                placeholder: t("active.addToPoolPlaceholder"),
-              }}
-              emptyLabel={t("empty")}
-              aria-label={t("active.addToPoolField")}
-            />
-          </div>
-          <DialogFooter className="guild-war-task-modal__footer">
-            <span className="guild-war-task-modal__selection tabular-nums">
-              {t("active.addToPoolSelected", { count: addToPoolSelection.length })}
-            </span>
-            <Button
-              autoFocus
-              variant="outline"
-              onClick={() => {
-                setAddToPoolOpen(false);
-                setAddToPoolSearch("");
-              }}
-              disabled={addToPoolMutation.isPending}
-            >
-              {t("common:action.cancel")}
-            </Button>
-            <Button
-              onClick={handleAddToPool}
-              loading={addToPoolMutation.isPending}
-              disabled={addToPoolSelection.length === 0 || addToPoolMutation.isPending}
-            >
-              {t("active.addToPoolConfirm", { count: addToPoolSelection.length })}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onToggleUser={togglePoolSelection}
+        onSearchChange={setAddToPoolSearch}
+        onCancel={() => {
+          setAddToPoolOpen(false);
+          setAddToPoolSearch("");
+        }}
+        onConfirm={handleAddToPool}
+      />
 
       <Suspense fallback={null}>
         <LazyConcludeWarModal

@@ -20,7 +20,7 @@ function renderAvatar(withTooltip = true) {
 }
 
 describe("MemberRoleAvatar accessibility", () => {
-  it("uses a native button as the HoverCard target", () => {
+  it("uses a native button as the hover target", () => {
     renderAvatar();
 
     expect(screen.getByRole("button", { name: "Aster" })).toBeInTheDocument();

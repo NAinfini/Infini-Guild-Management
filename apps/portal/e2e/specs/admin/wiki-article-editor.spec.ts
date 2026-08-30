@@ -1,16 +1,16 @@
 import type { APIRequestContext, Locator, Page, Request } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
-import { confirmDialog, expectNoDialog, field, selectOption } from "../../support/ui";
+import { confirmDialog, expectNoDialog, expectToast, field, selectOption } from "../../support/ui";
 
 /*
- * Wiki 文章编辑器：进出编辑态、标题/分类/正文三个字段、置顶与归档两个「意图」按钮、
+ * Wiki 文章编辑器：进出编辑态、标题/分类/正文三个字段、置顶与归档两个「意图」开关、
  * 保存、新建、退出（含丢弃确认）、删除。
  *
  * 这一页的编辑器有个容易被测漏的设计：置顶和归档不是点了就生效，
  * 而是先在前端记成 intent，等按保存时才一起进 PATCH（useWikiArticleEditor.ts:192-203）。
- * 所以每个 intent 按钮都要验两次：点的时候不许发请求，保存之后服务端字段真的变了。
- * 只断言按钮变色就等于什么都没验——它本来就只是个前端状态。
+ * 所以每个 intent 开关都要验两次：点的时候不许发请求，保存之后服务端字段真的变了。
+ * 只断言开关状态就等于什么都没验——它本来就只是个前端状态。
  *
  * 所有「保存成功」的判定一律回读服务端，不看提示条：提示是前端自己弹的，
  * 接口 200 但没落库的话，提示照样是绿的。
@@ -77,9 +77,13 @@ async function readArticle(api: APIRequestContext, slug: string): Promise<Articl
 }
 
 /** 直接按 slug 进页面：省掉「先在列表里找到它」这段与本用例无关的操作。 */
+function articleHeading(page: Page, title: string): Locator {
+  return page.getByRole("heading", { name: title, exact: true, level: 2 });
+}
+
 async function openArticle(page: Page): Promise<void> {
   await page.goto(`/wiki/${article.slug}`);
-  await expect(page.locator(".wiki-article-reader-title")).toHaveText(article.title);
+  await expect(articleHeading(page, article.title)).toHaveText(article.title);
 }
 
 async function openEditor(page: Page): Promise<void> {
@@ -146,7 +150,7 @@ test("进出编辑态：铅笔进、退出回到阅读态，两个方向都不�
   await clickWithoutWrite(page, async () => {
     await page.getByRole("button", { name: "Exit", exact: true }).click();
     await expect(page.locator(".wiki-article-editor-card")).toHaveCount(0);
-    await expect(page.locator(".wiki-article-reader-title")).toHaveText(article.title);
+    await expect(articleHeading(page, article.title)).toHaveText(article.title);
   });
 });
 
@@ -173,23 +177,52 @@ test("保存：标题清空时挡在前端，不写服务端", async ({ page, ap
 
   await clickWithoutWrite(page, async () => {
     await saveButton(page).click();
-    await expect(page.locator('[data-slot="toast-description"]').filter({ hasText: "Article title is required." }))
-      .toBeVisible();
+    await expectToast(page, "Article title is required.");
   });
 
   const untouched = await readArticle(api, article.slug);
   expect(untouched.title, "被挡下的保存不该动到服务端").toBe(article.title);
 });
 
-test("置顶：点按钮只记意图，保存之后服务端才真的置顶", async ({ page, flow, api }) => {
+test("表格与链接：编辑器生成的正文能连续保存并回读", async ({ page, flow, api }) => {
+  await openEditor(page);
+  await replaceBody(page, `linked guide ${stamp}`);
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.getByRole("button", { name: "More Formatting", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Link", exact: true }).click();
+  const linkDialog = page.getByRole("dialog", { name: "Link URL", exact: true });
+  await linkDialog.getByRole("textbox", { name: "Link URL", exact: true }).fill("https://example.com/guide");
+  await linkDialog.getByRole("button", { name: "Link", exact: true }).click();
+  await bodyField(page).click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Table", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Table", exact: true }).click();
+
+  await flow.click(saveButton(page), UPDATE_ARTICLE);
+  const saved = await readArticle(api, article.slug);
+  expect(saved.body_json).toContain('"tableHeader"');
+  expect(saved.body_json).toContain('"tableCell"');
+  expect(saved.body_json).toContain('"title":null');
+  expect(saved.body_json).toContain("https://example.com/guide");
+
+  const nextTitle = `${SYSTEM_TEST_CONTENT_MARKER} Second save ${stamp}`;
+  await titleField(page).fill(nextTitle);
+  await flow.click(saveButton(page), UPDATE_ARTICLE);
+  const savedAgain = await readArticle(api, article.slug);
+  expect(savedAgain.title).toBe(nextTitle);
+  expect(savedAgain.body_json).toBe(saved.body_json);
+});
+
+test("置顶：点开关只记意图，保存之后服务端才真的置顶", async ({ page, flow, api }) => {
   await openEditor(page);
 
-  const pin = page.getByRole("button", { name: "Pin", exact: true });
-  await expect(pin).toHaveAttribute("aria-pressed", "false");
-  const queued = page.getByRole("button", { name: "Pin (pending save)", exact: true });
+  const pin = page.getByRole("switch", { name: "Pin", exact: true });
+  await expect(pin).not.toBeChecked();
   await clickWithoutWrite(page, async () => {
     await pin.click();
-    await expect(queued, "意图要写在按钮上，否则用户不知道还没保存").toHaveAttribute("aria-pressed", "true");
+    await expect(pin, "开关要反映待保存的置顶意图").toBeChecked();
+    await expect(page.getByText("Pin (pending save)", { exact: true })).toBeVisible();
   });
   expect((await readArticle(api, article.slug)).pinned, "还没保存，服务端不该有变化").toBe(false);
 
@@ -198,21 +231,22 @@ test("置顶：点按钮只记意图，保存之后服务端才真的置顶", as
 
   // 再点一次是撤销置顶：同样先记意图，保存才生效。
   await clickWithoutWrite(page, async () => {
-    await page.getByRole("button", { name: "Unpin", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Unpin (pending save)", exact: true }))
-      .toHaveAttribute("aria-pressed", "false");
+    await pin.click();
+    await expect(pin).not.toBeChecked();
+    await expect(page.getByText("Unpin (pending save)", { exact: true })).toBeVisible();
   });
   await flow.click(saveButton(page), UPDATE_ARTICLE);
   expect((await readArticle(api, article.slug)).pinned, "取消置顶同样要落库").toBe(false);
 });
 
-test("归档：意图按钮 + 保存，归档时间落到服务端", async ({ page, flow, api }) => {
+test("归档：意图开关 + 保存，归档时间落到服务端", async ({ page, flow, api }) => {
   await openEditor(page);
 
   await clickWithoutWrite(page, async () => {
-    await page.getByRole("button", { name: "Archive", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Archive (pending save)", exact: true }))
-      .toHaveAttribute("aria-pressed", "true");
+    const archive = page.getByRole("switch", { name: "Archive", exact: true });
+    await archive.click();
+    await expect(archive).toBeChecked();
+    await expect(page.getByText("Archive (pending save)", { exact: true })).toBeVisible();
   });
   expect((await readArticle(api, article.slug)).archived_at, "还没保存就不该有归档时间").toBeNull();
 
@@ -220,9 +254,10 @@ test("归档：意图按钮 + 保存，归档时间落到服务端", async ({ pa
   expect((await readArticle(api, article.slug)).archived_at, "保存后必须写上归档时间").not.toBeNull();
 
   await clickWithoutWrite(page, async () => {
-    await page.getByRole("button", { name: "Unarchive", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Unarchive (pending save)", exact: true }))
-      .toHaveAttribute("aria-pressed", "false");
+    const archive = page.getByRole("switch", { name: "Archive", exact: true });
+    await archive.click();
+    await expect(archive).not.toBeChecked();
+    await expect(page.getByText("Unarchive (pending save)", { exact: true })).toBeVisible();
   });
   await flow.click(saveButton(page), UPDATE_ARTICLE);
   expect((await readArticle(api, article.slug)).archived_at, "取消归档要把时间清回 null").toBeNull();
@@ -246,14 +281,9 @@ test("退出：有未保存改动时先问，取消留在编辑态，确认丢�
   expect((await readArticle(api, article.slug)).title, "丢弃的改动不该落库").toBe(article.title);
 });
 
-test("新建文章：加号进创建态，创建按钮真的建出一篇并跳过去", async ({ page, flow, api }) => {
-  await openArticle(page);
-
-  /* 列表卡上的加号和编辑器里的创建按钮同名，只能按所在卡片区分。 */
-  await clickWithoutWrite(page, async () => {
-    await page.locator(".wiki-article-list-card").getByRole("button", { name: "Create Article", exact: true }).click();
-    await expect(titleField(page), "创建态的标题应当是空的").toHaveValue("");
-  });
+test("新建文章：独立创建路由真的建出一篇并跳到详情", async ({ page, flow, api }) => {
+  await page.goto("/wiki/new");
+  await expect(titleField(page), "创建态的标题应当是空的").toHaveValue("");
 
   const newTitle = `${SYSTEM_TEST_CONTENT_MARKER} Created ${stamp}`;
   await titleField(page).fill(newTitle);
@@ -272,7 +302,7 @@ test("新建文章：加号进创建态，创建按钮真的建出一篇并跳�
   /*
    * 建完这一跳会经过未保存改动拦截器。草稿不清干净的话，用户点完「创建」
    * 立刻被问「有未保存的改动，确定离开吗」，选 Stay 还会让地址栏停在
-   * ?selection=none、和列表里已经选中的新文章对不上——刷新就丢。
+   * 还停在创建路由、和新文章详情对不上——刷新就丢。
    * 这两条断言就是钉住这个修复（useWikiArticleEditor.ts 的 resetDraft）。
    */
   await expectNoDialog(page);

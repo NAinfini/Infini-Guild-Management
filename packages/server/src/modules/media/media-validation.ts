@@ -1,12 +1,13 @@
 import { getMediaViewDimensions } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { AppError } from "@guild/kernel";
 
 export type ImageDimensions = Readonly<{ width: number; height: number }>;
 
 export type ValidatedAnnouncementAttachment = Readonly<{
   originalName: string;
-  contentType: "application/pdf" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-  extension: "pdf" | "xlsx";
+  contentType: "application/octet-stream";
+  objectExtension: "bin";
 }>;
 
 function invalidMedia(message: string): never {
@@ -29,11 +30,13 @@ export function readWebPDimensions(bytes: Uint8Array): ImageDimensions {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const riffEnd = view.getUint32(4, true) + 8;
   if (riffEnd > bytes.byteLength || riffEnd < 20) return invalidMedia("WebP data is truncated");
+  if (riffEnd !== bytes.byteLength) return invalidMedia("WebP data has trailing bytes");
 
   let canvas: ImageDimensions | null = null;
   let frame: ImageDimensions | null = null;
   let animated = false;
-  for (let offset = 12; offset + 8 <= riffEnd;) {
+  let offset = 12;
+  for (; offset + 8 <= riffEnd;) {
     const kind = fourCc(bytes, offset);
     const size = view.getUint32(offset + 4, true);
     const start = offset + 8;
@@ -45,7 +48,7 @@ export function readWebPDimensions(bytes: Uint8Array): ImageDimensions {
       animated ||= (bytes[start]! & 0x02) !== 0;
       canvas = { width: uint24(bytes, start + 4) + 1, height: uint24(bytes, start + 7) + 1 };
     } else if (kind === "VP8 ") {
-      if (size < 10 || bytes[start + 3] !== 0x9d || bytes[start + 4] !== 0x01 || bytes[start + 5] !== 0x2a) {
+      if (size <= 10 || bytes[start + 3] !== 0x9d || bytes[start + 4] !== 0x01 || bytes[start + 5] !== 0x2a) {
         return invalidMedia("WebP VP8 frame header is invalid");
       }
       frame = {
@@ -53,7 +56,7 @@ export function readWebPDimensions(bytes: Uint8Array): ImageDimensions {
         height: view.getUint16(start + 8, true) & 0x3fff,
       };
     } else if (kind === "VP8L") {
-      if (size < 5 || bytes[start] !== 0x2f) return invalidMedia("WebP VP8L frame header is invalid");
+      if (size <= 5 || bytes[start] !== 0x2f) return invalidMedia("WebP VP8L frame header is invalid");
       frame = {
         width: 1 + (bytes[start + 1]! | ((bytes[start + 2]! & 0x3f) << 8)),
         height: 1 + (((bytes[start + 2]! & 0xc0) >> 6) | (bytes[start + 3]! << 2) | ((bytes[start + 4]! & 0x0f) << 10)),
@@ -64,11 +67,15 @@ export function readWebPDimensions(bytes: Uint8Array): ImageDimensions {
     offset = end + (size & 1);
   }
 
+  if (offset !== riffEnd) return invalidMedia("WebP chunk table is invalid");
+
   if (animated) return invalidMedia("Animated images must be uploaded as video");
   const dimensions = canvas ?? frame;
   if (!dimensions || !frame || dimensions.width < 1 || dimensions.height < 1) {
     return invalidMedia("WebP dimensions are missing or invalid");
   }
+  assertImageDimensions(dimensions);
+  assertImageDimensions(frame);
   return dimensions;
 }
 
@@ -112,19 +119,11 @@ export function validateAnnouncementAttachment(
   ) {
     return invalidMedia("Attachment name is invalid");
   }
-  const extension = originalName.slice(originalName.lastIndexOf(".") + 1).toLowerCase();
-  const contentType = input.contentType.trim().toLowerCase();
-  if (extension === "pdf" && contentType === "application/pdf" && hasPrefix(input.bytes, [0x25, 0x50, 0x44, 0x46, 0x2d])) {
-    return { originalName, contentType, extension };
-  }
-  if (
-    extension === "xlsx"
-    && contentType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    && hasPrefix(input.bytes, [0x50, 0x4b, 0x03, 0x04])
-  ) {
-    return { originalName, contentType, extension };
-  }
-  return invalidMedia("Attachment type, name, and content do not match");
+  return {
+    originalName,
+    contentType: "application/octet-stream",
+    objectExtension: "bin",
+  };
 }
 
 function assertByteLimit(bytes: Uint8Array, maxBytes: number): void {
@@ -133,6 +132,13 @@ function assertByteLimit(bytes: Uint8Array, maxBytes: number): void {
   }
 }
 
-function hasPrefix(bytes: Uint8Array, prefix: readonly number[]): boolean {
-  return bytes.byteLength >= prefix.length && prefix.every((value, index) => bytes[index] === value);
+function assertImageDimensions(dimensions: ImageDimensions): void {
+  const { maxEdge, maxPixels } = LIMITS.media.fullImageBounds;
+  if (
+    dimensions.width > maxEdge
+    || dimensions.height > maxEdge
+    || dimensions.width * dimensions.height > maxPixels
+  ) {
+    invalidMedia(`Image dimensions must not exceed ${maxEdge}px per edge or ${maxPixels} pixels`);
+  }
 }

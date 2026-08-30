@@ -1,8 +1,10 @@
 import { IconAdjustmentsHorizontal, IconX } from "@tabler/icons-react";
 import {
+  type ComponentPropsWithoutRef,
   type ReactNode,
   useEffect,
   useId,
+  useRef,
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,6 +20,7 @@ import {
 } from "@portal/components/ui/drawer";
 import {
   Popover,
+  PopoverClose,
   PopoverContent,
   PopoverHeader,
   PopoverTitle,
@@ -49,6 +52,24 @@ type ContentFilterGroupProps = {
   description?: ReactNode;
   className?: string;
 };
+
+type ContentFilterOptionProps = ComponentPropsWithoutRef<"label">;
+
+/**
+ * One full-row choice inside a filter group. Wrapping the native/Base UI
+ * control keeps the whole row clickable while preserving its input semantics.
+ */
+export function ContentFilterOption({
+  className,
+  ...props
+}: ContentFilterOptionProps) {
+  return (
+    <label
+      className={cn("content-filter-toolbar__option", className)}
+      {...props}
+    />
+  );
+}
 
 /**
  * A visible, named group inside the one shared filter surface. The control
@@ -100,8 +121,10 @@ export function ContentFilterToolbar({
   const { t } = useTranslation("common");
   const filtersId = useId();
   const isMobile = useMediaQuery("(max-width: 47.99em)");
+  const filterTriggerRef = useRef<HTMLButtonElement>(null);
   const [opened, setOpened] = useState(false);
   const hasActiveFilters = activeFilterCount > 0;
+  const hasAuxiliarySlots = Boolean(view || actions || summary);
   const toggleAccessibleLabel = hasActiveFilters
     ? `${filterLabel} (${activeFilterCount})`
     : filterLabel;
@@ -122,7 +145,7 @@ export function ContentFilterToolbar({
     </>
   );
 
-  const panelHeading = (title: ReactNode) => (
+  const panelHeading = (title: ReactNode, closeAction?: ReactNode) => (
     <div className="content-filter-toolbar__panel-heading">
       {title}
       <div className="content-filter-toolbar__panel-heading-actions">
@@ -145,6 +168,7 @@ export function ContentFilterToolbar({
             {resetLabel}
           </Button>
         ) : null}
+        {closeAction}
       </div>
     </div>
   );
@@ -162,6 +186,7 @@ export function ContentFilterToolbar({
 
   const toggleButton = (
     <Button
+      ref={filterTriggerRef}
       variant="outline"
       className="content-filter-toolbar__toggle"
       aria-label={toggleAccessibleLabel}
@@ -177,64 +202,88 @@ export function ContentFilterToolbar({
       )}
       aria-label={filterLabel}
     >
-      <div className="content-filter-toolbar__layout">
-        <div className="content-filter-toolbar__search">{search}</div>
-
-        {isMobile ? (
-          <Drawer
-            open={opened}
-            onOpenChange={(nextOpen) => setOpened(nextOpen)}
-            swipeDirection="down"
-            triggerId={filtersId}
-          >
-            <DrawerTrigger id={filtersId} render={toggleButton}>
-              {toggleContents}
-            </DrawerTrigger>
-            <DrawerContent id={`${filtersId}-drawer`} className="content-filter-toolbar__drawer-content">
-              <DrawerHeader className="content-filter-toolbar__drawer-header">
-                <div className="content-filter-toolbar__drawer-heading-row">
-                  {panelHeading(
-                    <DrawerTitle className="content-filter-toolbar__drawer-title">
-                      {filterLabel}
-                    </DrawerTitle>,
-                  )}
-                  <DrawerClose
-                    aria-label={t("action.close")}
-                    render={<Button variant="ghost" size="icon-sm" className="content-filter-toolbar__drawer-close" />}
-                  >
-                    <IconX aria-hidden="true" size={18} />
-                  </DrawerClose>
-                </div>
-              </DrawerHeader>
-              <div className="content-filter-toolbar__drawer-body">{panelBody}</div>
-            </DrawerContent>
-          </Drawer>
-        ) : (
-          <Popover open={opened} onOpenChange={(nextOpen) => setOpened(nextOpen)} triggerId={filtersId}>
-            <PopoverTrigger id={filtersId} render={toggleButton}>
-              {toggleContents}
-            </PopoverTrigger>
-            <PopoverContent
-              className="content-filter-toolbar__popover"
-              align="end"
-              side="bottom"
-              sideOffset={8}
-            >
-              <PopoverHeader className="content-filter-toolbar__popover-heading">
-                {panelHeading(
-                  <PopoverTitle className="content-filter-toolbar__panel-title">
-                    {filterLabel}
-                  </PopoverTitle>,
-                )}
-              </PopoverHeader>
-              {panelBody}
-            </PopoverContent>
-          </Popover>
+      <div
+        className={cn(
+          "content-filter-toolbar__layout",
+          !hasAuxiliarySlots && "content-filter-toolbar__layout--filter-only",
         )}
-
-        {view ? <div className="content-filter-toolbar__view">{view}</div> : null}
-        {summary ? <div className="content-filter-toolbar__summary">{summary}</div> : null}
-        {actions ? <div className="content-filter-toolbar__actions">{actions}</div> : null}
+      >
+        <div className="content-filter-toolbar__search">{search}</div>
+        <div className="content-filter-toolbar__footer">
+          {summary ? <div className="content-filter-toolbar__summary">{summary}</div> : null}
+          <div className="content-filter-toolbar__tools">
+            {isMobile ? (
+              <Drawer
+                open={opened}
+                onOpenChange={(nextOpen) => setOpened(nextOpen)}
+                swipeDirection="down"
+                triggerId={filtersId}
+              >
+                <DrawerTrigger id={filtersId} render={toggleButton}>
+                  {toggleContents}
+                </DrawerTrigger>
+                <DrawerContent id={`${filtersId}-drawer`} className="content-filter-toolbar__drawer-content">
+                  <DrawerHeader className="content-filter-toolbar__drawer-header">
+                    <div className="content-filter-toolbar__drawer-heading-row">
+                      {panelHeading(
+                        <DrawerTitle className="content-filter-toolbar__drawer-title">
+                          {filterLabel}
+                        </DrawerTitle>,
+                      )}
+                      <DrawerClose
+                        aria-label={t("action.close")}
+                        render={<Button variant="ghost" size="icon-sm" className="content-filter-toolbar__drawer-close" />}
+                      >
+                        <IconX aria-hidden="true" size={18} />
+                      </DrawerClose>
+                    </div>
+                  </DrawerHeader>
+                  <div className="content-filter-toolbar__drawer-body">{panelBody}</div>
+                </DrawerContent>
+              </Drawer>
+            ) : (
+              <Popover
+                open={opened}
+                onOpenChange={(nextOpen, eventDetails) => {
+                  setOpened(nextOpen);
+                  if (!nextOpen && eventDetails.reason === "escape-key") {
+                    requestAnimationFrame(() => {
+                      filterTriggerRef.current?.focus({ preventScroll: true });
+                    });
+                  }
+                }}
+                triggerId={filtersId}
+              >
+                <PopoverTrigger id={filtersId} render={toggleButton}>
+                  {toggleContents}
+                </PopoverTrigger>
+                <PopoverContent
+                  className="content-filter-toolbar__popover"
+                  align="end"
+                  side="bottom"
+                  sideOffset={8}
+                >
+                  <PopoverHeader className="content-filter-toolbar__popover-heading">
+                    {panelHeading(
+                      <PopoverTitle className="content-filter-toolbar__panel-title">
+                        {filterLabel}
+                      </PopoverTitle>,
+                      <PopoverClose
+                        aria-label={t("action.close")}
+                        render={<Button variant="ghost" size="icon-sm" />}
+                      >
+                        <IconX aria-hidden="true" size={18} />
+                      </PopoverClose>,
+                    )}
+                  </PopoverHeader>
+                  {panelBody}
+                </PopoverContent>
+              </Popover>
+            )}
+            {view ? <div className="content-filter-toolbar__view">{view}</div> : null}
+            {actions ? <div className="content-filter-toolbar__actions">{actions}</div> : null}
+          </div>
+        </div>
       </div>
     </section>
   );

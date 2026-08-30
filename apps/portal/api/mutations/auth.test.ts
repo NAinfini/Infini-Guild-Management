@@ -22,21 +22,21 @@ describe("register", () => {
     };
     apiRequestMock.mockResolvedValueOnce(response as never);
 
-    await expect(register("INVITE-1", {
+    await expect(register("A1B2C3D4E5", {
       login_name: "new_login",
       display_name: "new_member",
-      password: "password123456789",
-      confirmPassword: "password123456789",
+      password: "Password123456789!",
+      confirmPassword: "Password123456789!",
     })).resolves.toBe(response);
 
     expect(apiRequestMock).toHaveBeenCalledOnce();
-    expect(apiRequestMock).toHaveBeenCalledWith("/api/auth/register/INVITE-1", {
+    expect(apiRequestMock).toHaveBeenCalledWith("/api/auth/register/A1B2C3D4E5", {
       method: "POST",
       bodyJson: {
         login_name: "new_login",
         display_name: "new_member",
-        password: "password123456789",
-        confirmPassword: "password123456789",
+        password: "Password123456789!",
+        confirmPassword: "Password123456789!",
       },
     });
   });

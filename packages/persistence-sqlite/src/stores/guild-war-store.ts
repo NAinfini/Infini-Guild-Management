@@ -25,7 +25,7 @@ import type {
 import type { PaginatedResponse } from "@guild/shared";
 import type { WarResult } from "@guild/shared/constants/guild-war";
 import type { AppDatabase } from "../database.js";
-import type { SqlBatchStatement, SqlExecutor, SqlValue } from "@guild/kernel";
+import { AppError, type SqlBatchStatement, type SqlExecutor, type SqlResult, type SqlRow, type SqlValue } from "@guild/kernel";
 import { users } from "../schema/auth.js";
 import { guildWars, warMembers, warTeams } from "../schema/guild-war.js";
 import { mediaLinks } from "../schema/media.js";
@@ -93,6 +93,14 @@ const MEMBER_FIELDS = {
 };
 
 type WarRow = typeof guildWars.$inferSelect;
+type TeamRow = Readonly<{
+  id: string;
+  warId: string;
+  teamName: string;
+  sortOrder: number;
+  notes: string | null;
+  isLocked: boolean;
+}>;
 type MemberJoinedRow = {
   id: string;
   warId: string;
@@ -112,6 +120,21 @@ type MemberJoinedRow = {
   damageTaken: number | null;
   note: string | null;
 };
+
+const WAR_SNAPSHOT_COLUMNS = [
+  "id", "event_id", "status", "war_name", "enemy_name", "result",
+  "own_kills", "own_towers", "own_base_hp", "own_credits", "own_distance",
+  "enemy_kills", "enemy_towers", "enemy_base_hp", "enemy_credits", "enemy_distance",
+  "duration_minutes", "notes", "roster_version", "mutation_token", "concluded_at",
+  "created_by", "updated_by", "created_at", "updated_at",
+] as const;
+
+const TEAM_SNAPSHOT_COLUMNS = ["id", "war_id", "team_name", "sort_order", "notes", "is_locked"] as const;
+
+const MEMBER_SNAPSHOT_COLUMNS = [
+  "id", "war_id", "team_id", "user_id", "display_name", "avatar_media_id", "role_tag", "sort_order",
+  "kills", "deaths", "assists", "damage", "healing", "building_damage", "credits", "damage_taken", "note",
+] as const;
 
 export class SqliteGuildWarStore implements GuildWarStore {
   constructor(
@@ -195,9 +218,10 @@ export class SqliteGuildWarStore implements GuildWarStore {
     return rows.flatMap(({ eventId }) => eventId ? [eventId] : []);
   }
 
-  async createActive(input: Parameters<GuildWarStore["createActive"]>[0]): Promise<boolean> {
+  async createActive(input: Parameters<GuildWarStore["createActive"]>[0]): Promise<GuildWarAggregate | null> {
     const guard = { sql: "SELECT 1 FROM guild_wars WHERE id = ?", params: [input.id] };
-    const results = await this.sql.batch([{
+    const snapshotGuard = versionGuard(input.id, 0, "active", input.audit.eventId);
+    const statements: SqlBatchStatement[] = [{
       method: "all",
       columns: ["affected"],
       sql: `INSERT INTO guild_wars (
@@ -206,8 +230,12 @@ export class SqliteGuildWarStore implements GuildWarStore {
       ON CONFLICT(event_id) DO NOTHING
       RETURNING 1 AS affected`,
       params: [input.id, input.eventId, input.warName, input.audit.eventId, input.actorUserId, input.now, input.now],
-    }, auditInsertStatement(input.audit, guard)]);
-    return returnedRowCount(results[0]) === 1;
+    }, auditInsertStatement(input.audit, guard)];
+    const snapshotOffset = statements.length;
+    statements.push(...this.aggregateSnapshotStatements(input.id, snapshotGuard));
+    const results = await this.sql.batch(statements);
+    if (returnedRowCount(results[0]) !== 1) return null;
+    return this.aggregateFromSnapshotResults(results.slice(snapshotOffset));
   }
 
   async replaceRoster(input: Parameters<GuildWarStore["replaceRoster"]>[0]): Promise<boolean> {
@@ -425,7 +453,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
     return returnedRowCount(results[0]) === 1;
   }
 
-  async updateHistory(input: Parameters<GuildWarStore["updateHistory"]>[0]): Promise<boolean> {
+  async updateHistory(input: Parameters<GuildWarStore["updateHistory"]>[0]): Promise<GuildWarRecord | null> {
     const nextVersion = input.expectedVersion + 1;
     const sets: string[] = ["updated_by = ?", "updated_at = ?", "roster_version = ?", "mutation_token = ?"];
     const params: SqlValue[] = [input.actorUserId, input.now, nextVersion, input.audit.eventId];
@@ -439,15 +467,19 @@ export class SqliteGuildWarStore implements GuildWarStore {
     if (input.patch.enemyStats !== undefined) addTeamSets("enemy", input.patch.enemyStats, sets, params);
     const guard = versionGuard(input.warId, nextVersion, "concluded", input.audit.eventId);
     params.push(input.warId, input.expectedVersion);
-    const results = await this.sql.batch([{
+    const statements: SqlBatchStatement[] = [{
       method: "all",
       columns: ["affected"],
       sql: `UPDATE guild_wars SET ${sets.join(", ")}
         WHERE id = ? AND status = 'concluded' AND roster_version = ?
         RETURNING 1 AS affected`,
       params,
-    }, auditInsertStatement(input.audit, guard)]);
-    return returnedRowCount(results[0]) === 1;
+    }, auditInsertStatement(input.audit, guard)];
+    const snapshotOffset = statements.length;
+    statements.push(this.recordSnapshotStatement(input.warId, guard));
+    const results = await this.sql.batch(statements);
+    if (returnedRowCount(results[0]) !== 1) return null;
+    return this.recordFromSnapshotResult(results[snapshotOffset]);
   }
 
   async deleteHistory(input: Parameters<GuildWarStore["deleteHistory"]>[0]): Promise<boolean> {
@@ -530,7 +562,9 @@ export class SqliteGuildWarStore implements GuildWarStore {
     return input.rows.flatMap((row) => deleted.has(row.warId) ? [row.warId] : []);
   }
 
-  async updateMemberStats(input: Parameters<GuildWarStore["updateMemberStats"]>[0]): Promise<boolean> {
+  async updateMemberStats(
+    input: Parameters<GuildWarStore["updateMemberStats"]>[0],
+  ): Promise<readonly WarMemberRecord[] | null> {
     const nextVersion = input.expectedVersion + 1;
     const guard = versionGuard(input.warId, nextVersion, "concluded", input.audit.eventId);
     const updates = JSON.stringify(input.updates.map((update) => ({
@@ -649,8 +683,11 @@ export class SqliteGuildWarStore implements GuildWarStore {
       params: [updates, input.warId, ...guard.params],
     }];
     statements.push(auditInsertStatement(input.audit, guard));
+    const snapshotOffset = statements.length;
+    statements.push(this.memberSnapshotStatement(input.warId, guard));
     const results = await this.sql.batch(statements);
-    return returnedRowCount(results[0]) === 1;
+    if (returnedRowCount(results[0]) !== 1) return null;
+    return this.membersFromSnapshotResult(results[snapshotOffset]);
   }
 
   async readAnalytics(warIds: readonly string[], userIds: readonly string[]): Promise<AnalyticsRead> {
@@ -703,6 +740,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
 
   async exportHistory(filters: Parameters<GuildWarStore["exportHistory"]>[0]): Promise<readonly GuildWarRecord[]> {
     const where: SQL<unknown>[] = [eq(guildWars.status, "concluded")];
+    if (filters.historyId) where.push(eq(guildWars.id, filters.historyId));
     if (filters.eventId) where.push(eq(guildWars.eventId, filters.eventId));
     if (filters.dateFrom) where.push(gte(guildWars.createdAt, filters.dateFrom));
     if (filters.dateTo) where.push(lte(guildWars.createdAt, filters.dateTo));
@@ -713,6 +751,101 @@ export class SqliteGuildWarStore implements GuildWarStore {
       .orderBy(desc(guildWars.createdAt), desc(guildWars.id))
       .limit(10_000);
     return rows.map(toWarRecord);
+  }
+
+  private aggregateSnapshotStatements(
+    warId: string,
+    guard: Readonly<{ sql: string; params: readonly SqlValue[] }>,
+  ): SqlBatchStatement[] {
+    return [
+      this.recordSnapshotStatement(warId, guard),
+      {
+        method: "all",
+        columns: TEAM_SNAPSHOT_COLUMNS,
+        sql: `/* guild-war-snapshot */ SELECT
+            team.id, team.war_id, team.team_name, team.sort_order, team.notes, team.is_locked
+          FROM war_teams AS team
+          WHERE team.war_id = ? AND EXISTS (${guard.sql})
+          ORDER BY team.sort_order, team.id`,
+        params: [warId, ...guard.params],
+      },
+      this.memberSnapshotStatement(warId, guard),
+    ];
+  }
+
+  private recordSnapshotStatement(
+    warId: string,
+    guard: Readonly<{ sql: string; params: readonly SqlValue[] }>,
+  ): SqlBatchStatement {
+    return {
+      method: "all",
+      columns: WAR_SNAPSHOT_COLUMNS,
+      sql: `/* guild-war-snapshot */ SELECT
+          war.id, war.event_id, war.status, war.war_name, war.enemy_name, war.result,
+          war.own_kills, war.own_towers, war.own_base_hp, war.own_credits, war.own_distance,
+          war.enemy_kills, war.enemy_towers, war.enemy_base_hp, war.enemy_credits, war.enemy_distance,
+          war.duration_minutes, war.notes, war.roster_version, war.mutation_token, war.concluded_at,
+          war.created_by, war.updated_by, war.created_at, war.updated_at
+        FROM guild_wars AS war
+        WHERE war.id = ? AND EXISTS (${guard.sql})`,
+      params: [warId, ...guard.params],
+    };
+  }
+
+  private memberSnapshotStatement(
+    warId: string,
+    guard: Readonly<{ sql: string; params: readonly SqlValue[] }>,
+  ): SqlBatchStatement {
+    return {
+      method: "all",
+      columns: MEMBER_SNAPSHOT_COLUMNS,
+      sql: `/* guild-war-snapshot */ SELECT
+          member.id, member.war_id, member.team_id, member.user_id,
+          member_user.display_name, avatar.media_id AS avatar_media_id,
+          member.role_tag, member.sort_order,
+          member.kills, member.deaths, member.assists, member.damage, member.healing,
+          member.building_damage, member.credits, member.damage_taken, member.note
+        FROM war_members AS member
+        JOIN guild_wars AS war ON war.id = member.war_id
+        JOIN users AS member_user ON member_user.id = member.user_id
+        LEFT JOIN media_links AS avatar ON avatar.entity_type = 'member_profile'
+          AND avatar.entity_id = member.user_id
+          AND avatar.slot = 'avatar'
+          AND avatar.audience = 'public'
+        LEFT JOIN war_teams AS team ON team.id = member.team_id
+        WHERE member.war_id = ? AND EXISTS (${guard.sql})
+          AND (war.status = 'concluded' OR (member_user.is_active = 1 AND member_user.deleted_at IS NULL))
+        ORDER BY CASE WHEN team.id IS NULL THEN 1 ELSE 0 END, team.sort_order, team.id, member.sort_order, member.id`,
+      params: [warId, ...guard.params],
+    };
+  }
+
+  private aggregateFromSnapshotResults(results: readonly SqlResult[]): GuildWarAggregate | null {
+    const [warResult, teamResult, memberResult] = results;
+    if (!warResult || !teamResult || !memberResult) throw corrupt("SQLite returned incomplete guild war snapshot");
+    const warRows = returnedRows(warResult);
+    if (warRows.length === 0) return null;
+    if (warRows.length !== 1) throw corrupt("SQLite returned multiple guild war snapshot rows");
+    const aggregate = aggregateFromRows(
+      [warRowFromSnapshot(warRows[0]!)],
+      returnedRows(teamResult).map(teamRowFromSnapshot),
+      returnedRows(memberResult).map((row) => toMemberRecord(memberJoinedRowFromSnapshot(row))),
+    )[0];
+    if (!aggregate) throw corrupt("SQLite returned an empty guild war snapshot");
+    return aggregate;
+  }
+
+  private recordFromSnapshotResult(result: SqlResult | undefined): GuildWarRecord | null {
+    if (!result) throw corrupt("SQLite returned no guild war snapshot");
+    const rows = returnedRows(result);
+    if (rows.length === 0) return null;
+    if (rows.length !== 1) throw corrupt("SQLite returned multiple guild war snapshot rows");
+    return toWarRecord(warRowFromSnapshot(rows[0]!));
+  }
+
+  private membersFromSnapshotResult(result: SqlResult | undefined): readonly WarMemberRecord[] {
+    if (!result) throw corrupt("SQLite returned no guild war member snapshot");
+    return returnedRows(result).map((row) => toMemberRecord(memberJoinedRowFromSnapshot(row)));
   }
 
   private async hydrate(rows: readonly WarRow[]): Promise<GuildWarAggregate[]> {
@@ -750,41 +883,158 @@ export class SqliteGuildWarStore implements GuildWarStore {
         .where(and(inArray(warMembers.warId, warIds), memberVisibility))
         .orderBy(asc(warMembers.warId), asc(warMembers.teamId), asc(warMembers.sortOrder), asc(warMembers.id)),
     ]);
-    const memberRecords = members.map((row) => toMemberRecord(row as MemberJoinedRow));
-    const membersByTeam = new Map<string, WarMemberRecord[]>();
-    const poolByWar = new Map<string, WarMemberRecord[]>();
-    for (const member of memberRecords) {
-      if (member.teamId === null) {
-        const pool = poolByWar.get(member.warId) ?? [];
-        pool.push(member);
-        poolByWar.set(member.warId, pool);
-      } else {
-        const teamMembers = membersByTeam.get(member.teamId) ?? [];
-        teamMembers.push(member);
-        membersByTeam.set(member.teamId, teamMembers);
-      }
-    }
-    const teamsByWar = new Map<string, GuildWarAggregate["teams"][number][]>();
-    for (const team of teams) {
-      const record = {
-        id: team.id,
-        warId: team.warId,
-        teamName: team.teamName,
-        sortOrder: team.sortOrder,
-        notes: team.notes,
-        isLocked: team.isLocked,
-        members: membersByTeam.get(team.id) ?? [],
-      };
-      const warTeamRecords = teamsByWar.get(team.warId) ?? [];
-      warTeamRecords.push(record);
-      teamsByWar.set(team.warId, warTeamRecords);
-    }
-    return rows.map((row) => ({
-      war: toWarRecord(row),
-      teams: teamsByWar.get(row.id) ?? [],
-      pool: poolByWar.get(row.id) ?? [],
-    }));
+    return aggregateFromRows(rows, teams, members.map((row) => toMemberRecord(row as MemberJoinedRow)));
   }
+}
+
+function aggregateFromRows(
+  rows: readonly WarRow[],
+  teams: readonly TeamRow[],
+  memberRecords: readonly WarMemberRecord[],
+): GuildWarAggregate[] {
+  const membersByTeam = new Map<string, WarMemberRecord[]>();
+  const poolByWar = new Map<string, WarMemberRecord[]>();
+  for (const member of memberRecords) {
+    if (member.teamId === null) {
+      const pool = poolByWar.get(member.warId) ?? [];
+      pool.push(member);
+      poolByWar.set(member.warId, pool);
+    } else {
+      const teamMembers = membersByTeam.get(member.teamId) ?? [];
+      teamMembers.push(member);
+      membersByTeam.set(member.teamId, teamMembers);
+    }
+  }
+  const teamsByWar = new Map<string, GuildWarAggregate["teams"][number][]>();
+  for (const team of teams) {
+    const record = {
+      id: team.id,
+      warId: team.warId,
+      teamName: team.teamName,
+      sortOrder: team.sortOrder,
+      notes: team.notes,
+      isLocked: team.isLocked,
+      members: membersByTeam.get(team.id) ?? [],
+    };
+    const warTeamRecords = teamsByWar.get(team.warId) ?? [];
+    warTeamRecords.push(record);
+    teamsByWar.set(team.warId, warTeamRecords);
+  }
+  return rows.map((row) => ({
+    war: toWarRecord(row),
+    teams: teamsByWar.get(row.id) ?? [],
+    pool: poolByWar.get(row.id) ?? [],
+  }));
+}
+
+function warRowFromSnapshot(row: SqlRow): WarRow {
+  if (row.length !== WAR_SNAPSHOT_COLUMNS.length) throw corrupt("Invalid guild war snapshot row");
+  const status = snapshotString(row, 2, "guild war status");
+  if (status !== "active" && status !== "concluded") throw corrupt("Invalid guild war status snapshot value");
+  const result = snapshotNullableString(row, 5, "guild war result");
+  if (result !== null && result !== "win" && result !== "loss" && result !== "draw") {
+    throw corrupt("Invalid guild war result snapshot value");
+  }
+  return {
+    id: snapshotString(row, 0, "guild war id"),
+    eventId: snapshotNullableString(row, 1, "guild war event id"),
+    status,
+    warName: snapshotString(row, 3, "guild war name"),
+    enemyName: snapshotNullableString(row, 4, "guild war enemy name"),
+    result,
+    ownKills: snapshotNullableNumber(row, 6, "guild war own kills"),
+    ownTowers: snapshotNullableNumber(row, 7, "guild war own towers"),
+    ownBaseHp: snapshotNullableNumber(row, 8, "guild war own base hp"),
+    ownCredits: snapshotNullableNumber(row, 9, "guild war own credits"),
+    ownDistance: snapshotNullableNumber(row, 10, "guild war own distance"),
+    enemyKills: snapshotNullableNumber(row, 11, "guild war enemy kills"),
+    enemyTowers: snapshotNullableNumber(row, 12, "guild war enemy towers"),
+    enemyBaseHp: snapshotNullableNumber(row, 13, "guild war enemy base hp"),
+    enemyCredits: snapshotNullableNumber(row, 14, "guild war enemy credits"),
+    enemyDistance: snapshotNullableNumber(row, 15, "guild war enemy distance"),
+    durationMinutes: snapshotNullableNumber(row, 16, "guild war duration"),
+    notes: snapshotNullableString(row, 17, "guild war notes"),
+    rosterVersion: snapshotNonnegativeInteger(row, 18, "guild war roster version"),
+    mutationToken: snapshotNullableString(row, 19, "guild war mutation token"),
+    concludedAt: snapshotNullableString(row, 20, "guild war conclusion time"),
+    createdBy: snapshotString(row, 21, "guild war creator"),
+    updatedBy: snapshotNullableString(row, 22, "guild war updater"),
+    createdAt: snapshotString(row, 23, "guild war creation time"),
+    updatedAt: snapshotString(row, 24, "guild war update time"),
+  };
+}
+
+function teamRowFromSnapshot(row: SqlRow): TeamRow {
+  if (row.length !== TEAM_SNAPSHOT_COLUMNS.length) throw corrupt("Invalid guild war team snapshot row");
+  return {
+    id: snapshotString(row, 0, "guild war team id"),
+    warId: snapshotString(row, 1, "guild war team war id"),
+    teamName: snapshotString(row, 2, "guild war team name"),
+    sortOrder: snapshotNonnegativeInteger(row, 3, "guild war team order"),
+    notes: snapshotNullableString(row, 4, "guild war team notes"),
+    isLocked: snapshotBoolean(row, 5, "guild war team lock"),
+  };
+}
+
+function memberJoinedRowFromSnapshot(row: SqlRow): MemberJoinedRow {
+  if (row.length !== MEMBER_SNAPSHOT_COLUMNS.length) throw corrupt("Invalid guild war member snapshot row");
+  return {
+    id: snapshotString(row, 0, "guild war member id"),
+    warId: snapshotString(row, 1, "guild war member war id"),
+    teamId: snapshotNullableString(row, 2, "guild war member team id"),
+    userId: snapshotString(row, 3, "guild war member user id"),
+    display_name: snapshotString(row, 4, "guild war member display name"),
+    avatarMediaId: snapshotNullableString(row, 5, "guild war member avatar"),
+    roleTag: snapshotNullableString(row, 6, "guild war member role tag"),
+    sortOrder: snapshotNonnegativeInteger(row, 7, "guild war member order"),
+    kills: snapshotNullableNumber(row, 8, "guild war member kills"),
+    deaths: snapshotNullableNumber(row, 9, "guild war member deaths"),
+    assists: snapshotNullableNumber(row, 10, "guild war member assists"),
+    damage: snapshotNullableNumber(row, 11, "guild war member damage"),
+    healing: snapshotNullableNumber(row, 12, "guild war member healing"),
+    buildingDamage: snapshotNullableNumber(row, 13, "guild war member building damage"),
+    credits: snapshotNullableNumber(row, 14, "guild war member credits"),
+    damageTaken: snapshotNullableNumber(row, 15, "guild war member damage taken"),
+    note: snapshotNullableString(row, 16, "guild war member note"),
+  };
+}
+
+function snapshotString(row: SqlRow, index: number, label: string): string {
+  const value = row[index];
+  if (typeof value !== "string") throw corrupt(`Invalid ${label} snapshot value`);
+  return value;
+}
+
+function snapshotNullableString(row: SqlRow, index: number, label: string): string | null {
+  const value = row[index];
+  if (value === null) return null;
+  return snapshotString(row, index, label);
+}
+
+function snapshotNullableNumber(row: SqlRow, index: number, label: string): number | null {
+  const value = row[index];
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) throw corrupt(`Invalid ${label} snapshot value`);
+  return value;
+}
+
+function snapshotNonnegativeInteger(row: SqlRow, index: number, label: string): number {
+  const value = snapshotNullableNumber(row, index, label);
+  if (value === null || !Number.isSafeInteger(value) || value < 0) {
+    throw corrupt(`Invalid ${label} snapshot value`);
+  }
+  return value;
+}
+
+function snapshotBoolean(row: SqlRow, index: number, label: string): boolean {
+  const value = row[index];
+  if (value === 0) return false;
+  if (value === 1) return true;
+  throw corrupt(`Invalid ${label} snapshot value`);
+}
+
+function corrupt(message: string): AppError {
+  return new AppError({ code: "SERVER_ERROR", status: 500, message });
 }
 
 function historyWhere(query: HistoryListQuery): SQL<unknown>[] {
@@ -890,6 +1140,7 @@ export function versionUpdate(
   status: "active" | "concluded",
   mutationToken: string,
   participants?: Readonly<{ eventId: string; userIds: readonly string[] }>,
+  additionalGuard?: Readonly<{ sql: string; params: readonly SqlValue[] }>,
 ): SqlBatchStatement {
   const participantGuard = participants
     ? ` AND event_id = ? AND NOT EXISTS (
@@ -901,15 +1152,17 @@ export function versionUpdate(
       )
     )`
     : "";
+  const guarded = additionalGuard ? ` AND EXISTS (${additionalGuard.sql})` : "";
   return {
     method: "all",
     columns: ["affected"],
     sql: `UPDATE guild_wars SET roster_version = roster_version + 1, mutation_token = ?, updated_by = ?, updated_at = ?
-      WHERE id = ? AND status = ? AND roster_version = ?${participantGuard}
+      WHERE id = ? AND status = ? AND roster_version = ?${participantGuard}${guarded}
       RETURNING 1 AS affected`,
     params: [
       mutationToken, actorUserId, now, warId, status, expectedVersion,
       ...(participants ? [participants.eventId, JSON.stringify([...new Set(participants.userIds)]), participants.eventId] : []),
+      ...(additionalGuard?.params ?? []),
     ],
   };
 }

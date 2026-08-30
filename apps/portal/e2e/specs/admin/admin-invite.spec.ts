@@ -2,10 +2,10 @@ import type { AdminRole } from "@guild/shared";
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { readAssignableRole } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
-import { confirmDialog, dialogTitled, ensureFiltersOpen, expectNoDialog, field, readInteger } from "../../support/ui";
+import { appSiderNavigationItem, confirmDialog, dialogTitled, ensureFiltersOpen, expectNoDialog, expectToast, field, readInteger } from "../../support/ui";
 
 /*
- * 后台「邀请码」页签的全部控件：新建弹窗、可见性分段、搜索框、行上的复制／撤销／删除、
+ * 后台「邀请链接」页签的全部控件：新建弹窗、可见性分段、搜索框、行上的撤销／删除、
  * 以及分页的「加载更多」。
  *
  * 这一页和成员页最大的不同：筛选和搜索都是服务端做的（listInviteLinks 直接按
@@ -13,9 +13,9 @@ import { confirmDialog, dialogTitled, ensureFiltersOpen, expectNoDialog, field, 
  * 条件发出去了」——只看表里剩几行的话，前端在内存里过滤一遍也能装得一模一样，
  * 而那样的实现一旦超过一页就会开始漏数据。
  *
- * 靶子一律是本条用例自己经 POST /api/admin/invite-links 造的码：这个接口的返回
+ * 靶子一律是本条用例自己经 POST /api/admin/invite-links 造的链接：这个接口的返回
  * 会被系统测试中间件登记（system-test-tracking.ts:24），收尾时按 id 硬删。
- * 撤销是不可逆的（服务端对已撤销的码直接返 409），拿种子里的码开刀会把后面的用例
+ * 撤销是不可逆的（服务端对已撤销的链接直接返 409），拿种子里的链接开刀会把后面的用例
  * 建在一份被悄悄改过的数据上，而收尾指纹只数行数，这种污染一条都查不出来。
  */
 
@@ -52,7 +52,7 @@ async function serverInvites(api: APIRequestContext, visibility: Visibility): Pr
   do {
     const page = await readJson(
       await api.get(`/api/admin/invite-links?visibility=${visibility}&limit=${PAGE_SIZE}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`),
-      `读取${visibility}邀请码`,
+      `读取${visibility}邀请链接`,
     ) as { data: ServerInvite[]; next_cursor: string | null };
     rows.push(...page.data);
     cursor = page.next_cursor;
@@ -60,7 +60,7 @@ async function serverInvites(api: APIRequestContext, visibility: Visibility): Pr
   return rows;
 }
 
-/** 建一个挂在本次运行名下的邀请码。expiresAt 传 null 表示永不过期。 */
+/** 建一个挂在本次运行名下的邀请链接。expiresAt 传 null 表示永不过期。 */
 async function createInvite(
   api: APIRequestContext,
   options: { maxUses?: number; expiresAt?: string | null; role?: AdminRole } = {},
@@ -76,7 +76,7 @@ async function createInvite(
           : { expires_at: options.expiresAt }),
       },
     }),
-    "创建邀请码",
+    "创建邀请链接",
   ) as ServerInvite;
 }
 
@@ -84,7 +84,7 @@ function toolbar(page: Page): Locator {
   return page.locator(".content-filter-toolbar");
 }
 function searchBox(page: Page): Locator {
-  return page.getByPlaceholder("Search code / date");
+  return page.getByPlaceholder("Search code, creation, or expiration date");
 }
 function inviteRows(page: Page): Locator {
   return page.locator(".admin-table tbody tr");
@@ -114,7 +114,7 @@ async function readStats(page: Page): Promise<InviteStats> {
   const values = page.locator(".admin-stat__value");
   await expect(values).toHaveCount(4);
   return {
-    total: await readInteger(values.nth(0), "邀请码总数"),
+    total: await readInteger(values.nth(0), "邀请链接总数"),
     active: await readInteger(values.nth(1), "有效数"),
     expired: await readInteger(values.nth(2), "过期数"),
     revoked: await readInteger(values.nth(3), "撤销数"),
@@ -123,7 +123,7 @@ async function readStats(page: Page): Promise<InviteStats> {
 
 async function openInvites(page: Page): Promise<void> {
   await page.goto("/admin?tab=invite");
-  await expect(page.getByRole("tab", { name: /Invite Links/ })).toHaveAttribute("aria-selected", "true");
+  await expect(appSiderNavigationItem(page, "Invite Links")).toHaveAttribute("aria-current", "page");
   await expect(searchBox(page)).toBeVisible();
   await page.waitForLoadState("networkidle");
 }
@@ -188,17 +188,6 @@ function menuItem(page: Page, name: string): Locator {
   return page.getByRole("menuitem", { name, exact: true });
 }
 
-/**
- * 断言弹出了这句通知。
- * 通知正文渲染在共享 Toast 的 description 槽中，而不是标题槽。
- */
-async function expectNotified(page: Page, text: string): Promise<void> {
-  await expect(
-    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
-    `没有弹出通知「${text}」`,
-  ).toBeVisible();
-}
-
 /** 盯着 /api/ 证明这段操作没发请求。取消确认框、复制链接都必须走这条。 */
 async function expectNoApiCalls(page: Page, action: () => Promise<void>): Promise<void> {
   const calls: string[] = [];
@@ -215,7 +204,7 @@ async function expectNoApiCalls(page: Page, action: () => Promise<void>): Promis
   expect(calls, "这段操作本不该发请求").toEqual([]);
 }
 
-test("新建邀请码：弹窗填的次数和到期时间一路落到库里，统计块和表格一起跟上", async ({ page, api, flow }) => {
+test("新建邀请链接：弹窗填的次数和到期时间一路落到库里，10 位邀请码可复制和检索", async ({ page, api, flow }) => {
   const before = await serverStats(api);
   const role = await readAssignableRole(api);
   await openInvites(page);
@@ -236,25 +225,30 @@ test("新建邀请码：弹窗填的次数和到期时间一路落到库里，�
     dialog.getByRole("button", { name: "Create Invite", exact: true }),
     { ...CREATE_INVITE, status: 201 },
   ) as ServerInvite;
-  await expectNotified(page, "Invite link created");
-  await expectNoDialog(page);
+  await expectToast(page, "Invite link created");
 
   expect(created.max_uses, "弹窗里填的次数必须原样送到服务端").toBe(3);
   expect(created.used_count).toBe(0);
-  expect(created.role_id, "邀请码必须嵌入选中的 D1 角色 id").toBe(role.id);
-  expect(created.role_name, "邀请码必须带回选中时的角色展示名").toBe(role.name);
+  expect(created.role_id, "邀请链接必须嵌入选中的 D1 角色 id").toBe(role.id);
+  expect(created.role_name, "邀请链接必须带回选中时的角色展示名").toBe(role.name);
   expect(created.expires_at, "到期时间要按 UTC 转成 ISO").toBe("2031-03-07T05:09:00.000Z");
+  expect(created.code).toMatch(/^[A-Z0-9]{10}$/);
+  await expect(dialog.getByRole("textbox")).toHaveValue(`${new URL(page.url()).origin}/register/${created.code}`);
+  await expect(dialog.getByLabel("Invite code")).toHaveText(created.code);
 
+  await dialog.getByRole("button", { name: "Close", exact: true }).last().click();
+  await expectNoDialog(page);
   await searchInvites(page, created.code);
   const row = inviteRow(page, created.code);
   await expect(row).toHaveCount(1);
+  await expect(row).toContainText(created.code);
   await expect(row.locator("td[data-column-id='usage']"), "用量列显示 已用/上限").toContainText("0/3");
   await expect(row.locator("td[data-column-id='role']")).toHaveText(role.name);
   await expect(row.locator("td[data-column-id='status']")).toHaveText("Valid");
   await expect(row.locator("td[data-column-id='expires']")).toHaveText("2031-03-07 05:09");
 
   const after = { ...before, total: before.total + 1, active: before.active + 1 };
-  expect(await serverStats(api), "服务端统计必须真的多一个有效码").toEqual(after);
+  expect(await serverStats(api), "服务端统计必须真的多一个有效邀请链接").toEqual(after);
   await expect(page.locator(".admin-stat__value").nth(0)).toHaveText(String(after.total));
   await expect(page.locator(".admin-stat__value").nth(1)).toHaveText(String(after.active));
 });
@@ -271,25 +265,32 @@ test("可见性三段：有效／过期／撤销各自只装自己那一批，�
   await openInvites(page);
   await ensureFiltersOpen(toolbar(page));
   await expect(segmentInput(page, "Valid"), "默认停在「有效」这一段").toBeChecked();
+  await searchInvites(page, active.code);
   await expect(inviteRow(page, active.code)).toHaveCount(1);
-  await expect(inviteRow(page, expired.code), "过期的码不该出现在有效段").toHaveCount(0);
-  await expect(inviteRow(page, revoked.code), "撤销的码不该出现在有效段").toHaveCount(0);
+  await searchInvites(page, expired.code);
+  await expect(inviteRow(page, expired.code), "过期的邀请码不该出现在有效段").toHaveCount(0);
+  await searchInvites(page, revoked.code);
+  await expect(inviteRow(page, revoked.code), "撤销的邀请码不该出现在有效段").toHaveCount(0);
 
-  await switchVisibility(page, "Expired", "expired");
+  await switchVisibility(page, "Expired", "expired", revoked.code);
+  await expect(inviteRow(page, revoked.code)).toHaveCount(0);
+  await searchInvites(page, expired.code, "expired");
   await expect(inviteRow(page, expired.code)).toHaveCount(1);
   await expect(inviteRow(page, expired.code).locator("td[data-column-id='status']")).toHaveText("expired");
+  await searchInvites(page, active.code, "expired");
   await expect(inviteRow(page, active.code)).toHaveCount(0);
-  await expect(inviteRow(page, revoked.code)).toHaveCount(0);
 
-  await switchVisibility(page, "Revoked", "revoked");
+  await switchVisibility(page, "Revoked", "revoked", active.code);
+  await expect(inviteRow(page, active.code)).toHaveCount(0);
+  await searchInvites(page, revoked.code, "revoked");
   await expect(inviteRow(page, revoked.code)).toHaveCount(1);
   await expect(inviteRow(page, revoked.code).locator("td[data-column-id='status']")).toHaveText("revoked");
-  await expect(inviteRow(page, active.code)).toHaveCount(0);
+  await searchInvites(page, expired.code, "revoked");
   await expect(inviteRow(page, expired.code)).toHaveCount(0);
 });
 
-test("搜索框：按码能搜到唯一一条，按到期日能搜到同一批，搜不到时列表清零", async ({ page, api }) => {
-  /* 搜索命中的是 code / created_at / expires_at 三列，所以给这两个码配同一个到期日，
+test("搜索框：按邀请码能搜到唯一一条，按到期日能搜到同一批，搜不到时列表清零", async ({ page, api }) => {
+  /* 搜索命中的是 code / created_at / expires_at，所以给这两个码配同一个到期日，
      它就成了「这一批」的标签——用 created_at 会连上种子数据里同一天建的码。 */
   const day = "2032-09-14";
   const first = await createInvite(api, { expiresAt: `${day}T01:00:00.000Z` });
@@ -313,25 +314,7 @@ test("搜索框：按码能搜到唯一一条，按到期日能搜到同一批�
   await expect(loadedCount(page)).toHaveText("Loaded 0 of 0");
 });
 
-test("复制链接：剪贴板里是可以直接发出去的完整注册地址，且不碰网络", async ({ page, context, api }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  const invite = await createInvite(api);
-
-  await openInvites(page);
-  await searchInvites(page, invite.code);
-
-  const expectedLink = `${new URL(page.url()).origin}/register/${invite.code}`;
-  await expectNoApiCalls(page, async () => {
-    await inviteRow(page, invite.code).getByRole("button", { name: "Copy Link", exact: true }).click();
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(expectedLink);
-  });
-
-  const copied = await page.evaluate(() => navigator.clipboard.readText());
-  expect(copied, "复制出来的必须是能直接注册的完整地址，不是光秃秃一个码")
-    .toBe(expectedLink);
-});
-
-test("撤销：取消什么都不发；确认之后码当场失效、搬进「已撤销」段、统计跟着挪一格", async ({ page, api, flow }) => {
+test("撤销：取消什么都不发；确认之后链接当场失效、搬进「已撤销」段、统计跟着挪一格", async ({ page, api, flow }) => {
   const invite = await createInvite(api);
   const before = await serverStats(api);
 
@@ -341,7 +324,6 @@ test("撤销：取消什么都不发；确认之后码当场失效、搬进「�
   await openRowMenu(page, invite.code);
   await menuItem(page, "Revoke").click();
   const dialog = await confirmDialog(page, "Revoke invite link?");
-  await expect(dialog, "确认框必须点名是哪个码，否则撤错了都不知道").toContainText(invite.code);
 
   await expectNoApiCalls(page, async () => {
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -349,14 +331,14 @@ test("撤销：取消什么都不发；确认之后码当场失效、搬进「�
   });
   expect(
     (await serverInvites(api, "active")).some((row) => row.id === invite.id),
-    "取消之后这个码必须还在有效列表里",
+    "取消之后这个链接必须还在有效列表里",
   ).toBe(true);
 
   await openRowMenu(page, invite.code);
   await menuItem(page, "Revoke").click();
   const again = await confirmDialog(page, "Revoke invite link?");
   await flow.click(again.getByRole("button", { name: "Revoke", exact: true }), REVOKE_INVITE);
-  await expectNotified(page, "Invite link revoked");
+  await expectToast(page, "Invite link revoked");
 
   await expect(inviteRows(page), "撤销之后它就不该留在有效段里了").toHaveCount(0);
   expect(await serverStats(api), "统计要从有效挪到撤销，总数不变").toEqual({
@@ -369,12 +351,9 @@ test("撤销：取消什么都不发；确认之后码当场失效、搬进「�
   const row = inviteRow(page, invite.code);
   await expect(row).toHaveCount(1);
   await expect(row.locator("td[data-column-id='status']")).toHaveText("revoked");
-  await expect(
-    row.getByRole("button", { name: "Copy Link", exact: true }),
-    "已经作废的码不该还能复制出去",
-  ).toBeDisabled();
+  await expect(row.getByRole("button", { name: "Copy Link", exact: true })).toHaveCount(0);
   await openRowMenu(page, invite.code);
-  await expect(menuItem(page, "Revoke"), "撤销过的码不能再撤一次，服务端对此直接返 409").toBeDisabled();
+  await expect(menuItem(page, "Revoke"), "撤销过的链接不能再撤一次，服务端对此直接返 409").toBeDisabled();
 
   const stored = (await serverInvites(api, "revoked")).find((entry) => entry.id === invite.id);
   expect(stored?.revoked_at, "服务端必须真的写上了撤销时间").toBeTruthy();
@@ -391,11 +370,10 @@ test("删除：确认之后这条从三个分段里一起消失，服务端和�
   await openRowMenu(page, invite.code);
   await menuItem(page, "Delete").click();
   const dialog = await confirmDialog(page, "Delete invite link?");
-  await expect(dialog).toContainText(invite.code);
   await expect(dialog, "不可逆的操作必须说明它不可逆").toContainText("This cannot be undone.");
 
   await flow.click(dialog.getByRole("button", { name: "Delete", exact: true }), DELETE_INVITE);
-  await expectNotified(page, "Invite link deleted");
+  await expectToast(page, "Invite link deleted");
 
   await expect(inviteRows(page)).toHaveCount(0);
   expect(await serverStats(api), "永久删除要把总数一起减掉").toEqual({
@@ -406,7 +384,7 @@ test("删除：确认之后这条从三个分段里一起消失，服务端和�
   for (const visibility of ["active", "expired", "revoked"] as const) {
     expect(
       (await serverInvites(api, visibility)).some((row) => row.id === invite.id),
-      `删掉的码不该还留在 ${visibility} 列表里`,
+      `删掉的链接不该还留在 ${visibility} 列表里`,
     ).toBe(false);
   }
 });
@@ -414,7 +392,7 @@ test("删除：确认之后这条从三个分段里一起消失，服务端和�
 test("加载更多：一页只给 50 条，点一次把剩下的补齐，补齐后按钮自己收起来", async ({ page, api, flow }) => {
   /*
    * 「加载更多」只有结果集超过一页才会出现，所以必须真的造出 51 条。
-   * 全部配同一个到期日，搜索时就只剩这一批——否则种子和前面用例留下的码会混进来，
+   * 全部配同一个到期日，搜索时就只剩这一批——否则种子和前面用例留下的链接会混进来，
    * 行数断言就不成立了。
    */
   const day = "2033-11-22";

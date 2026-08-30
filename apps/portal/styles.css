@@ -217,6 +217,16 @@ html:not([data-input-modality="pointer"]) :focus-visible {
   gap: var(--control-icon-size-compact);
 }
 
+input[type="number"] {
+  appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
 /* ── Native date inputs ──
  *
  * The picker button is drawn by the browser: a black glyph that disappears

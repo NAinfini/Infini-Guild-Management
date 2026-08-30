@@ -1,4 +1,4 @@
-import type { WikiArticle } from "@guild/shared";
+import { wikiArticleEtag, type WikiArticle } from "@guild/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { diffChars, diffLines, type Change } from "diff";
 import { useEffect, useMemo, useState } from "react";
@@ -61,11 +61,22 @@ export function useWikiHistory({ article, opened, onClose }: UseWikiHistoryParam
   const { showError } = useAppError();
   const [selectedRevision, setSelectedRevision] = useState<number | null>(null);
   const [compareMode, setCompareMode] = useState<WikiHistoryCompareMode>("current");
+  const [articleAtOpen, setArticleAtOpen] = useState<WikiArticle | null>(null);
+
+  useEffect(() => {
+    if (!opened) {
+      setArticleAtOpen(null);
+      return;
+    }
+    setArticleAtOpen((current) => current?.id === article.id ? current : article);
+  }, [article, opened]);
+
+  const currentArticle = articleAtOpen?.id === article.id ? articleAtOpen : article;
 
   const revisionsQuery = useQuery({
-    queryKey: queryKeys.wiki.revisions(article.id),
+    queryKey: queryKeys.wiki.revisions(currentArticle.id),
     enabled: opened,
-    queryFn: () => fetchWikiArticleRevisions(article.id),
+    queryFn: () => fetchWikiArticleRevisions(currentArticle.id),
   });
   const revisions = useMemo(() => revisionsQuery.data ?? [], [revisionsQuery.data]);
   const latestRevisionNumber = revisions[0]?.revision ?? null;
@@ -82,20 +93,24 @@ export function useWikiHistory({ article, opened, onClose }: UseWikiHistoryParam
   }, [opened, latestRevisionNumber, selectedRevision]);
 
   const detailQuery = useQuery({
-    queryKey: queryKeys.wiki.revision(article.id, selectedRevision),
+    queryKey: queryKeys.wiki.revision(currentArticle.id, selectedRevision),
     enabled: opened && selectedRevision !== null,
-    queryFn: () => fetchWikiArticleRevision(article.id, selectedRevision as number),
+    queryFn: () => fetchWikiArticleRevision(currentArticle.id, selectedRevision as number),
   });
 
   const previousRevisionNumber = selectedRevision !== null && selectedRevision > 1 ? selectedRevision - 1 : null;
   const previousQuery = useQuery({
-    queryKey: queryKeys.wiki.revision(article.id, previousRevisionNumber),
+    queryKey: queryKeys.wiki.revision(currentArticle.id, previousRevisionNumber),
     enabled: opened && compareMode === "previous" && previousRevisionNumber !== null,
-    queryFn: () => fetchWikiArticleRevision(article.id, previousRevisionNumber as number),
+    queryFn: () => fetchWikiArticleRevision(currentArticle.id, previousRevisionNumber as number),
   });
 
   const restoreMutation = useMutation({
-    mutationFn: (revision: number) => restoreWikiArticleRevision(article.id, revision),
+    mutationFn: (revision: number) => restoreWikiArticleRevision(
+      currentArticle.id,
+      revision,
+      wikiArticleEtag(currentArticle),
+    ),
     onSuccess: async () => {
       notifySuccess(t("history.message.restored"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
@@ -107,16 +122,18 @@ export function useWikiHistory({ article, opened, onClose }: UseWikiHistoryParam
   });
 
   const selected = detailQuery.data ?? null;
-  const isIdenticalToCurrent = selected !== null && selected.title === article.title && selected.body_json === article.body_json;
+  const isIdenticalToCurrent = selected !== null
+    && selected.title === currentArticle.title
+    && selected.body_json === currentArticle.body_json;
 
   const diff = useMemo(() => {
     if (!selected) return null;
     if (compareMode === "current") {
       return {
-        titleChanged: selected.title !== article.title,
+        titleChanged: selected.title !== currentArticle.title,
         oldTitle: selected.title,
-        newTitle: article.title,
-        blocks: buildDiffBlocks(extractTipTapText(selected.body_json), extractTipTapText(article.body_json)),
+        newTitle: currentArticle.title,
+        blocks: buildDiffBlocks(extractTipTapText(selected.body_json), extractTipTapText(currentArticle.body_json)),
       };
     }
     if (previousRevisionNumber === null || !previousQuery.data) return null;
@@ -126,7 +143,7 @@ export function useWikiHistory({ article, opened, onClose }: UseWikiHistoryParam
       newTitle: selected.title,
       blocks: buildDiffBlocks(extractTipTapText(previousQuery.data.body_json), extractTipTapText(selected.body_json)),
     };
-  }, [selected, compareMode, article.title, article.body_json, previousRevisionNumber, previousQuery.data]);
+  }, [selected, compareMode, currentArticle.title, currentArticle.body_json, previousRevisionNumber, previousQuery.data]);
 
   const hasChanges = diff !== null && (diff.titleChanged || diff.blocks.some((block) => block.kind !== "context"));
   const isDiffLoading = detailQuery.isLoading || (compareMode === "previous" && previousRevisionNumber !== null && previousQuery.isLoading);

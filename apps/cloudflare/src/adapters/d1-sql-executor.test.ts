@@ -5,11 +5,21 @@ import { D1SqlExecutor } from "./d1-sql-executor.js";
 
 defineSqlExecutorConformance("D1", async () => {
   const miniflare = new Miniflare({
-    compatibilityDate: "2026-07-28",
-    d1Databases: { DB: "sql-executor-conformance" },
-    modules: true,
     port: 0,
-    script: "export default {}",
+    workers: [{
+      config: {
+        name: "sql-executor-conformance",
+        type: "worker",
+        compatibilityDate: "2026-07-28",
+        manifest: {
+          mainModule: "script-0.mjs",
+          modules: {
+            "script-0.mjs": { type: "esm", contents: "export default {}" },
+          },
+        },
+        env: { DB: { type: "d1", id: "sql-executor-conformance" } },
+      },
+    }],
   });
   return {
     executor: new D1SqlExecutor(await miniflare.getD1Database("DB")),

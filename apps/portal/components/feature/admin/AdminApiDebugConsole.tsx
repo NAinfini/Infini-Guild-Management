@@ -103,9 +103,11 @@ function DebugRow({ entry }: { entry: DebugLogEntry }) {
 export function AdminApiDebugConsole({
   logs,
   onClear,
+  clearDisabled = false,
 }: {
   logs: DebugLogEntry[];
   onClear: () => void;
+  clearDisabled?: boolean;
 }) {
   const { t } = useTranslation("admin");
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -201,7 +203,7 @@ export function AdminApiDebugConsole({
                 size="icon"
                 variant="destructive"
                 onClick={onClear}
-                disabled={logs.length === 0}
+                disabled={logs.length === 0 || clearDisabled}
                 aria-label={t("status.api.clearDebug")}
               />
             )}>

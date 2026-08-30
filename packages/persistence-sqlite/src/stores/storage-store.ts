@@ -1,10 +1,12 @@
 import type {
-  NormalizedStockRequest,
   StockCommit,
   StockSubmissionEntry,
   StockSubmissionSnapshot,
+  StorageCategoryCreateResult,
+  StorageCategoryDeleteResult,
   StorageDeleteResult,
   StorageItemRecord,
+  StorageItemMediaMutationResult,
   StorageLedgerQuery,
   StorageMediaPort,
   StoragePlacement,
@@ -37,19 +39,6 @@ type StorageSchema = {
   storageItems: typeof storageItems;
   storageLedgerEntries: typeof storageLedgerEntries;
   storages: typeof storages;
-};
-
-type ItemSelectRow = {
-  id: string;
-  storageId: string;
-  categoryId: string | null;
-  name: string;
-  description: string | null;
-  quantity: number;
-  allowMemberDeposit: boolean;
-  allowMemberWithdraw: boolean;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type StorageMediaLimits = Readonly<{
@@ -88,7 +77,7 @@ export class SqliteStorageMediaPort implements StorageMediaPort {
 
   async attachItemImages(
     input: Parameters<StorageMediaPort["attachItemImages"]>[0],
-  ): Promise<readonly string[]> {
+  ): Promise<StorageItemMediaMutationResult> {
     const actor = input.context.authorization.requireAuthenticated();
     const limits = await this.getLimits();
     const existing = [...((await this.listItemMediaIds([input.itemId])).get(input.itemId) ?? [])];
@@ -116,44 +105,75 @@ export class SqliteStorageMediaPort implements StorageMediaPort {
       mediaIds: desired,
       maxItems: limits.maxImagesPerItem,
     });
-    await this.sql.batch([
+    const guard = itemRevisionGuard(input.itemId, input.expectedUpdatedAt);
+    const results = await this.sql.batch([
       ...replaceMediaLinksStatements({
         entityType: "storage_item",
         entityId: input.itemId,
         slot: "image",
         audience: "authenticated",
         mediaIds: desired,
-      }, {
-        sql: "SELECT 1 FROM storage_items WHERE id = ?",
-        params: [input.itemId],
-      }),
-      auditInsertStatement(input.audit, {
-        sql: "SELECT 1 FROM storage_items WHERE id = ?",
-        params: [input.itemId],
-      }),
+      }, guard),
+      auditInsertStatement(input.audit, guard),
+      {
+        method: "get",
+        columns: ["updated_at"],
+        sql: `UPDATE storage_items SET updated_at = ?
+          WHERE id = ? AND updated_at = ?
+            AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
+          RETURNING updated_at`,
+        params: [input.updatedAt, input.itemId, input.expectedUpdatedAt, input.audit.eventId],
+      },
     ]);
-    return uploaded;
+    if (returnedRowCount(results.at(-1)) === 1) {
+      return { status: "updated", mediaIds: uploaded, updatedAt: input.updatedAt };
+    }
+    const state = await itemRevisionState(this.sql, input.itemId, input.expectedUpdatedAt);
+    return state === "not_found" ? { status: "not_found" } : { status: "stale" };
   }
 
-  async detachItemImage(input: Parameters<StorageMediaPort["detachItemImage"]>[0]): Promise<boolean> {
+  async detachItemImage(
+    input: Parameters<StorageMediaPort["detachItemImage"]>[0],
+  ): Promise<StorageItemMediaMutationResult> {
     input.context.authorization.requireAuthenticated();
+    const guard = {
+      sql: `SELECT 1 FROM storage_items
+        WHERE id = ? AND updated_at = ?
+          AND EXISTS (
+            SELECT 1 FROM media_links
+            WHERE media_id = ? AND entity_type = 'storage_item' AND entity_id = ? AND slot = 'image'
+          )`,
+      params: [input.itemId, input.expectedUpdatedAt, input.mediaId, input.itemId],
+    };
     const results = await this.sql.batch([
-      auditInsertStatement(input.audit, {
-        sql: `SELECT 1 FROM media_links
-          WHERE media_id = ? AND entity_type = 'storage_item' AND entity_id = ? AND slot = 'image'`,
-        params: [input.mediaId, input.itemId],
-      }),
+      auditInsertStatement(input.audit, guard),
       {
         method: "get",
         sql: `DELETE FROM media_links
           WHERE media_id = ? AND entity_type = 'storage_item' AND entity_id = ? AND slot = 'image'
             AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
+            AND EXISTS (SELECT 1 FROM storage_items WHERE id = ? AND updated_at = ?)
           RETURNING media_id AS media_id`,
-        params: [input.mediaId, input.itemId, input.audit.eventId],
+        params: [input.mediaId, input.itemId, input.audit.eventId, input.itemId, input.expectedUpdatedAt],
         columns: ["media_id"],
       },
+      {
+        method: "get",
+        columns: ["updated_at"],
+        sql: `UPDATE storage_items SET updated_at = ?
+          WHERE id = ? AND updated_at = ?
+            AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
+          RETURNING updated_at`,
+        params: [input.updatedAt, input.itemId, input.expectedUpdatedAt, input.audit.eventId],
+      },
     ]);
-    return returnedRowCount(results[1]) === 1;
+    if (returnedRowCount(results[2]) === 1) {
+      return { status: "updated", mediaIds: [], updatedAt: input.updatedAt };
+    }
+    const state = await itemRevisionState(this.sql, input.itemId, input.expectedUpdatedAt);
+    if (state === "not_found") return { status: "not_found" };
+    if (state === "stale") return { status: "stale" };
+    return { status: "image_not_found" };
   }
 }
 
@@ -189,6 +209,7 @@ export class SqliteStorageStore implements StorageStore {
         name: storage.name,
         description: storage.description,
         created_at: storage.createdAt,
+        structure_revision: storage.structureRevision,
         categories: byStorage.get(storage.id) ?? [],
       })),
     };
@@ -198,23 +219,22 @@ export class SqliteStorageStore implements StorageStore {
     const results = await this.sql.batch([{
       method: "all",
       columns: ["storage_id"],
-      sql: `INSERT INTO storages (id, name, description, created_at)
-        SELECT ?, ?, ?, ? WHERE (SELECT count(*) FROM storages) < ?
+      sql: `INSERT INTO storages (id, name, description, created_at, structure_revision)
+        SELECT ?, ?, ?, ?, ? WHERE (SELECT count(*) FROM storages) < ?
         RETURNING id AS storage_id`,
       params: [
         input.storage.id,
         input.storage.name,
         input.storage.description,
         input.storage.created_at,
+        input.storage.structure_revision,
         LIMITS.content.storageStructure.storages.max,
       ],
     }, auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" })]);
     return returnedRowCount(results[0]) === 1 ? "created" as const : "limit_reached" as const;
   }
 
-  async updateStorage(input: Parameters<StorageStore["updateStorage"]>[0]): Promise<Storage | null> {
-    const existing = await this.db.select().from(storages).where(eq(storages.id, input.id)).limit(1);
-    if (!existing[0]) return null;
+  async updateStorage(input: Parameters<StorageStore["updateStorage"]>[0]): ReturnType<StorageStore["updateStorage"]> {
     const assignments: string[] = [];
     const params: SqlValue[] = [];
     const differences: string[] = [];
@@ -232,15 +252,31 @@ export class SqliteStorageStore implements StorageStore {
       differenceParams.push(input.patch.description);
     }
     if (differences.length > 0) {
-      params.push(input.id, ...differenceParams);
-      await this.sql.batch([{
+      params.push(
+        input.id,
+        input.expected.name,
+        input.expected.description,
+        input.expected.structureRevision,
+        ...differenceParams,
+      );
+      const results = await this.sql.batch([{
         method: "all",
         columns: ["storage_id"],
-        sql: `UPDATE storages SET ${assignments.join(", ")}
-          WHERE id = ? AND (${differences.join(" OR ")})
+        sql: `UPDATE storages SET ${assignments.join(", ")}, structure_revision = structure_revision + 1
+          WHERE id = ? AND name IS ? AND description IS ? AND structure_revision = ?
+            AND (${differences.join(" OR ")})
           RETURNING id AS storage_id`,
         params,
       }, auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" })]);
+      if (returnedRowCount(results[0]) === 0) {
+        const current = (await this.db.select().from(storages).where(eq(storages.id, input.id)).limit(1))[0];
+        if (!current) return { status: "not_found" };
+        if (current.name !== input.expected.name
+          || current.description !== input.expected.description
+          || current.structureRevision !== input.expected.structureRevision) {
+          return { status: "stale" };
+        }
+      }
     }
     const categories = await this.db.select().from(storageCategories)
       .where(eq(storageCategories.storageId, input.id))
@@ -250,49 +286,64 @@ export class SqliteStorageStore implements StorageStore {
       throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Storage category data invariant violated" });
     }
     const row = (await this.db.select().from(storages).where(eq(storages.id, input.id)).limit(1))[0];
-    return row ? {
+    if (!row) return { status: "not_found" };
+    return { status: "updated", value: {
       id: row.id,
       name: row.name,
       description: row.description,
       created_at: row.createdAt,
+      structure_revision: row.structureRevision,
       categories: categories.map((category) => ({ id: category.id, name: category.name })),
-    } : null;
+    } };
   }
 
-  async deleteStorage(id: string, audit: Parameters<typeof auditInsertStatement>[0]): Promise<StorageDeleteResult> {
-    const exists = (await this.db.select({ id: storages.id }).from(storages).where(eq(storages.id, id)).limit(1))[0];
+  async deleteStorage(input: Parameters<StorageStore["deleteStorage"]>[0]): Promise<StorageDeleteResult> {
+    const exists = (await this.db.select({ id: storages.id, structureRevision: storages.structureRevision })
+      .from(storages).where(eq(storages.id, input.id)).limit(1))[0];
     if (!exists) return "not_found";
+    if (exists.structureRevision !== input.expectedStructureRevision) return "stale";
     const item = (await this.db.select({ id: storageItems.id }).from(storageItems)
-      .where(eq(storageItems.storageId, id)).limit(1))[0];
+      .where(eq(storageItems.storageId, input.id)).limit(1))[0];
     if (item) return "not_empty";
-    const results = await this.sql.batch([auditInsertStatement(audit, {
-      sql: "SELECT 1 FROM storages WHERE id = ? AND NOT EXISTS (SELECT 1 FROM storage_items WHERE storage_id = ?)",
-      params: [id, id],
+    const results = await this.sql.batch([auditInsertStatement(input.audit, {
+      sql: `SELECT 1 FROM storages
+        WHERE id = ? AND structure_revision = ?
+          AND NOT EXISTS (SELECT 1 FROM storage_items WHERE storage_id = ?)`,
+      params: [input.id, input.expectedStructureRevision, input.id],
     }), {
       method: "get",
       sql: `DELETE FROM storages
-        WHERE id = ? AND NOT EXISTS (SELECT 1 FROM storage_items WHERE storage_id = ?)
+        WHERE id = ? AND structure_revision = ?
+          AND NOT EXISTS (SELECT 1 FROM storage_items WHERE storage_id = ?)
           AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
         RETURNING id AS storage_id`,
-      params: [id, id, audit.eventId],
+      params: [input.id, input.expectedStructureRevision, input.id, input.audit.eventId],
       columns: ["storage_id"],
     }]);
     if (returnedRowCount(results[1]) === 1) return "deleted";
-    return (await this.db.select({ id: storages.id }).from(storages).where(eq(storages.id, id)).limit(1))[0]
-      ? "not_empty"
-      : "not_found";
+    const current = (await this.db.select({ id: storages.id, structureRevision: storages.structureRevision })
+      .from(storages).where(eq(storages.id, input.id)).limit(1))[0];
+    if (!current) return "not_found";
+    if (current.structureRevision !== input.expectedStructureRevision) return "stale";
+    return (await this.db.select({ id: storageItems.id }).from(storageItems)
+      .where(eq(storageItems.storageId, input.id)).limit(1))[0] ? "not_empty" : "stale";
   }
 
-  async createCategory(input: Parameters<StorageStore["createCategory"]>[0]): Promise<StoragePlacement> {
-    const storage = (await this.db.select({ id: storages.id }).from(storages)
+  async createCategory(input: Parameters<StorageStore["createCategory"]>[0]): Promise<StorageCategoryCreateResult> {
+    const storage = (await this.db.select({ id: storages.id, structureRevision: storages.structureRevision }).from(storages)
       .where(eq(storages.id, input.storageId)).limit(1))[0];
-    if (!storage) return "storage_missing";
+    if (!storage) return { status: "storage_missing" };
+    if (storage.structureRevision !== input.expectedStructureRevision) return { status: "stale" };
     try {
       const results = await this.sql.batch([{
         method: "all",
         columns: ["category_id"],
         sql: `INSERT INTO storage_categories (id, storage_id, name, created_at)
-          SELECT ?, ?, ?, ? WHERE (SELECT count(*) FROM storage_categories) < ?
+          SELECT ?, ?, ?, ?
+          WHERE (SELECT count(*) FROM storage_categories) < ?
+            AND EXISTS (
+              SELECT 1 FROM storages WHERE id = ? AND structure_revision = ?
+            )
           RETURNING id AS category_id`,
         params: [
           input.category.id,
@@ -300,70 +351,171 @@ export class SqliteStorageStore implements StorageStore {
           input.category.name,
           input.createdAt,
           LIMITS.content.storageStructure.categories.max,
+          input.storageId,
+          input.expectedStructureRevision,
+        ],
+      }, {
+        method: "get",
+        columns: ["structure_revision"],
+        sql: `UPDATE storages SET structure_revision = structure_revision + 1
+          WHERE id = ? AND structure_revision = ?
+            AND changes() = 1
+            AND EXISTS (SELECT 1 FROM storage_categories WHERE id = ? AND storage_id = ?)
+          RETURNING structure_revision`,
+        params: [
+          input.storageId,
+          input.expectedStructureRevision,
+          input.category.id,
+          input.storageId,
         ],
       }, auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" })]);
-      return returnedRowCount(results[0]) === 1 ? "valid" : "limit_reached";
+      if (returnedRowCount(results[1]) === 1) {
+        return {
+          status: "created",
+          value: input.category,
+          structureRevision: numberValue(getRow(results[1])?.[0]),
+        };
+      }
+      const current = (await this.db.select({ structureRevision: storages.structureRevision }).from(storages)
+        .where(eq(storages.id, input.storageId)).limit(1))[0];
+      if (!current) return { status: "storage_missing" };
+      if (current.structureRevision !== input.expectedStructureRevision) return { status: "stale" };
+      return { status: "limit_reached" };
     } catch (error) {
       throw mapStoreError(error);
     }
   }
 
-  async updateCategory(input: Parameters<StorageStore["updateCategory"]>[0]): Promise<StorageCategory | null> {
-    const existing = (await this.db.select({ id: storageCategories.id }).from(storageCategories).where(and(
-      eq(storageCategories.id, input.categoryId),
-      eq(storageCategories.storageId, input.storageId),
-    )).limit(1))[0];
-    if (!existing) return null;
+  async updateCategory(input: Parameters<StorageStore["updateCategory"]>[0]): ReturnType<StorageStore["updateCategory"]> {
     const results = await this.sql.batch([{
       method: "get",
       sql: `UPDATE storage_categories SET name = ?
-        WHERE id = ? AND storage_id = ? AND name IS NOT ?
+        WHERE id = ? AND storage_id = ? AND name IS ? AND name IS NOT ?
+          AND EXISTS (
+            SELECT 1 FROM storages WHERE id = ? AND structure_revision = ?
+          )
         RETURNING id AS category_id`,
-      params: [input.name, input.categoryId, input.storageId, input.name],
+      params: [
+        input.name,
+        input.categoryId,
+        input.storageId,
+        input.expectedName,
+        input.name,
+        input.storageId,
+        input.expectedStructureRevision,
+      ],
       columns: ["category_id"],
+    }, {
+      method: "get",
+      columns: ["structure_revision"],
+      sql: `UPDATE storages SET structure_revision = structure_revision + 1
+        WHERE id = ? AND structure_revision = ?
+          AND changes() = 1
+          AND EXISTS (
+            SELECT 1 FROM storage_categories
+            WHERE id = ? AND storage_id = ? AND name = ?
+          )
+        RETURNING structure_revision`,
+      params: [
+        input.storageId,
+        input.expectedStructureRevision,
+        input.categoryId,
+        input.storageId,
+        input.name,
+      ],
     }, auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" })]);
-    if (returnedRowCount(results[0]) === 1) return { id: input.categoryId, name: input.name };
-    const current = (await this.db.select({ id: storageCategories.id, name: storageCategories.name })
-      .from(storageCategories).where(and(
-        eq(storageCategories.id, input.categoryId),
-        eq(storageCategories.storageId, input.storageId),
-      )).limit(1))[0];
-    return current ?? null;
+    if (returnedRowCount(results[1]) === 1) {
+      return {
+        status: "updated",
+        value: {
+          category: { id: input.categoryId, name: input.name },
+          structureRevision: numberValue(getRow(results[1])?.[0]),
+        },
+      };
+    }
+    const [currentStorage, currentCategory] = await Promise.all([
+      this.db.select({ id: storages.id, structureRevision: storages.structureRevision }).from(storages)
+        .where(eq(storages.id, input.storageId)).limit(1),
+      this.db.select({ id: storageCategories.id, name: storageCategories.name })
+        .from(storageCategories).where(and(
+          eq(storageCategories.id, input.categoryId),
+          eq(storageCategories.storageId, input.storageId),
+        )).limit(1),
+    ]);
+    if (!currentStorage[0] || !currentCategory[0]) return { status: "not_found" };
+    if (currentStorage[0].structureRevision !== input.expectedStructureRevision
+      || currentCategory[0].name !== input.expectedName) return { status: "stale" };
+    if (input.name === input.expectedName) {
+      return {
+        status: "updated",
+        value: {
+          category: currentCategory[0],
+          structureRevision: currentStorage[0].structureRevision,
+        },
+      };
+    }
+    return { status: "stale" };
   }
 
   async deleteCategory(
-    storageId: string,
-    categoryId: string,
-    audit: Parameters<typeof auditInsertStatement>[0],
-  ): Promise<StorageDeleteResult> {
+    input: Parameters<StorageStore["deleteCategory"]>[0],
+  ): Promise<StorageCategoryDeleteResult> {
+    const storage = (await this.db.select({ id: storages.id, structureRevision: storages.structureRevision }).from(storages)
+      .where(eq(storages.id, input.storageId)).limit(1))[0];
+    if (!storage) return { status: "not_found" };
+    if (storage.structureRevision !== input.expectedStructureRevision) return { status: "stale" };
     const category = (await this.db.select({ id: storageCategories.id }).from(storageCategories).where(and(
-      eq(storageCategories.id, categoryId),
-      eq(storageCategories.storageId, storageId),
+      eq(storageCategories.id, input.categoryId),
+      eq(storageCategories.storageId, input.storageId),
     )).limit(1))[0];
-    if (!category) return "not_found";
+    if (!category) return { status: "not_found" };
     const item = (await this.db.select({ id: storageItems.id }).from(storageItems)
-      .where(eq(storageItems.categoryId, categoryId)).limit(1))[0];
-    if (item) return "not_empty";
-    const results = await this.sql.batch([auditInsertStatement(audit, {
-      sql: `SELECT 1 FROM storage_categories
-        WHERE id = ? AND storage_id = ?
-          AND NOT EXISTS (SELECT 1 FROM storage_items WHERE category_id = ?)`,
-      params: [categoryId, storageId, categoryId],
-    }), {
+      .where(eq(storageItems.categoryId, input.categoryId)).limit(1))[0];
+    if (item) return { status: "not_empty" };
+    const results = await this.sql.batch([{
+      method: "get",
+      columns: ["structure_revision"],
+      sql: `UPDATE storages SET structure_revision = structure_revision + 1
+        WHERE id = ? AND structure_revision = ?
+          AND EXISTS (
+            SELECT 1 FROM storage_categories
+            WHERE id = ? AND storage_id = ?
+              AND NOT EXISTS (SELECT 1 FROM storage_items WHERE category_id = ?)
+          )
+        RETURNING structure_revision`,
+      params: [
+        input.storageId,
+        input.expectedStructureRevision,
+        input.categoryId,
+        input.storageId,
+        input.categoryId,
+      ],
+    }, auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" }), {
       method: "get",
       sql: `DELETE FROM storage_categories
         WHERE id = ? AND storage_id = ?
-          AND NOT EXISTS (SELECT 1 FROM storage_items WHERE category_id = ?)
           AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
         RETURNING id AS category_id`,
-      params: [categoryId, storageId, categoryId, audit.eventId],
+      params: [input.categoryId, input.storageId, input.audit.eventId],
       columns: ["category_id"],
     }]);
-    if (returnedRowCount(results[1]) === 1) return "deleted";
-    return (await this.db.select({ id: storageCategories.id }).from(storageCategories).where(and(
-      eq(storageCategories.id, categoryId),
-      eq(storageCategories.storageId, storageId),
-    )).limit(1))[0] ? "not_empty" : "not_found";
+    if (returnedRowCount(results[2]) === 1) {
+      return { status: "deleted", structureRevision: numberValue(getRow(results[0])?.[0]) };
+    }
+    const [currentStorage, currentCategory] = await Promise.all([
+      this.db.select({ structureRevision: storages.structureRevision }).from(storages)
+        .where(eq(storages.id, input.storageId)).limit(1),
+      this.db.select({ id: storageCategories.id }).from(storageCategories).where(and(
+        eq(storageCategories.id, input.categoryId),
+        eq(storageCategories.storageId, input.storageId),
+      )).limit(1),
+    ]);
+    if (!currentStorage[0] || !currentCategory[0]) return { status: "not_found" };
+    if (currentStorage[0].structureRevision !== input.expectedStructureRevision) return { status: "stale" };
+    return (await this.db.select({ id: storageItems.id }).from(storageItems)
+      .where(eq(storageItems.categoryId, input.categoryId)).limit(1))[0]
+      ? { status: "not_empty" }
+      : { status: "stale" };
   }
 
   async listItems(query: StorageItemsListQuery): Promise<CursorResponse<StorageItemRecord>> {
@@ -397,7 +549,7 @@ export class SqliteStorageStore implements StorageStore {
       sql: `SELECT
           item.id, item.storage_id, item.category_id, item.name, item.description,
           balance.quantity, item.allow_member_deposit, item.allow_member_withdraw,
-          item.created_at, item.updated_at
+          item.created_at, item.updated_at, item.rarity, item.unit
         FROM storage_items AS item
         JOIN storage_balances AS balance ON balance.item_id = item.id
         ${filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : ""}
@@ -416,20 +568,8 @@ export class SqliteStorageStore implements StorageStore {
   }
 
   async getItem(itemId: string): Promise<StorageItemRecord | null> {
-    const row = (await this.db.select({
-      id: storageItems.id,
-      storageId: storageItems.storageId,
-      categoryId: storageItems.categoryId,
-      name: storageItems.name,
-      description: storageItems.description,
-      quantity: storageBalances.quantity,
-      allowMemberDeposit: storageItems.allowMemberDeposit,
-      allowMemberWithdraw: storageItems.allowMemberWithdraw,
-      createdAt: storageItems.createdAt,
-      updatedAt: storageItems.updatedAt,
-    }).from(storageItems).innerJoin(storageBalances, eq(storageBalances.itemId, storageItems.id))
-      .where(eq(storageItems.id, itemId)).limit(1))[0] as ItemSelectRow | undefined;
-    return row ? itemFromDrizzleRow(row) : null;
+    const result = await this.sql.execute(storageItemSnapshotStatement(itemId));
+    return allRows(result).map(itemFromSqlRow)[0] ?? null;
   }
 
   async validateItemPlacement(storageId: string, categoryId: string | null): Promise<StoragePlacement> {
@@ -449,8 +589,8 @@ export class SqliteStorageStore implements StorageStore {
         method: "run",
         sql: `INSERT INTO storage_items (
           id, storage_id, category_id, name, description,
-          allow_member_deposit, allow_member_withdraw, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          allow_member_deposit, allow_member_withdraw, created_at, updated_at, rarity, unit
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params: [
           item.id,
           item.storage_id,
@@ -461,6 +601,8 @@ export class SqliteStorageStore implements StorageStore {
           item.allow_member_withdraw ? 1 : 0,
           item.created_at,
           item.updated_at,
+          item.rarity,
+          item.unit,
         ],
       }, auditInsertStatement(audit)]);
     } catch (error) {
@@ -468,8 +610,7 @@ export class SqliteStorageStore implements StorageStore {
     }
   }
 
-  async updateItem(input: Parameters<StorageStore["updateItem"]>[0]): Promise<StorageItemRecord | null> {
-    if (!await this.getItem(input.id)) return null;
+  async updateItem(input: Parameters<StorageStore["updateItem"]>[0]): ReturnType<StorageStore["updateItem"]> {
     const assignments: string[] = [];
     const params: SqlValue[] = [];
     const patch = input.patch;
@@ -485,6 +626,14 @@ export class SqliteStorageStore implements StorageStore {
       assignments.push("description = ?");
       params.push(patch.description);
     }
+    if (patch.rarity !== undefined) {
+      assignments.push("rarity = ?");
+      params.push(patch.rarity);
+    }
+    if (patch.unit !== undefined) {
+      assignments.push("unit = ?");
+      params.push(patch.unit);
+    }
     if (patch.allowMemberDeposit !== undefined) {
       assignments.push("allow_member_deposit = ?");
       params.push(patch.allowMemberDeposit ? 1 : 0);
@@ -494,32 +643,42 @@ export class SqliteStorageStore implements StorageStore {
       params.push(patch.allowMemberWithdraw ? 1 : 0);
     }
     assignments.push("updated_at = ?");
-    params.push(input.updatedAt, input.id);
+    params.push(input.updatedAt, input.id, input.expectedUpdatedAt);
     try {
-      await this.sql.batch([{
-        method: "run",
-        sql: `UPDATE storage_items SET ${assignments.join(", ")} WHERE id = ?`,
+      const results = await this.sql.batch([{
+        method: "all",
+        columns: ["item_id"],
+        sql: `UPDATE storage_items SET ${assignments.join(", ")} WHERE id = ? AND updated_at = ?
+          RETURNING id AS item_id`,
         params,
-      }, auditInsertStatement(input.audit, {
-        sql: "SELECT 1 FROM storage_items WHERE id = ?",
-        params: [input.id],
-      })]);
+      }, auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" }), storageItemSnapshotStatement(input.id, input.updatedAt)]);
+      if (returnedRowCount(results[0]) === 0) {
+        const current = await this.getItem(input.id);
+        if (!current) return { status: "not_found" };
+        if (current.updated_at !== input.expectedUpdatedAt) return { status: "stale" };
+        return { status: "updated", value: current };
+      }
+      const snapshot = allRows(results[2]).map(itemFromSqlRow)[0];
+      if (!snapshot) throw new StorageStoreError("constraint");
+      return { status: "updated", value: snapshot };
     } catch (error) {
       throw mapStoreError(error);
     }
-    return this.getItem(input.id);
   }
 
-  async deleteItem(itemId: string, audit: Parameters<typeof auditInsertStatement>[0]): Promise<StorageDeleteResult> {
-    const item = await this.getItem(itemId);
+  async deleteItem(input: Parameters<StorageStore["deleteItem"]>[0]): Promise<StorageDeleteResult> {
+    const item = await this.getItem(input.itemId);
     if (!item) return "not_found";
+    if (item.updated_at !== input.expectedUpdatedAt) return "stale";
     const ledger = (await this.db.select({ id: storageLedgerEntries.id }).from(storageLedgerEntries)
-      .where(eq(storageLedgerEntries.itemId, itemId)).limit(1))[0];
+      .where(eq(storageLedgerEntries.itemId, input.itemId)).limit(1))[0];
     if (ledger) return "has_ledger";
     try {
-      const results = await this.sql.batch([auditInsertStatement(audit, {
-        sql: "SELECT 1 FROM storage_items WHERE id = ? AND NOT EXISTS (SELECT 1 FROM storage_ledger_entries WHERE item_id = ?)",
-        params: [itemId, itemId],
+      const results = await this.sql.batch([auditInsertStatement(input.audit, {
+        sql: `SELECT 1 FROM storage_items
+          WHERE id = ? AND updated_at = ?
+            AND NOT EXISTS (SELECT 1 FROM storage_ledger_entries WHERE item_id = ?)`,
+        params: [input.itemId, input.expectedUpdatedAt, input.itemId],
       }), {
         method: "run",
         sql: `DELETE FROM media_links
@@ -528,20 +687,32 @@ export class SqliteStorageStore implements StorageStore {
             AND EXISTS (
               SELECT 1 FROM storage_items
               WHERE id = ?
+                AND updated_at = ?
                 AND NOT EXISTS (SELECT 1 FROM storage_ledger_entries WHERE item_id = ?)
             )`,
-        params: [itemId, audit.eventId, itemId, itemId],
+        params: [
+          input.itemId,
+          input.audit.eventId,
+          input.itemId,
+          input.expectedUpdatedAt,
+          input.itemId,
+        ],
       }, {
         method: "get",
         sql: `DELETE FROM storage_items
-          WHERE id = ? AND NOT EXISTS (SELECT 1 FROM storage_ledger_entries WHERE item_id = ?)
+          WHERE id = ? AND updated_at = ?
+            AND NOT EXISTS (SELECT 1 FROM storage_ledger_entries WHERE item_id = ?)
             AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
           RETURNING id AS item_id`,
-        params: [itemId, itemId, audit.eventId],
+        params: [input.itemId, input.expectedUpdatedAt, input.itemId, input.audit.eventId],
         columns: ["item_id"],
       }]);
       if (returnedRowCount(results[2]) === 1) return "deleted";
-      return (await this.getItem(itemId)) ? "has_ledger" : "not_found";
+      const current = await this.getItem(input.itemId);
+      if (!current) return "not_found";
+      if (current.updated_at !== input.expectedUpdatedAt) return "stale";
+      return (await this.db.select({ id: storageLedgerEntries.id }).from(storageLedgerEntries)
+        .where(eq(storageLedgerEntries.itemId, input.itemId)).limit(1))[0] ? "has_ledger" : "stale";
     } catch (error) {
       const mapped = mapStoreError(error);
       if (mapped.code === "foreign_key") return "has_ledger";
@@ -577,7 +748,9 @@ export class SqliteStorageStore implements StorageStore {
           actor.id AS actor_id,
           actor.display_name AS actor_display_name,
           recipient.id AS recipient_id,
-          recipient.display_name AS recipient_display_name
+          recipient.display_name AS recipient_display_name,
+          item.rarity AS item_rarity,
+          item.unit AS item_unit
         FROM requested
         LEFT JOIN storage_items AS item ON item.id = requested.item_id
         LEFT JOIN storage_balances AS balance ON balance.item_id = item.id
@@ -600,8 +773,9 @@ export class SqliteStorageStore implements StorageStore {
   async findBatch(actorId: string, idempotencyKey: string): Promise<StoredStorageBatch | null> {
     const result = await this.sql.execute({
       method: "all",
-      sql: `SELECT
+        sql: `SELECT
           batch.id AS batch_id,
+          batch.request_fingerprint AS request_fingerprint,
           batch.transaction_type AS transaction_type,
           batch.recipient_user_id AS recipient_user_id,
           batch.note AS batch_note,
@@ -626,38 +800,29 @@ export class SqliteStorageStore implements StorageStore {
     const rows = allRows(result);
     if (rows.length === 0) return null;
     const first = rows[0]!;
-    const type = stockType(first[1]);
-    if (type === "adjust") throw new StorageStoreError("constraint");
-    const recipientUserId = nullableString(first[2]);
-    const note = nullableString(first[3]);
     const transactions = rows.map(transactionFromReplayRow);
-    const request: NormalizedStockRequest = {
-      type,
-      recipientUserId,
-      note,
-      entries: rows.map((row, index) => {
-        if (numberValue(row[4]) !== index) throw new StorageStoreError("constraint");
-        const delta = numberValue(row[8]);
-        return {
-          itemId: stringValue(row[6]),
-          quantity: type === "intake" ? delta : -delta,
-        };
-      }),
+    for (const [index, row] of rows.entries()) {
+      if (numberValue(row[5]) !== index) throw new StorageStoreError("constraint");
+    }
+    return {
+      id: stringValue(first[0]),
+      requestFingerprint: nullableString(first[1]),
+      transactions,
     };
-    return { id: stringValue(first[0]), request, transactions };
   }
 
   async commitStock(commit: StockCommit): Promise<readonly StorageTransaction[]> {
     const statements: SqlBatchStatement[] = [{
       method: "run",
       sql: `INSERT INTO storage_batches (
-        id, actor_id, idempotency_key, access_mode, transaction_type,
+        id, actor_id, idempotency_key, request_fingerprint, access_mode, transaction_type,
         recipient_user_id, note, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         commit.batchId,
         commit.actorId,
         commit.idempotencyKey,
+        commit.requestFingerprint,
         commit.accessMode,
         commit.request.type,
         commit.request.recipientUserId,
@@ -684,7 +849,7 @@ export class SqliteStorageStore implements StorageStore {
           RETURNING quantity_delta`,
           params: [
             ...commonParams,
-            commit.targetQuantity,
+            commit.request.targetQuantity,
             transaction.item_id,
             transaction.recipient_user_id,
             transaction.note,
@@ -775,6 +940,10 @@ function ledgerStatement(query: StorageLedgerQuery, count: boolean): SqlBatchSta
       filters.push("ledger.item_id = ?");
       params.push(query.itemId);
     }
+    if (query.storageId) {
+      filters.push("EXISTS (SELECT 1 FROM storage_items AS filter_item WHERE filter_item.id = ledger.item_id AND filter_item.storage_id = ?)");
+      params.push(query.storageId);
+    }
     if (query.recipientUserId) {
       filters.push("ledger.recipient_user_id = ?");
       params.push(query.recipientUserId);
@@ -797,6 +966,10 @@ function ledgerStatement(query: StorageLedgerQuery, count: boolean): SqlBatchSta
   if (query.itemId) {
     branchFilters.push("ledger.item_id = ?");
     branchValues.push(query.itemId);
+  }
+  if (query.storageId) {
+    branchFilters.push("EXISTS (SELECT 1 FROM storage_items AS filter_item WHERE filter_item.id = ledger.item_id AND filter_item.storage_id = ?)");
+    branchValues.push(query.storageId);
   }
   if (query.recipientUserId) {
     branchFilters.push("ledger.recipient_user_id = ?");
@@ -831,21 +1004,6 @@ function ledgerStatement(query: StorageLedgerQuery, count: boolean): SqlBatchSta
   };
 }
 
-function itemFromDrizzleRow(row: ItemSelectRow): StorageItemRecord {
-  return {
-    id: row.id,
-    storage_id: row.storageId,
-    category_id: row.categoryId,
-    name: row.name,
-    description: row.description,
-    quantity: row.quantity,
-    allow_member_deposit: row.allowMemberDeposit,
-    allow_member_withdraw: row.allowMemberWithdraw,
-    created_at: row.createdAt,
-    updated_at: row.updatedAt,
-  };
-}
-
 function itemFromSqlRow(row: SqlRow): StorageItemRecord {
   return {
     id: stringValue(row[0]),
@@ -858,6 +1016,8 @@ function itemFromSqlRow(row: SqlRow): StorageItemRecord {
     allow_member_withdraw: booleanValue(row[7]),
     created_at: stringValue(row[8]),
     updated_at: stringValue(row[9]),
+    rarity: stringValue(row[10]) as StorageItemRecord["rarity"],
+    unit: nullableString(row[11]),
   };
 }
 
@@ -878,23 +1038,25 @@ function snapshotEntryFromRow(row: SqlRow): StockSubmissionSnapshot["entries"][n
       allow_member_withdraw: booleanValue(row[10]),
       created_at: stringValue(row[11]),
       updated_at: stringValue(row[12]),
+      rarity: stringValue(row[17]) as StorageItemRecord["rarity"],
+      unit: nullableString(row[18]),
     },
   };
 }
 
 function transactionFromReplayRow(row: SqlRow): StorageTransaction {
   return {
-    id: stringValue(row[5]),
-    item_id: stringValue(row[6]),
-    item_name: nullableString(row[7]),
-    type: stockType(row[1]),
-    quantity_delta: numberValue(row[8]),
-    recipient_user_id: nullableString(row[2]),
-    recipient_display_name: nullableString(row[9]),
-    note: nullableString(row[3]),
-    actor_id: stringValue(row[10]),
-    actor_display_name: nullableString(row[11]),
-    created_at: stringValue(row[12]),
+    id: stringValue(row[6]),
+    item_id: stringValue(row[7]),
+    item_name: nullableString(row[8]),
+    type: stockType(row[2]),
+    quantity_delta: numberValue(row[9]),
+    recipient_user_id: nullableString(row[3]),
+    recipient_display_name: nullableString(row[10]),
+    note: nullableString(row[4]),
+    actor_id: stringValue(row[11]),
+    actor_display_name: nullableString(row[12]),
+    created_at: stringValue(row[13]),
   };
 }
 
@@ -930,6 +1092,63 @@ function mapStoreError(error: unknown): StorageStoreError {
   }
   if (message.includes("FOREIGN KEY constraint failed")) return new StorageStoreError("foreign_key", { cause: error });
   return new StorageStoreError("constraint", { cause: error });
+}
+
+function itemRevisionGuard(itemId: string, expectedUpdatedAt: string): Readonly<{
+  sql: string;
+  params: readonly SqlValue[];
+}> {
+  return {
+    sql: "SELECT 1 FROM storage_items WHERE id = ? AND updated_at = ?",
+    params: [itemId, expectedUpdatedAt],
+  };
+}
+
+function storageItemSnapshotStatement(itemId: string, updatedAt?: string): SqlBatchStatement {
+  const revisionGuard = updatedAt === undefined ? "" : " AND item.updated_at = ?";
+  return {
+    method: "all",
+    columns: [
+      "id",
+      "storage_id",
+      "category_id",
+      "name",
+      "description",
+      "quantity",
+      "allow_member_deposit",
+      "allow_member_withdraw",
+      "created_at",
+      "updated_at",
+      "rarity",
+      "unit",
+    ],
+    sql: `SELECT
+        item.id, item.storage_id, item.category_id, item.name, item.description,
+        balance.quantity, item.allow_member_deposit, item.allow_member_withdraw,
+        item.created_at, item.updated_at, item.rarity, item.unit
+      FROM storage_items AS item
+      JOIN storage_balances AS balance ON balance.item_id = item.id
+      WHERE item.id = ?${revisionGuard}`,
+    params: [itemId, ...(updatedAt === undefined ? [] : [updatedAt])],
+  };
+}
+
+type ItemRevisionState = "not_found" | "stale" | "current";
+
+async function itemRevisionState(
+  sql: SqlExecutor,
+  itemId: string,
+  expectedUpdatedAt: string,
+): Promise<ItemRevisionState> {
+  const result = await sql.execute({
+    method: "get",
+    columns: ["updated_at"],
+    sql: "SELECT updated_at FROM storage_items WHERE id = ?",
+    params: [itemId],
+  });
+  const row = getRow(result);
+  if (!row) return "not_found";
+  return stringValue(row[0]) === expectedUpdatedAt ? "current" : "stale";
 }
 
 function allRows(result: SqlResult | undefined): readonly SqlRow[] {

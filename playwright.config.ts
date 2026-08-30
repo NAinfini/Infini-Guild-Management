@@ -73,39 +73,40 @@ export default defineConfig<E2eOptions>({
       testDir: "apps/portal/e2e/specs/admin",
       use: { ...devices["Desktop Chrome"], role: "admin", trackArtifacts: true },
     },
+    {
+      name: "member",
+      testDir: "apps/portal/e2e/specs/member",
+      use: { ...devices["Desktop Chrome"], role: "member", trackArtifacts: true },
+    },
   ],
 
   /*
    * 每个槽位一个 apps/cloudflare Wrangler 实例：独立端口、独立 --persist-to
    * （D1 + R2 + DO + 限流都在里面）、独立 inspector 端口。
    *
-   * 这里**不**负责 build：所有槽位共读同一个 apps/portal/dist，让其中一个边跑
-   * vite build 边让别的槽位对着半成品目录起服务是自找的麻烦。产物由
-   * `pnpm test:e2e` 在启动 Playwright 之前构建；直接敲 `playwright test` 时，
-   * globalSetup 的时间戳比对会当场报错并告诉你去跑 `pnpm build`。
+   * 这里**不**负责 build：所有槽位共读同一份 Portal 与 Cloudflare Worker 产物，
+   * 让其中一个边构建、边让其他槽位起服务会读到半成品。`pnpm test:e2e` 在启动
+   * Playwright 前执行 `pnpm build:cloudflare`；直接敲 `playwright test` 时，
+   * globalSetup 的时间戳比对会当场拒绝缺失或过期的任一产物。
    *
-   * 每轮启动前由 scripts/e2e/prepare-slot.mjs 精确删除本槽位状态，再离线应用
-   * 0000_core.sql 和 fixture seed。配置与 CLI 都固定 local/remote:false。
-   * reuseExistingServer 关掉：e2e 必须自己起自己的实例。复用别人留下的进程意味着
+   * 每轮启动前由 scripts/e2e/run-wrangler-slot.mjs 调 scripts/e2e/prepare-slot.mjs
+   * 精确删除本槽位状态，再离线应用 0000_core.sql 和 fixture seed。它把每槽
+   * Wrangler stdout/stderr 和退出状态持久化，配置与 CLI 都固定 local/remote:false。
+   * Wrangler 以 `--no-bundle` 运行已构建 Worker，禁止开发态 source watcher 在
+   * 非幂等请求中途重载运行时。reuseExistingServer 关掉：e2e 必须自己起自己的实例。复用别人留下的进程意味着
    * 复用别人留下的库，那是「上一轮的残留伪装成这一轮的数据」最常见的来源；
    * 端口被占就当场报错，比静默跑在错误的库上强。
    */
   webServer: Array.from({ length: E2E_SLOTS }, (_, slot) => {
     const origin = originForSlot(slot);
-    const persistTo = `apps/portal/e2e/.state/slots/slot-${slot}/wrangler`;
     return {
-      command: [
-        `node scripts/e2e/prepare-slot.mjs ${slot} && `,
-        "wrangler dev --local --config scripts/e2e/wrangler.e2e.jsonc",
-        ` --persist-to ${persistTo} --name infini-guild-e2e-${slot}`,
-        ` --ip 127.0.0.1 --port ${E2E_PORT_BASE + slot}`,
-        ` --inspector-ip 127.0.0.1 --inspector-port ${E2E_INSPECTOR_PORT_BASE + slot}`,
-        " --local-protocol https --show-interactive-dev-session=false",
-        ` --var IG_PUBLIC_URL:${origin} --var IG_ALLOWED_ORIGINS:${origin}`,
-        " --var IG_PBKDF2_ITERATIONS:10000",
-        " --var IG_INVITE_TOKEN_SECRET:test-invite-token-secret-000000000000",
-        " --var IG_AUDIT_DOWNLOAD_SECRET:test-audit-download-secret-000000000",
-      ].join(""),
+      command: `node scripts/e2e/run-wrangler-slot.mjs ${slot}`,
+      env: {
+        E2E_SLOT_PORT: String(E2E_PORT_BASE + slot),
+        E2E_SLOT_INSPECTOR_PORT: String(E2E_INSPECTOR_PORT_BASE + slot),
+        E2E_SLOT_ORIGIN: origin,
+      },
+      name: `wrangler-slot-${slot}`,
       url: `${origin}/api/health`,
       ignoreHTTPSErrors: true,
       reuseExistingServer: false,

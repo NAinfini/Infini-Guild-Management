@@ -1,4 +1,4 @@
-import { ANNOUNCEMENT_STATUSES } from "@guild/shared/constants/announcements";
+import { ANNOUNCEMENT_CATEGORIES, ANNOUNCEMENT_STATUSES } from "@guild/shared/constants/announcements";
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
@@ -24,15 +24,23 @@ export const announcements = sqliteTable(
     // body_json 的纯文本投影，供搜索 LIKE 使用；声明必须保持末位以匹配
     // ALTER TABLE ADD COLUMN 的物理列序。
     searchText: text("search_text").notNull().default(""),
+    category: text("category", { enum: ANNOUNCEMENT_CATEGORIES }).notNull().default("announcement"),
+    viewCount: integer("view_count").notNull().default(0),
   },
   (table) => [
     index("idx_announcements_public").on(table.status, table.pinned, table.updatedAt, table.id, table.publishAt, table.expiresAt),
+    index("idx_announcements_category_public")
+      .on(table.category, table.status, table.pinned, table.updatedAt, table.id, table.publishAt, table.expiresAt),
+    index("idx_announcements_category_manage")
+      .on(table.category, table.pinned, table.updatedAt, table.id, table.archivedAt, table.status),
     index("idx_announcements_manage").on(table.pinned, table.updatedAt, table.id, table.archivedAt, table.status),
     index("idx_announcements_schedule").on(table.status, table.publishAt, table.id),
     index("idx_announcements_expiry").on(table.status, table.expiresAt, table.id),
     check("announcements_title_present", sql`length(trim(${table.title})) BETWEEN 1 AND 200`),
     check("announcements_body_object", sql`json_valid(${table.bodyJson}) AND json_type(${table.bodyJson}) = 'object'`),
     check("announcements_pinned_boolean", sql`${table.pinned} IN (0, 1)`),
+    check("announcements_category_valid", sql`${table.category} IN ('announcement', 'event', 'war', 'important')`),
+    check("announcements_view_count_valid", sql`${table.viewCount} >= 0`),
     check("announcements_status_valid", sql`${table.status} IN ('draft', 'scheduled', 'published', 'archived')`),
     check(
       "announcements_state_consistent",

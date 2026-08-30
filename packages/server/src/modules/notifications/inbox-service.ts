@@ -1,8 +1,11 @@
 import type {
   InboxNotification,
   InboxNotificationListResponse,
+  NotificationPreferences,
+  UpdateNotificationPreferences,
 } from "@guild/shared";
 import { AppError, type DeferredTasks, type NotificationPublisher, type RequestContext } from "@guild/kernel";
+import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
 
 export type NotificationInboxCursor = Readonly<{ occurredAt: string; id: string }>;
 
@@ -22,6 +25,13 @@ export interface NotificationInboxStore {
     ids: readonly string[] | null;
     now: string;
   }>): Promise<number>;
+  getPreferences(userId: string): Promise<NotificationPreferences>;
+  updatePreferences(input: Readonly<{
+    userId: string;
+    patch: UpdateNotificationPreferences;
+    now: string;
+    audit: AuditEventWrite;
+  }>): Promise<NotificationPreferences>;
 }
 
 export class NotificationInboxService {
@@ -55,6 +65,33 @@ export class NotificationInboxService {
     const unreadCount = await this.store.markRead({ userId: actor.userId, ids: input.ids, now: context.now });
     this.signalChanged(actor.userId);
     return { ok: true, unread_count: unreadCount };
+  }
+
+  async getPreferences(context: RequestContext): Promise<NotificationPreferences> {
+    const actor = context.authorization.requireAuthenticated();
+    return this.store.getPreferences(actor.userId);
+  }
+
+  async updatePreferences(
+    context: RequestContext,
+    input: UpdateNotificationPreferences,
+  ): Promise<NotificationPreferences> {
+    const actor = context.authorization.requireAuthenticated();
+    const before = await this.store.getPreferences(actor.userId);
+    const changed = (Object.keys(input) as Array<keyof UpdateNotificationPreferences>)
+      .filter((key) => input[key] !== undefined && input[key] !== before[key]);
+    if (changed.length === 0) return before;
+    const audit = createAuditEvent(context, {
+      subjectType: "user",
+      subjectId: actor.userId,
+      subjectLabel: null,
+      action: "update",
+      context: [{
+        field: "changed_sections",
+        value: { type: "list", value: changed.map((value) => ({ type: "code", value })) },
+      }],
+    });
+    return this.store.updatePreferences({ userId: actor.userId, patch: input, now: context.now, audit });
   }
 
   private signalChanged(userId: string): void {

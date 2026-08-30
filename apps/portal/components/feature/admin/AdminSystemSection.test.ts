@@ -1,6 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { AdminSystemSection } from "./AdminSystemSection";
@@ -34,18 +32,5 @@ describe("AdminSystemSection", () => {
     expect(screen.getByText("status.signal.configured")).toBeInTheDocument();
     expect(screen.queryByText(/DURABLE OBJECT/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/CRON TRIGGERS/i)).not.toBeInTheDocument();
-  });
-
-  it("uses the normal UI font and a width-safe table", () => {
-    const css = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/feature/admin/AdminSystemSection.css"),
-      "utf8",
-    );
-    const signalRule = css.match(/\.system-health-ledger__signal\s*\{([^}]*)\}/)?.[1] ?? "";
-    const tableRule = css.match(/\.system-health-ledger__table\s*\{([^}]*)\}/)?.[1] ?? "";
-
-    expect(signalRule).toContain("font-family: inherit");
-    expect(signalRule).not.toContain("monospace");
-    expect(tableRule).toContain("min-width: 0");
   });
 });

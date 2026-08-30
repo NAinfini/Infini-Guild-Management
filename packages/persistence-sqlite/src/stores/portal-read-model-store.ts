@@ -411,14 +411,14 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
       },
       {
         method: "all",
-        columns: ["id", "type", "caption"],
-        sql: `SELECT g.id, g.type, g.caption
+        columns: ["id", "type", "title"],
+        sql: `SELECT g.id, g.type, g.title
           FROM gallery_items g INDEXED BY idx_gallery_items_created
           WHERE ${enabled("feature_gallery")}
-            AND lower(coalesce(g.caption, '')) LIKE ? ESCAPE '\\'
+            AND (lower(g.title) LIKE ? ESCAPE '\\' OR lower(coalesce(g.caption, '')) LIKE ? ESCAPE '\\')
           ORDER BY g.created_at DESC, g.id DESC
           LIMIT ?`,
-        params: [pattern, input.perTypeLimit],
+        params: [pattern, pattern, input.perTypeLimit],
       },
       {
         method: "all",
@@ -474,11 +474,9 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
       entityId: text(row[2], "search wiki slug"),
     }));
     const galleryResults = rows(result[4], "gallery search").map((row): SearchResultRead => {
-      const type = text(row[1], "search gallery type");
-      const caption = nullableText(row[2], "search gallery caption")?.trim();
       return {
         id: text(row[0], "search gallery id"),
-        title: caption || `${type.slice(0, 1).toUpperCase()}${type.slice(1)} item`,
+        title: text(row[2], "search gallery title"),
         subtitle: "Gallery",
         type: "gallery",
         to: "/gallery",

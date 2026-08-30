@@ -1,8 +1,9 @@
 import { IconChevronDown, IconChevronUp, IconSelector } from "@tabler/icons-react";
 import {
+  type ReactTable,
   type Row,
+  type RowData,
   flexRender,
-  useReactTable,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -13,20 +14,23 @@ import {
   type ReactNode,
 } from "react";
 import "./DataTableAdapter.css";
+import type { DataTableFeatures } from "./data-table-features";
 
-type DataTableAdapterProps<T> = {
-  table: ReturnType<typeof useReactTable<T>>;
+type DataTableRow<TData extends RowData> = Row<DataTableFeatures, TData>;
+
+type DataTableAdapterProps<TData extends RowData> = {
+  table: ReactTable<DataTableFeatures, TData>;
   appearance?: "grid" | "rows";
   striped?: boolean;
   rowHover?: boolean;
-  onRowClick?: (row: Row<T>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
-  onRowDoubleClick?: (row: Row<T>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
-  onRowContextMenu?: (row: Row<T>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
-  onRowKeyDown?: (row: Row<T>, event: ReactKeyboardEvent<HTMLTableRowElement>) => void;
-  rowAriaLabel?: (row: Row<T>) => string | undefined;
-  rowAriaSelected?: (row: Row<T>) => boolean | undefined;
-  rowClassName?: (row: Row<T>) => string | undefined;
-  rowStyle?: (row: Row<T>) => CSSProperties | undefined;
+  onRowClick?: (row: DataTableRow<TData>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
+  onRowDoubleClick?: (row: DataTableRow<TData>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
+  onRowContextMenu?: (row: DataTableRow<TData>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
+  onRowKeyDown?: (row: DataTableRow<TData>, event: ReactKeyboardEvent<HTMLTableRowElement>) => void;
+  rowAriaLabel?: (row: DataTableRow<TData>) => string | undefined;
+  rowAriaSelected?: (row: DataTableRow<TData>) => boolean | undefined;
+  rowClassName?: (row: DataTableRow<TData>) => string | undefined;
+  rowStyle?: (row: DataTableRow<TData>) => CSSProperties | undefined;
   emptyContent?: ReactNode;
   className?: string;
   style?: CSSProperties;
@@ -43,7 +47,7 @@ function SortIndicator({ sorted }: { sorted: false | "asc" | "desc" }) {
   return <Icon aria-hidden size={14} opacity={sorted ? 1 : 0.45} />;
 }
 
-export function DataTableAdapter<T>({
+export function DataTableAdapter<TData extends RowData>({
   table,
   appearance = "grid",
   striped = true,
@@ -61,7 +65,7 @@ export function DataTableAdapter<T>({
   style,
   virtualize = false,
   maxHeight = "70vh",
-}: DataTableAdapterProps<T>) {
+}: DataTableAdapterProps<TData>) {
   const rows = table.getRowModel().rows;
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowsAreInteractive = Boolean(

@@ -206,11 +206,11 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
         return {
           itemId: `member:${member.user_id}`,
           userId: member.user_id,
-          display_name: userData?.display_name ?? member.user_id,
+          display_name: userData?.display_name ?? member.display_name ?? member.user_id,
           power: userData?.power ?? 0,
           class: userData?.class ?? "Unknown",
           subtitle: `${userData?.class ?? "Unknown"} ${userData?.power ?? 0}`,
-          avatarMediaId: userData?.avatarMediaId ?? null,
+          avatarMediaId: userData?.avatarMediaId ?? member.avatar_media_id ?? null,
         };
       }),
     }));
@@ -224,11 +224,11 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
         return {
           itemId: `member:${member.userId}`,
           userId: member.userId,
-          display_name: userData?.display_name ?? member.userId,
+          display_name: userData?.display_name ?? member.display_name ?? member.userId,
           power: userData?.power ?? 0,
           class: userData?.class ?? "Unknown",
           subtitle: "Pool",
-          avatarMediaId: userData?.avatarMediaId ?? null,
+          avatarMediaId: userData?.avatarMediaId ?? member.avatar_media_id ?? null,
         };
       }),
     };

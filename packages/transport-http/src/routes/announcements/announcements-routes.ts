@@ -1,10 +1,13 @@
 import type { RequestContext } from "@guild/kernel";
 import type { AnnouncementService } from "@guild/server/modules/announcements";
 import {
+  announcementEtag,
   createAnnouncementSchema,
   updateAnnouncementSchema,
 } from "@guild/shared";
-import { ANNOUNCEMENT_STATUSES } from "@guild/shared/constants/announcements";
+import { ANNOUNCEMENT_CATEGORIES, ANNOUNCEMENT_STATUSES } from "@guild/shared/constants/announcements";
+import { MAX_OFFSET_PAGE } from "@guild/shared/config/limits";
+import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { Hono } from "hono";
 import { z } from "zod";
 import { jsonWithEtag } from "../../core/etag.js";
@@ -17,29 +20,30 @@ import {
   parseImageUploads,
   parseJsonBody,
   parseQuery,
+  validation,
 } from "../../core/parsing.js";
 import {
   presentAnnouncement,
-  presentAnnouncementMediaIds,
   presentAnnouncementOk,
   presentAnnouncementPage,
+  presentAnnouncementViewCount,
   presentAnnouncementPendingAttachment,
   presentAnnouncementPendingImages,
 } from "../../presenters/announcements/announcements-presenter.js";
 
 const booleanQuery = z.enum(["true", "false"]).transform((value) => value === "true");
 const listQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(MAX_OFFSET_PAGE).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   status: z.enum(ANNOUNCEMENT_STATUSES).optional(),
+  category: z.enum(ANNOUNCEMENT_CATEGORIES).optional(),
   pinned: booleanQuery.optional(),
-  archived: booleanQuery.optional(),
   search: z.string().trim().max(200).optional(),
   sort: z.enum(["updated_desc", "updated_asc"]).default("updated_desc"),
 });
 
 type AnnouncementHttpService = Pick<AnnouncementService,
-  "list" | "get" | "create" | "update" | "archive" | "delete" | "uploadPendingImages" | "uploadPendingAttachment" | "uploadImages">;
+  "list" | "get" | "recordView" | "create" | "update" | "archive" | "delete" | "uploadPendingImages" | "uploadPendingAttachment">;
 
 export type AnnouncementMediaPolicy = Readonly<{
   imageMaxBytes: number;
@@ -65,8 +69,8 @@ export function createAnnouncementRoutes(dependencies: AnnouncementRouteDependen
       limit: query.limit,
       sort: query.sort,
       ...defined("status", query.status),
+      ...defined("category", query.category),
       ...defined("pinned", query.pinned),
-      ...defined("archived", query.archived),
       ...defined("search", query.search || undefined),
     });
     return jsonWithEtag(context.req.raw, presentAnnouncementPage(result));
@@ -74,6 +78,7 @@ export function createAnnouncementRoutes(dependencies: AnnouncementRouteDependen
 
   routes.post("/images", async (context) => {
     const request = requestContext(context);
+    requireAnnouncementMediaUpload(request);
     const [uploads, policy] = await Promise.all([
       parseFormData(context.req.raw).then(parseImageUploads),
       dependencies.getMediaPolicy(request),
@@ -85,6 +90,7 @@ export function createAnnouncementRoutes(dependencies: AnnouncementRouteDependen
 
   routes.post("/attachments", async (context) => {
     const request = requestContext(context);
+    requireAnnouncementMediaUpload(request);
     const [upload, policy] = await Promise.all([
       parseFormData(context.req.raw).then(parseAnnouncementAttachment),
       dependencies.getMediaPolicy(request),
@@ -114,8 +120,12 @@ export function createAnnouncementRoutes(dependencies: AnnouncementRouteDependen
     const announcement = presentAnnouncement(
       await dependencies.service.get(requestContext(context), context.req.param("id")),
     );
-    return jsonWithEtag(context.req.raw, announcement);
+    return jsonWithEtag(context.req.raw, announcement, announcementEtag(announcement));
   });
+
+  routes.post("/:id/view", async (context) => context.json(presentAnnouncementViewCount(
+    await dependencies.service.recordView(requestContext(context), context.req.param("id")),
+  )));
 
   routes.patch("/:id", async (context) => {
     const request = requestContext(context);
@@ -130,32 +140,25 @@ export function createAnnouncementRoutes(dependencies: AnnouncementRouteDependen
       publicOrigin,
       policy.imageQuota,
       policy.attachmentQuota,
-      parseIfMatch(context.req.header("If-Match")),
+      requiredIfMatch(context.req.header("If-Match")),
     )));
   });
 
   routes.delete("/:id/permanent", async (context) => context.json(presentAnnouncementOk(
-    await dependencies.service.delete(requestContext(context), context.req.param("id")),
+    await dependencies.service.delete(
+      requestContext(context),
+      context.req.param("id"),
+      requiredIfMatch(context.req.header("If-Match")),
+    ),
   )));
 
   routes.delete("/:id", async (context) => context.json(presentAnnouncementOk(
-    await dependencies.service.archive(requestContext(context), context.req.param("id")),
-  )));
-
-  routes.post("/:id/images", async (context) => {
-    const request = requestContext(context);
-    const [uploads, policy] = await Promise.all([
-      parseFormData(context.req.raw).then(parseImageUploads),
-      dependencies.getMediaPolicy(request),
-    ]);
-    return context.json(presentAnnouncementMediaIds(await dependencies.service.uploadImages(
-      request,
+    await dependencies.service.archive(
+      requestContext(context),
       context.req.param("id"),
-      uploads,
-      policy.imageMaxBytes,
-      policy.imageQuota,
-    )));
-  });
+      requiredIfMatch(context.req.header("If-Match")),
+    ),
+  )));
 
   return routes;
 }
@@ -164,10 +167,23 @@ function defined<K extends string, V>(key: K, value: V | undefined): { [P in K]?
   return value === undefined ? {} : { [key]: value } as { [P in K]?: V };
 }
 
+function requireAnnouncementMediaUpload(request: RequestContext): void {
+  request.authorization.requireAuthenticated();
+  if (!request.authorization.has(PERMISSION_ID.ANNOUNCEMENTS_CREATE)) {
+    request.authorization.require(PERMISSION_ID.ANNOUNCEMENTS_EDIT);
+  }
+}
+
 function resolvePublicOrigin(value: string): string {
   const url = new URL(value);
   if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
     throw new TypeError("Announcement publicOrigin must be an HTTP origin");
   }
   return url.origin;
+}
+
+function requiredIfMatch(value: string | undefined): string {
+  const ifMatch = parseIfMatch(value);
+  if (!ifMatch) throw validation("Announcement revision is required");
+  return ifMatch;
 }

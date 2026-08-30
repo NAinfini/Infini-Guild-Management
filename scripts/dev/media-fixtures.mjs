@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const IMAGE_CONTENT_TYPE = "image/webp";
 const AUDIO_CONTENT_TYPE = "audio/ogg";
+const PDF_CONTENT_TYPE = "application/pdf";
 
 const files = Object.freeze({
   avatar01: file("avatar-01.webp", 4_848, "eb68ef6ef0a32e6b871162cc9cc258c1c8f4afd2573536110a6f82a7338b4024", 160, 160),
@@ -23,6 +24,14 @@ const files = Object.freeze({
     byteSize: 188,
     contentType: AUDIO_CONTENT_TYPE,
     sha256: "846b3bd7f96020d52447a8658afe1fccecc135f181ee9da605edce6820ece399",
+    width: null,
+    height: null,
+  }),
+  fieldGuide: Object.freeze({
+    filename: "guild-field-guide.pdf",
+    byteSize: 592,
+    contentType: PDF_CONTENT_TYPE,
+    sha256: "2ebe915cbbdde9914f7f0e19fb0bff941b319057c7121cdc8cfa0bf00c28cd2e",
     width: null,
     height: null,
   }),
@@ -58,6 +67,19 @@ function audioAsset(id, ownerUserId, target, fixture) {
   });
 }
 
+function attachmentAsset(id, ownerUserId, target, fixture) {
+  return asset({
+    id,
+    purpose: "announcement_attachment",
+    mediaType: "file",
+    ownerUserId,
+    target,
+    fixture,
+    originalName: fixture.filename,
+    variants: ["full"],
+  });
+}
+
 function asset({ id, purpose, mediaType, ownerUserId, target, fixture, originalName, variants }) {
   if (!/^[A-Za-z0-9_-]{21}$/.test(id)) throw new Error(`Development media id is invalid: ${id}`);
   return Object.freeze({
@@ -69,7 +91,7 @@ function asset({ id, purpose, mediaType, ownerUserId, target, fixture, originalN
     originalName,
     variants: Object.freeze(variants.map((variant) => Object.freeze({
       variant,
-      objectKey: `media/${id}/${variant}.${mediaType === "audio" ? "opus" : "webp"}`,
+      objectKey: `media/${id}/${variant}.${mediaType === "image" ? "webp" : mediaType === "audio" ? "opus" : "bin"}`,
       ...fixture,
     }))),
   });
@@ -103,6 +125,7 @@ export const DEVELOPMENT_MEDIA_ASSETS = Object.freeze([
   imageAsset("dev-media-00000000021", "storage_image", "dev-owner", target("storage_item", "dev-storage-item-crystal", "image", "public"), files.sceneSquare),
   imageAsset("dev-media-00000000022", "storage_image", "dev-owner", target("storage_item", "dev-storage-item-potion", "image", "public"), files.scenePortrait),
   imageAsset("dev-media-00000000023", "event_image", "dev-owner", target("recurring_template", "dev-template-weekly", "attachment", "public"), files.sceneSquare),
+  attachmentAsset("dev-media-00000000024", "dev-owner", target("announcement", "dev-announcement-welcome", "attachment", "public"), files.fieldGuide),
 ]);
 
 function target(entityType, entityId, slot, audience) {

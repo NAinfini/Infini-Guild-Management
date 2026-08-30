@@ -5,7 +5,6 @@ export * from "./email-verification-types";
 export * from "./authorization";
 export * from "./crypto";
 export * from "./identity-admin-service";
-export * from "./login-lock";
 export * from "./oauth-service";
 export * from "./oauth-types";
 export * from "./password-policy";

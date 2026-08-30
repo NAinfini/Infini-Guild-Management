@@ -1,4 +1,5 @@
-import type { MemberProfile, User } from "@guild/shared";
+import type { Event, MemberProfile, User } from "@guild/shared";
+import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
 import { Skeleton } from "@portal/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
@@ -9,7 +10,7 @@ import { queryKeys } from "../../api/query-keys";
 import { useAppError } from "../../hooks/useAppError";
 import { useConfirmDialog } from "../../hooks/useConfirmDialog";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
-import { useEventsFiltering } from "../../hooks/useEventsFiltering";
+import { useEventMemberDirectory } from "../../hooks/data/useEventsData";
 import { useEventActions } from "../../hooks/useEventMutations";
 import { useExternalView } from "../../hooks/useExternalView";
 import { fetchEventDetail, isApiRequestError } from "../../services/EventService";
@@ -40,25 +41,31 @@ export function EventDetailPage() {
     queryFn: () => fetchEventDetail(id),
     staleTime: 30_000,
   });
-  const filtering = useEventsFiltering({ currentUserId: user?.id });
+  const event = detailQuery.data;
+  const requiresMemberDirectory = Boolean(event && (
+    (!event.poll && (canEdit || event.participants.length > 0))
+    || event.poll?.options.some((option) => option.voter_ids.length > 0)
+    || (event.raffle_winners?.length ?? 0) > 0
+  ));
+  const usersQuery = useEventMemberDirectory({
+    currentUserId: user?.id,
+    publicMemberProjection: isExternalView || !user,
+    enabled: requiresMemberDirectory,
+  });
   const eventById = useMemo(() => {
-    const next = new Map(filtering.eventById);
-    if (detailQuery.data) next.set(detailQuery.data.id, detailQuery.data);
+    const next = new Map<string, Event>();
+    if (event) next.set(event.id, event);
     return next;
-  }, [detailQuery.data, filtering.eventById]);
+  }, [event]);
   const joinedEventRanges = useMemo(() => {
-    const event = detailQuery.data;
     if (!event || !user || !event.participants.some((participant) => participant.user_id === user.id)) {
-      return filtering.joinedEventRanges;
-    }
-    if (filtering.joinedEventRanges.some((range) => range.eventId === event.id)) {
-      return filtering.joinedEventRanges;
+      return [];
     }
     const startMs = Date.parse(event.start_at);
     const endMs = Date.parse(event.end_at ?? event.start_at);
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return filtering.joinedEventRanges;
-    return [...filtering.joinedEventRanges, { eventId: event.id, title: event.title, startMs, endMs }];
-  }, [detailQuery.data, filtering.joinedEventRanges, user]);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return [];
+    return [{ eventId: event.id, title: event.title, startMs, endMs }];
+  }, [event, user]);
   const mutations = useEventActions({
     canInteract,
     user,
@@ -67,14 +74,15 @@ export function EventDetailPage() {
     showError,
   });
 
-  const event = detailQuery.data;
+  const detailBlockingError = detailQuery.isError && !event;
+  const detailRefreshError = detailQuery.isError && Boolean(event);
   const returnToEvents = useCallback(() => {
     void navigate({ to: "/events", replace: true, viewTransition: false });
   }, [navigate]);
   const canChangeArchiveState = event?.archived_at ? canEdit : canArchive;
   const requestArchive = useCallback(async () => {
     if (event?.archived_at) {
-      mutations.unarchiveEventById(event.id);
+      mutations.unarchiveEvent(event);
       return;
     }
     if (!event) return;
@@ -88,7 +96,7 @@ export function EventDetailPage() {
     if (confirmed) mutations.archiveEventById(event.id);
   }, [confirm, event, mutations, t]);
 
-  const allUsers = filtering.usersQuery.data?.data ?? [];
+  const allUsers = usersQuery.data?.data ?? [];
   const members = useMemo<MemberEntry[]>(() => {
     if (!event) return [];
     const usersById = new Map(allUsers.map((entry) => [entry.user.id, entry]));
@@ -106,7 +114,7 @@ export function EventDetailPage() {
     );
   }
 
-  if (detailQuery.isError || !event) {
+  if (detailBlockingError) {
     const missing = isApiRequestError(detailQuery.error) && detailQuery.error.status === 404;
     return (
       <PageLayout className="events-page event-detail-page">
@@ -124,9 +132,28 @@ export function EventDetailPage() {
     );
   }
 
+  if (!event) {
+    return (
+      <PageLayout className="events-page event-detail-page">
+        <div className="event-route-loading"><Skeleton className="h-9" /><Skeleton className="h-90" /></div>
+      </PageLayout>
+    );
+  }
+
   return (
     <PageLayout className="events-page event-detail-page">
       <div className="event-route-stack">
+        {detailRefreshError ? (
+          <Alert variant="destructive">
+            <AlertTitle>{t("common:loadError")}</AlertTitle>
+            <AlertDescription>
+              <span>{t("common:loadErrorRetry")}</span>
+              <Button size="sm" variant="outline" loading={detailQuery.isFetching} onClick={() => { void detailQuery.refetch(); }}>
+                {t("common:action.retry")}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : null}
         <header className="event-route-header event-route-header--sticky">
           <div className="event-route-header__title">
             <Button
@@ -138,7 +165,7 @@ export function EventDetailPage() {
               <ArrowLeftIcon size={15} />
               {t("view.events")}
             </Button>
-            <h1>{event.title}</h1>
+            <h2>{event.title}</h2>
           </div>
           {canEdit || canChangeArchiveState || canDelete ? (
             <div className="event-route-header__actions">

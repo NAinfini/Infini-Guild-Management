@@ -10,6 +10,8 @@ import {
   resetAdminPasswordSchema,
   resetAdminPasswordResponseSchema,
   roleAssignmentSchema,
+  updateAdminMemberResponseSchema,
+  updateAdminMemberSchema,
   updateRoleSchema,
 } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
@@ -22,8 +24,6 @@ import { parseJsonBody, parseQuery } from "../../core/parsing.js";
 import {
   presentInvite,
   presentInvitePage,
-  presentLoginLock,
-  presentResetLoginLock,
   presentRole,
 } from "../../presenters/admin/admin-presenter.js";
 
@@ -36,7 +36,7 @@ const inviteQuerySchema = z.object({
 
 type AdminHttpService = Pick<IdentityAdminService,
   | "listInvites" | "getInviteStats" | "createInvite" | "revokeInvite" | "deleteInvite"
-  | "createMember" | "updateUserRole" | "setUserActive" | "resetPassword" | "getLoginLock" | "resetLoginLock"
+  | "createMember" | "updateMember" | "updateUserRole" | "setUserActive" | "resetPassword"
   | "batchUpdateRole" | "batchDeactivate" | "batchReactivate" | "batchDelete"
   | "listRoles" | "createRole" | "updateRole" | "deleteRole"
 >;
@@ -78,6 +78,7 @@ export function createAdminRoutes(dependencies: AdminRoutesDependencies): Hono<H
       loginName: input.login_name,
       displayName: input.display_name,
       roleId: input.role_id,
+      notes: input.notes,
     });
     return context.json(createAdminMemberResponseSchema.parse({
       ok: result.ok,
@@ -108,6 +109,31 @@ export function createAdminRoutes(dependencies: AdminRoutesDependencies): Hono<H
   routes.patch("/users/batch/delete", async (context) => {
     const input = await parseJsonBody(context.req.raw, batchDeactivateSchema, "Invalid batch delete payload");
     return context.json(await dependencies.service.batchDelete(requestContext(context), input.user_ids));
+  });
+
+  routes.patch("/users/:id", async (context) => {
+    const input = await parseJsonBody(context.req.raw, updateAdminMemberSchema, "Invalid member update payload");
+    return context.json(updateAdminMemberResponseSchema.parse(await dependencies.service.updateMember(
+      requestContext(context),
+      context.req.param("id"),
+      {
+        expectedUserRevisionToken: input.expected_user_revision_token,
+        expectedProfileRevisionToken: input.expected_profile_revision_token,
+        ...(input.display_name === undefined ? {} : { displayName: input.display_name }),
+        ...(input.profile === undefined ? {} : {
+          profile: {
+            power: input.profile.power,
+            classes: input.profile.classes,
+            titleHtml: input.profile.title_html,
+            bio: input.profile.bio,
+            availability: input.profile.availability,
+            notes: input.profile.notes,
+          },
+        }),
+        ...(input.role_id === undefined ? {} : { roleId: input.role_id }),
+        ...(input.is_active === undefined ? {} : { isActive: input.is_active }),
+      },
+    )));
   });
 
   routes.patch("/users/:id/role", async (context) => {
@@ -146,17 +172,6 @@ export function createAdminRoutes(dependencies: AdminRoutesDependencies): Hono<H
     }));
   });
 
-  routes.get("/users/:id/login-lock", async (context) => context.json(presentLoginLock(
-    await dependencies.service.getLoginLock(requestContext(context), context.req.param("id")),
-  )));
-
-  routes.post("/users/:id/reset-login-lock", async (context) => {
-    await parseJsonBody(context.req.raw, z.object({}).strict(), "Invalid login-lock reset payload");
-    return context.json(presentResetLoginLock(await dependencies.service.resetLoginLock(
-      requestContext(context), context.req.param("id"),
-    )));
-  });
-
   routes.get("/roles", async (context) => context.json(
     (await dependencies.service.listRoles(requestContext(context))).map(presentRole),
   ));
@@ -169,7 +184,13 @@ export function createAdminRoutes(dependencies: AdminRoutesDependencies): Hono<H
   routes.patch("/roles/:id", async (context) => {
     const input = await parseJsonBody(context.req.raw, updateRoleSchema, "Invalid role update payload");
     return context.json(presentRole(await dependencies.service.updateRole(
-      requestContext(context), context.req.param("id"), input,
+      requestContext(context), context.req.param("id"), {
+        expectedRevisionToken: input.expected_revision_token,
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.level === undefined ? {} : { level: input.level }),
+        ...(input.color === undefined ? {} : { color: input.color }),
+        ...(input.permissions === undefined ? {} : { permissions: input.permissions }),
+      },
     )));
   });
 

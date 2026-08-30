@@ -54,5 +54,7 @@ describe("CreateMemberModal", () => {
       notes: "",
       roleId: "raid-lead",
     }));
+    expect(await screen.findByRole("textbox", { name: "member.create.temporaryLoginName" })).toHaveValue("new-login");
+    expect(screen.getByRole("textbox", { name: "member.create.temporaryPassword" })).toHaveValue("temporary-password");
   });
 });

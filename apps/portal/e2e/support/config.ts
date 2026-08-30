@@ -25,8 +25,14 @@ export const E2E_INSPECTOR_PORT_BASE = Number(process.env.E2E_INSPECTOR_PORT_BAS
 /* 每个槽位使用独立的 worker、D1 和 R2；槽位内串行，E2E_SLOTS=1 表示单槽位串行运行。 */
 export const E2E_SLOTS = Math.max(1, Number(process.env.E2E_SLOTS ?? 2));
 
+/*
+ * 本地 workerd 的临时自签 HTTPS 证书会在 CI 中被 Chromium/Playwright 的并发
+ * 连接间歇性拒绝，workerd 因此直接断开 socket。E2E 不负责验证 TLS；生产
+ * HTTPS 与 __Host- cookie 规则由运行时配置和 HTTP 路由测试覆盖。这里用
+ * loopback HTTP 只消除测试运行时的证书边界，仍保持浏览器、API 与 Worker 同源。
+ */
 export function originForSlot(slot: number): string {
-  return `https://127.0.0.1:${E2E_PORT_BASE + slot}`;
+  return `http://127.0.0.1:${E2E_PORT_BASE + slot}`;
 }
 
 /**
@@ -76,6 +82,8 @@ const supportDir = import.meta.dirname;
 /** globalSetup 写、各 project 读的一次性状态目录（已在 .gitignore 中）。 */
 export const STATE_DIR = resolve(supportDir, "..", ".state");
 export const ARTIFACTS_DIR = resolve(supportDir, "..", ".artifacts");
+/** Wrangler stdout/stderr survives failed E2E runs for postmortem inspection. */
+export const SERVER_LOG_DIR = resolve(supportDir, "..", ".logs");
 
 export function slotStateDirFor(slot: number): string {
   return resolve(STATE_DIR, "slots", `slot-${slot}`);
@@ -89,7 +97,7 @@ export function persistDirForSlot(slot: number): string {
  * 会话按槽位分开存。
  * 每个槽位是各自独立的一份数据，会话行也各归各的库，不能共用 storage state。
  */
-export type E2eRole = "guest" | "admin";
+export type E2eRole = "guest" | "member" | "admin";
 
 export function stateFileFor(role: Exclude<E2eRole, "guest">, slot: number): string {
   return resolve(STATE_DIR, `${role}-storage-state-${slot}.json`);
@@ -98,8 +106,8 @@ export const RUN_STATE_FILE = resolve(STATE_DIR, "run.json");
 
 /**
  * project 级开关：该角色的请求是否挂上系统测试运行头。
- * 挂上之后服务端按主键登记每一件新建产物，收尾时才删得干净；
- * 只读角色（游客、普通成员）不挂——运行归管理员所有，别人挂上会被 403。
+ * 挂上之后服务端按主键登记每一件新建产物，收尾时才删得干净。
+ * 管理员是运行所有者；普通成员由该运行创建，因此也能安全加入同一运行；游客不挂。
  */
 export type E2eOptions = {
   trackArtifacts: boolean;

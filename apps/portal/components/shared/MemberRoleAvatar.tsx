@@ -1,6 +1,12 @@
 import { BoltIcon } from "@portal/components/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@portal/components/ui/avatar";
-import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@portal/components/ui/preview-card";
+import {
+  TOOLTIP_CLOSE_DELAY_MS,
+  TOOLTIP_OPEN_DELAY_MS,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@portal/components/ui/tooltip";
 import { resolveMediaUrl } from "../../utils/media";
 import { useClassCatalog } from "../../hooks/data/useClassData";
 import { resolveClassCatalogItem } from "../../utils/class-catalog";
@@ -78,15 +84,15 @@ export function MemberRoleAvatar({
   if (!withTooltip) return avatar;
 
   return (
-    <PreviewCard>
-      <PreviewCardTrigger
-        delay={200}
-        closeDelay={100}
+    <Tooltip>
+      <TooltipTrigger
+        delay={TOOLTIP_OPEN_DELAY_MS}
+        closeDelay={TOOLTIP_CLOSE_DELAY_MS}
         render={<button type="button" className="member-role-avatar__trigger" aria-label={user.display_name} />}
       >
         {avatar}
-      </PreviewCardTrigger>
-      <PreviewCardContent side="top" className="member-role-avatar__popover">
+      </TooltipTrigger>
+      <TooltipContent variant="card" side="top" className="member-role-avatar__popover">
         <div className="member-role-avatar__summary">
           <Avatar size="lg">
             {avatarSrc ? <AvatarImage src={avatarSrc} alt="" /> : null}
@@ -115,8 +121,8 @@ export function MemberRoleAvatar({
             </span>
           ) : null}
         </div>
-      </PreviewCardContent>
-    </PreviewCard>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

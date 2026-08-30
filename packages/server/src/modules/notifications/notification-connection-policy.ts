@@ -1,6 +1,8 @@
 import {
   heartbeatMessageSchema,
+  notificationAuthorizationRefreshSchema,
   pushMessageSchema,
+  type NotificationAuthorizationRefresh,
   type PushMessage,
 } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
@@ -15,6 +17,10 @@ export const NOTIFICATION_CONNECTION_POLICY = Object.freeze({
   heartbeatTimeoutMs: 90_000,
   sweepIntervalMs: 60_000,
   sessionRevalidationIntervalMs: 5 * 60_000,
+  // Five one-minute rounds cover the 1,500-connection ceiling. Production
+  // session resolvers hydrate each round through one JSON-batched SQL query.
+  sessionRevalidationsPerSweep: 300,
+  sessionRevalidationConcurrency: 6,
   maxConnections: LIMITS.websocket.maxConnections,
   maxConnectionsPerUser: LIMITS.websocket.connectionsPerAccount,
   maxClientMessageBytes: 4_096,
@@ -45,6 +51,10 @@ export type NotificationConnectionState = Readonly<{
 
 export interface NotificationSessionResolver {
   resolve(sessionId: string, now: string): Promise<NotificationSessionSnapshot | null>;
+  resolveMany?(
+    sessionIds: readonly string[],
+    now: string,
+  ): Promise<ReadonlyMap<string, NotificationSessionSnapshot | null>>;
 }
 
 export type NotificationAdmission =
@@ -64,6 +74,10 @@ export type NotificationClientMessageDecision = Readonly<{
 export type NotificationSweepDecision =
   | Readonly<{ state: NotificationConnectionState }>
   | Readonly<{ close: Readonly<{ code: number; reason: string }> }>;
+
+type SessionRevalidationResult =
+  | Readonly<{ resolved: true; session: NotificationSessionSnapshot | null }>
+  | Readonly<{ resolved: false }>;
 
 function timestamp(value: string): number {
   const parsed = Date.parse(value);
@@ -113,28 +127,50 @@ export function restoreNotificationConnectionState(value: unknown): Notification
 
 /** Revalidates hashed session ids without renewing them or fabricating an HTTP actor. */
 export class AuthStoreNotificationSessionResolver implements NotificationSessionResolver {
-  constructor(private readonly store: Pick<AuthStore, "findSessionAuthorization">) {}
+  constructor(private readonly store: Pick<AuthStore, "findSessionAuthorization" | "findSessionAuthorizations">) {}
 
   async resolve(sessionId: string, now: string): Promise<NotificationSessionSnapshot | null> {
-    const record = await this.store.findSessionAuthorization(sessionId);
-    const nowMs = timestamp(now);
-    if (
-      !record
-      || !record.isActive
-      || record.deletedAt !== null
-      || timestamp(record.expiresAt) <= nowMs
-      || nowMs - timestamp(record.sessionCreatedAt) > SESSION_ABSOLUTE_TTL_MS
-    ) {
-      return null;
-    }
-    return Object.freeze({
-      sessionId: record.tokenDigest,
-      userId: record.id,
-      roleId: record.roleId,
-      roleLevel: record.roleLevel,
-      permissions: Object.freeze([...record.permissions]),
-    });
+    return sessionSnapshot(await this.store.findSessionAuthorization(sessionId), timestamp(now));
   }
+
+  async resolveMany(
+    sessionIds: readonly string[],
+    now: string,
+  ): Promise<ReadonlyMap<string, NotificationSessionSnapshot | null>> {
+    const nowMs = timestamp(now);
+    const records = this.store.findSessionAuthorizations
+      ? await this.store.findSessionAuthorizations(sessionIds)
+      : new Map(await Promise.all(sessionIds.map(async (sessionId) => [
+          sessionId,
+          await this.store.findSessionAuthorization(sessionId),
+        ] as const)));
+    return new Map(sessionIds.map((sessionId) => [
+      sessionId,
+      sessionSnapshot(records.get(sessionId) ?? null, nowMs),
+    ]));
+  }
+}
+
+function sessionSnapshot(
+  record: Awaited<ReturnType<AuthStore["findSessionAuthorization"]>>,
+  nowMs: number,
+): NotificationSessionSnapshot | null {
+  if (
+    !record
+    || !record.isActive
+    || record.deletedAt !== null
+    || timestamp(record.expiresAt) <= nowMs
+    || nowMs - timestamp(record.sessionCreatedAt) > SESSION_ABSOLUTE_TTL_MS
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    sessionId: record.tokenDigest,
+    userId: record.id,
+    roleId: record.roleId,
+    roleLevel: record.roleLevel,
+    permissions: Object.freeze([...record.permissions]),
+  });
 }
 
 export class NotificationConnectionPolicy {
@@ -234,8 +270,25 @@ export class NotificationConnectionPolicy {
     states: readonly NotificationConnectionState[],
     nowMs = this.now(),
   ): Promise<readonly NotificationSweepDecision[]> {
-    const resolved = new Map<string, Promise<NotificationSessionSnapshot | null>>();
-    return Promise.all(states.map(async (state): Promise<NotificationSweepDecision> => {
+    const candidates = new Map<string, number>();
+    for (const state of states) {
+      if (nowMs - state.lastHeartbeatAt >= NOTIFICATION_CONNECTION_POLICY.heartbeatTimeoutMs) continue;
+      if (nowMs - state.lastSessionCheckedAt < NOTIFICATION_CONNECTION_POLICY.sessionRevalidationIntervalMs) continue;
+      const current = candidates.get(state.session.sessionId);
+      if (current === undefined || state.lastSessionCheckedAt < current) {
+        candidates.set(state.session.sessionId, state.lastSessionCheckedAt);
+      }
+    }
+
+    const sessions = [...candidates.entries()]
+      .sort(([leftId, leftCheckedAt], [rightId, rightCheckedAt]) => (
+        leftCheckedAt - rightCheckedAt || leftId.localeCompare(rightId)
+      ))
+      .slice(0, NOTIFICATION_CONNECTION_POLICY.sessionRevalidationsPerSweep)
+      .map(([sessionId]) => sessionId);
+    const results = await this.revalidateSessions(sessions, nowMs);
+
+    return states.map((state): NotificationSweepDecision => {
       if (nowMs - state.lastHeartbeatAt >= NOTIFICATION_CONNECTION_POLICY.heartbeatTimeoutMs) {
         return {
           close: {
@@ -247,15 +300,9 @@ export class NotificationConnectionPolicy {
       if (nowMs - state.lastSessionCheckedAt < NOTIFICATION_CONNECTION_POLICY.sessionRevalidationIntervalMs) {
         return { state };
       }
-      let check = resolved.get(state.session.sessionId);
-      if (!check) {
-        check = this.resolveSession(state.session.sessionId, nowMs);
-        resolved.set(state.session.sessionId, check);
-      }
-      let session: NotificationSessionSnapshot | null;
-      try {
-        session = await check;
-      } catch {
+      const result = results.get(state.session.sessionId);
+      if (!result) return { state };
+      if (!result.resolved) {
         return {
           close: {
             code: NOTIFICATION_CONNECTION_POLICY.closeCodes.internalError,
@@ -263,7 +310,7 @@ export class NotificationConnectionPolicy {
           },
         };
       }
-      if (!session || session.userId !== state.session.userId) {
+      if (!result.session || result.session.userId !== state.session.userId) {
         return {
           close: {
             code: NOTIFICATION_CONNECTION_POLICY.closeCodes.unauthorized,
@@ -274,15 +321,104 @@ export class NotificationConnectionPolicy {
       return {
         state: Object.freeze({
           ...state,
-          session,
+          session: result.session,
           lastSessionCheckedAt: nowMs,
         }),
       };
-    }));
+    });
+  }
+
+  async refreshAuthorization(
+    states: readonly NotificationConnectionState[],
+    nowMs = this.now(),
+  ): Promise<readonly NotificationSweepDecision[]> {
+    const sessionIds = [...new Set(states.map((state) => state.session.sessionId))];
+    const results = await this.revalidateSessions(sessionIds, nowMs);
+    return states.map((state): NotificationSweepDecision => {
+      const result = results.get(state.session.sessionId);
+      if (!result?.resolved) {
+        return {
+          close: {
+            code: NOTIFICATION_CONNECTION_POLICY.closeCodes.internalError,
+            reason: "session revalidation failed",
+          },
+        };
+      }
+      if (!result.session || result.session.userId !== state.session.userId) {
+        return {
+          close: {
+            code: NOTIFICATION_CONNECTION_POLICY.closeCodes.unauthorized,
+            reason: "session revoked",
+          },
+        };
+      }
+      return {
+        state: Object.freeze({
+          ...state,
+          session: result.session,
+          lastSessionCheckedAt: nowMs,
+        }),
+      };
+    });
+  }
+
+  private async revalidateSessions(
+    sessionIds: readonly string[],
+    nowMs: number,
+  ): Promise<ReadonlyMap<string, SessionRevalidationResult>> {
+    const results = new Map<string, SessionRevalidationResult>();
+    if (sessionIds.length === 0) return results;
+    if (this.sessions.resolveMany) {
+      try {
+        const resolved = await this.sessions.resolveMany(sessionIds, new Date(nowMs).toISOString());
+        for (const sessionId of sessionIds) {
+          results.set(sessionId, { resolved: true, session: resolved.get(sessionId) ?? null });
+        }
+      } catch {
+        for (const sessionId of sessionIds) results.set(sessionId, { resolved: false });
+      }
+      return results;
+    }
+    const concurrency = NOTIFICATION_CONNECTION_POLICY.sessionRevalidationConcurrency;
+    for (let start = 0; start < sessionIds.length; start += concurrency) {
+      const batch = await Promise.all(sessionIds.slice(start, start + concurrency).map(async (sessionId) => {
+        try {
+          return [sessionId, {
+            resolved: true,
+            session: await this.resolveSession(sessionId, nowMs),
+          }] as const;
+        } catch {
+          return [sessionId, { resolved: false }] as const;
+        }
+      }));
+      for (const [sessionId, result] of batch) results.set(sessionId, result);
+    }
+    return results;
   }
 
   parseOutbound(message: unknown): PushMessage {
     return pushMessageSchema.parse(message);
+  }
+
+  parseAuthorizationRefresh(message: unknown): NotificationAuthorizationRefresh | null {
+    if (
+      typeof message !== "object"
+      || message === null
+      || Array.isArray(message)
+      || (message as { type?: unknown }).type !== "authorization_refresh"
+    ) {
+      return null;
+    }
+    return notificationAuthorizationRefreshSchema.parse(message);
+  }
+
+  matchesAuthorizationRefresh(
+    state: NotificationConnectionState,
+    refresh: NotificationAuthorizationRefresh,
+  ): boolean {
+    return refresh.session_ids?.includes(state.session.sessionId) === true
+      || refresh.user_ids?.includes(state.session.userId) === true
+      || refresh.role_ids?.includes(state.session.roleId) === true;
   }
 
   canDeliver(state: NotificationConnectionState, message: PushMessage): boolean {

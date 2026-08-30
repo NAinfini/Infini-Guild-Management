@@ -13,6 +13,7 @@ import {
   type SqlStatement,
   type SqlValue,
 } from "@guild/kernel";
+import { preparePrivateSqliteDatabase } from "./private-filesystem.js";
 
 /*
  * node:sqlite 是同步 API：在主线程上执行会把整个事件循环卡住，HTTP、WebSocket
@@ -250,8 +251,11 @@ class SqlWorkerLane {
         else job.reject(reviveWorkerError(message.error));
       });
       worker.on("error", (error) => {
-        this.fail(error);
-        reject(error);
+        const normalizedError = error instanceof Error
+          ? error
+          : new Error("SQLite worker failed", { cause: error });
+        this.fail(normalizedError);
+        reject(normalizedError);
       });
       worker.on("messageerror", (error) => {
         this.fail(error);
@@ -293,12 +297,14 @@ class SqlWorkerLane {
     try {
       await this.ready;
     } catch {
+      await this.exited;
       return;
     }
     if (firstClose && this.failure === null) {
       try {
         this.worker?.postMessage({ kind: "close" });
       } catch {
+        await this.exited;
         return;
       }
     }
@@ -343,15 +349,16 @@ export class NodeSqlExecutor implements SqlExecutor {
     }
     this.maxPending = maxPending;
     const readOnly = options.readOnly === true;
+    const securedDatabasePath = readOnly ? databasePath : preparePrivateSqliteDatabase(databasePath);
     this.writer = new SqlWorkerLane(
-      databasePath,
+      securedDatabasePath,
       readOnly,
       readOnly ? READER_PRAGMAS : WRITER_PRAGMAS,
       Promise.resolve(),
     );
     this.readers = Array.from(
       { length: readerCount },
-      () => new SqlWorkerLane(databasePath, true, READER_PRAGMAS, this.writer.ready),
+      () => new SqlWorkerLane(securedDatabasePath, true, READER_PRAGMAS, this.writer.ready),
     );
   }
 

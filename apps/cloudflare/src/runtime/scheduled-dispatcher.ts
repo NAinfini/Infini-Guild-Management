@@ -5,8 +5,11 @@ import type {
 } from "@guild/server";
 
 export const CLOUDFLARE_SCHEDULED_CRONS = Object.freeze({
-  daily: "0 0 * * *",
+  daily: "27 0 * * *",
   "quarter-hourly": "*/15 * * * *",
+  "half-hourly": "7,37 * * * *",
+  "hourly-media": "12 * * * *",
+  "hourly-cleanup": "42 * * * *",
 } satisfies Record<ScheduledJobSchedule, string>);
 
 export type CloudflareScheduledEvent = Readonly<{ cron: string }>;
@@ -28,14 +31,17 @@ export function dispatchCloudflareScheduledJobs(
   context: CloudflareWaitUntil,
   coordinator: Pick<ScheduledJobCoordinator, "runSchedule">,
 ): boolean {
-  const schedule = event.cron === CLOUDFLARE_SCHEDULED_CRONS.daily
-    ? "daily"
-    : event.cron === CLOUDFLARE_SCHEDULED_CRONS["quarter-hourly"]
-      ? "quarter-hourly"
-      : null;
+  const schedule = scheduledJobScheduleForCron(event.cron);
   if (!schedule) return false;
   context.waitUntil(coordinator.runSchedule(schedule).then((outcomes) => {
     for (const outcome of outcomes) recordOutcome(schedule, outcome);
   }));
   return true;
+}
+
+function scheduledJobScheduleForCron(cron: string): ScheduledJobSchedule | null {
+  for (const [schedule, configuredCron] of Object.entries(CLOUDFLARE_SCHEDULED_CRONS)) {
+    if (cron === configuredCron) return schedule as ScheduledJobSchedule;
+  }
+  return null;
 }

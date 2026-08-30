@@ -4,8 +4,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { ColumnDef } from "@tanstack/react-table";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { DataTableColumnDef } from "@portal/components/shared/data-table-features";
+import { describe, expect, it, vi } from "vitest";
 import {
   AdminUsersSection,
   type AdminUserRow,
@@ -21,12 +21,6 @@ vi.mock("react-i18next", () => ({
     },
   }),
 }));
-
-const adminServiceMocks = vi.hoisted(() => ({
-  fetchAdminUserLoginLock: vi.fn(),
-}));
-
-vi.mock("../../../services/AdminService", () => adminServiceMocks);
 
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({ count }: { count: number }) => ({
@@ -81,7 +75,7 @@ const row = {
   badges: [],
 } as unknown as AdminUserRow;
 
-const columns: ColumnDef<AdminUserRow, unknown>[] = [{
+const columns: DataTableColumnDef<AdminUserRow>[] = [{
   id: "display_name",
   header: "Username",
   cell: ({ row: tableRow }) => tableRow.original.user.display_name,
@@ -142,7 +136,6 @@ function renderUsers(
     onSingleActivate: vi.fn(),
     onSingleDeactivate: vi.fn(),
     onSingleResetPassword: vi.fn(),
-    onSingleResetLoginLock: vi.fn(),
     batchRolePending: false,
     batchActivatePending: false,
     batchDeactivatePending: false,
@@ -158,26 +151,23 @@ function renderUsers(
     ...overrides,
   };
 
-  render(
-    <QueryClientProvider client={new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    })}>
-      <AdminUsersSection {...props} />
-    </QueryClientProvider>,
-  );
-
-  return props;
-}
-
-beforeEach(() => {
-  adminServiceMocks.fetchAdminUserLoginLock.mockReset();
-  adminServiceMocks.fetchAdminUserLoginLock.mockResolvedValue({
-    fail_count: 0,
-    locked_until: null,
-    is_locked: false,
-    retry_after_seconds: 0,
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
   });
-});
+  const renderSection = (sectionProps: React.ComponentProps<typeof AdminUsersSection>) => (
+    <QueryClientProvider client={queryClient}>
+      <AdminUsersSection {...sectionProps} />
+    </QueryClientProvider>
+  );
+  const view = render(renderSection(props));
+
+  return {
+    props,
+    rerenderUsers: (
+      nextOverrides: Partial<React.ComponentProps<typeof AdminUsersSection>>,
+    ) => view.rerender(renderSection({ ...props, ...nextOverrides })),
+  };
+}
 
 describe("AdminUsersSection accessibility", () => {
   it("keeps search and creation visible while account status uses the shared filter menu", async () => {
@@ -191,8 +181,41 @@ describe("AdminUsersSection accessibility", () => {
     expect(screen.getByRole("columnheader", { name: "member.action.menu" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "common:filter.toggle" }));
     const filters = within(await screen.findByRole("dialog"));
+    expect(filters.getByRole("radiogroup", { name: "member.filter.status" })).toBeInTheDocument();
     expect(filters.getByRole("radio", { name: "member.status.active" })).toBeInTheDocument();
     expect(filters.getByRole("radio", { name: "member.status.inactive" })).toBeInTheDocument();
+  });
+
+  it("returns to the first page when the member search changes", async () => {
+    const user = userEvent.setup();
+    const userRows = Array.from({ length: 21 }, (_, index) => {
+      const number = index + 1;
+      return {
+        ...row,
+        user: {
+          ...row.user,
+          id: `user-${number}`,
+          display_name: `User ${number}`,
+        },
+        profile: {
+          ...row.profile,
+          user_id: `user-${number}`,
+        },
+      } as AdminUserRow;
+    });
+    const { rerenderUsers } = renderUsers({ userRows });
+
+    await user.click(screen.getAllByRole("button", { name: "pagination.next" })[0]!);
+    expect(await screen.findByRole("row", { name: "member.aria.row User 21" })).toBeInTheDocument();
+
+    rerenderUsers({
+      memberSearch: "User 1",
+      userRows: [userRows[0]!],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("row", { name: "member.aria.row User 1" })).toBeInTheDocument();
+    });
   });
 
   it("uses Enabled and Disabled terminology in both admin locales", () => {
@@ -237,6 +260,31 @@ describe("AdminUsersSection accessibility", () => {
     ).toBeInTheDocument();
   });
 
+  it("opens a row context menu at the pointer coordinates", async () => {
+    renderUsers();
+
+    fireEvent.contextMenu(screen.getByRole("row", { name: "member.aria.row Alice" }), {
+      clientX: 137,
+      clientY: 251,
+    });
+
+    const menu = await waitFor(() => {
+      const current = document.querySelector("[data-admin-user-action-menu]");
+      expect(current).not.toBeNull();
+      return current as HTMLElement;
+    });
+    const positioner = menu.parentElement;
+
+    await waitFor(() => {
+      const coordinates = positioner?.style.transform.match(
+        /translate\((-?\d+(?:\.\d+)?)px, (-?\d+(?:\.\d+)?)px\)/,
+      );
+      expect(coordinates).not.toBeNull();
+      expect(Number(coordinates?.[1])).toBe(137);
+      expect(Math.abs(Number(coordinates?.[2]) - 251)).toBeLessThanOrEqual(8);
+    });
+  });
+
   it("keeps another member's action menu usable while one member action is pending", async () => {
     const user = userEvent.setup();
     const onSingleResetPassword = vi.fn();
@@ -244,7 +292,6 @@ describe("AdminUsersSection accessibility", () => {
       "user-1:change-role",
       "user-1:deactivate",
       "user-1:reset-password",
-      "user-1:reset-login-lock",
     ]);
     renderUsers({
       userRows: [row, secondRow],
@@ -267,7 +314,6 @@ describe("AdminUsersSection accessibility", () => {
     expect(within(aliceMenu).getAllByRole("menuitem", { name: "member.deactivate", hidden: true })).toHaveLength(1);
     const resetPassword = within(aliceMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true });
     expectMenuItemState(resetPassword, true);
-    expectMenuItemState(within(aliceMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true }), true);
 
     await user.click(resetPassword);
     await user.click(resetPassword);
@@ -293,35 +339,29 @@ describe("AdminUsersSection accessibility", () => {
     expectMenuItemState(within(bobMenu).getByRole("menuitem", { name: "member.context.delete", hidden: true }), false);
     expect(within(bobMenu).getAllByRole("menuitem", { name: "member.deactivate", hidden: true })).toHaveLength(1);
     expectMenuItemState(within(bobMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true }), false);
-    expectMenuItemState(within(bobMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true }), false);
   });
 
-  it("shows the current login lock and passes it into the reset confirmation flow", async () => {
-    const lockState = {
-      fail_count: 4,
-      locked_until: "2026-08-09T12:00:45.000Z",
-      is_locked: true,
-      retry_after_seconds: 45,
-    };
-    adminServiceMocks.fetchAdminUserLoginLock.mockResolvedValueOnce(lockState);
-    const onSingleResetLoginLock = vi.fn().mockResolvedValue(undefined);
-    renderUsers({ onSingleResetLoginLock });
+  it("keeps password reset confirmation mounted after closing its action menu", async () => {
+    renderUsers();
 
     fireEvent.click(screen.getAllByRole("button", { name: "member.action.menu" })[0]!);
-    let menu: HTMLElement | null = null;
-    await waitFor(() => {
-      menu = document.querySelector("[data-admin-user-action-menu]");
-      expect(menu).not.toBeNull();
-      expect(within(menu as HTMLElement).getByText("member.loginLock.locked 45")).toBeInTheDocument();
+    const menu = await waitFor(() => {
+      const current = document.querySelector("[data-admin-user-action-menu]");
+      expect(current).not.toBeNull();
+      return current as HTMLElement;
     });
 
-    fireEvent.click(within(menu as unknown as HTMLElement).getByRole("menuitem", {
-      name: "member.resetLoginLock",
+    const resetPassword = within(menu).getByRole("menuitem", {
+      name: "member.resetPassword",
       hidden: true,
-    }));
+    });
+    expectMenuItemState(resetPassword, false);
+    fireEvent.click(resetPassword);
 
-    expect(adminServiceMocks.fetchAdminUserLoginLock).toHaveBeenCalledWith("user-1");
-    expect(onSingleResetLoginLock).toHaveBeenCalledWith("user-1", lockState);
+    const dialog = await screen.findByRole("dialog", { name: "member.resetPassword.confirmTitle" });
+    expect(dialog).toBeVisible();
+    expect(within(dialog).getByLabelText("member.resetPassword.currentPasswordLabel")).toBeVisible();
+    expect(document.querySelector("[data-admin-user-action-menu]")).toBeNull();
   });
 
   it("gates each write action with its matching permission", async () => {

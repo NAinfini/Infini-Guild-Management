@@ -1,3 +1,5 @@
+export const MAX_OFFSET_PAGE = 10_000;
+
 export const LIMITS = {
   requestBody: {
     ordinary: 1024 * 1024,
@@ -11,12 +13,21 @@ export const LIMITS = {
       portrait: { width: 1080, height: 1920 },
       square: { width: 1080, height: 1080 },
     },
+    fullImageBounds: {
+      maxEdge: 8192,
+      maxPixels: 40_000_000,
+    },
     quotas: {
       profile: 10,
       announcement: 10,
       announcementAttachments: 5,
       gallery: 20,
       wiki: 10,
+    },
+    // Unattached uploads are temporary account-owned capacity, not durable storage.
+    pendingPerOwner: {
+      maxAssets: 100,
+      maxBytes: 256 * 1024 * 1024,
     },
     configurableQuotaMax: 100,
     maxFileSize: {
@@ -47,6 +58,9 @@ export const LIMITS = {
     eventParticipantsBatch: { max: 99 },
     announcementTitle: { min: 1, max: 200 },
     announcementBody: { min: 1, max: 500000 },
+    contentPreviewExcerpt: { max: 280 },
+    galleryTitle: { min: 1, max: 100 },
+    galleryDescription: { max: 200 },
     wikiCategoryName: { min: 1, max: 120 },
     wikiCategoryCatalog: { max: 200 },
     /* 一次批量改分类最多能带多少行。分类编辑器一次提交的是所有改动过的行，
@@ -69,6 +83,7 @@ export const LIMITS = {
     storageDescription: { max: 500 },
     storageItemName: { max: 100 },
     storageItemDescription: { max: 2000 },
+    storageItemUnit: { max: 30 },
     storageNote: { max: 200 },
     storageImagesPerItem: { max: 5 },
     storageTransactionQuantity: { max: 1_000_000 },
@@ -110,11 +125,12 @@ export const LIMITS = {
     wiki: 50,
   },
   rateLimit: {
-    // Keep the two login keys separate: an IP bucket absorbs broad credential
-    // spraying while the IP/login-name bucket protects an individual account.
+    // The IP bucket absorbs broad spraying. The source/login-name bucket slows
+    // repeated guesses without letting one source lock an account for everyone.
     authIp: { maxRequests: 30, windowMs: 60_000 },
     auth: { maxRequests: 5, windowMs: 60_000 },
     mutations: { maxRequests: 80, windowMs: 60_000 },
+    contentViews: { maxRequests: 20, windowMs: 60_000 },
     uploads: { maxRequests: 20, windowMs: 60_000 },
     reads: { maxRequests: 120, windowMs: 60_000 },
     expensiveReads: { maxRequests: 30, windowMs: 60_000 },
@@ -125,7 +141,8 @@ export const LIMITS = {
     handshakes: { maxRequests: 30, windowMs: 60_000 },
   },
   cache: {
-    mediaMaxAgeSeconds: 3600,
+    publicMediaBrowserMaxAgeSeconds: 60 * 60,
+    immutablePublicMediaBrowserMaxAgeSeconds: 365 * 24 * 60 * 60,
     publicMediaEdgeMaxAgeSeconds: 60,
   },
   analytics: {

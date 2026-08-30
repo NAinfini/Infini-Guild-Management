@@ -46,6 +46,7 @@ function response(siteName: string, logoId: string | null): AdminSiteConfigRespo
       created_at: "2026-08-01T00:00:00.000Z",
       updated_at: "2026-08-12T00:00:00.000Z",
     },
+    revision_token: `site-config-${siteName}`,
     oauth_provider_status: {
       google: "missing_credentials",
       discord: "available",
@@ -82,14 +83,18 @@ describe("useSiteConfigMutations", () => {
     );
 
     await act(async () => {
-      await result.current.updateSiteConfigMutation.mutateAsync({ site_name: "Infini Prime" });
+      await result.current.updateSiteConfigMutation.mutateAsync({
+        site_name: "Infini Prime",
+        expected_revision_token: "site-config-Infini Guild",
+      });
     });
     expect(queryClient.getQueryData(queryKeys.siteConfig.admin())).toEqual(updated);
 
     await act(async () => {
-      await result.current.uploadSiteLogoMutation.mutateAsync(
-        new File(["logo"], "logo.webp", { type: "image/webp" }),
-      );
+      await result.current.uploadSiteLogoMutation.mutateAsync({
+        file: new File(["logo"], "logo.webp", { type: "image/webp" }),
+        expectedRevisionToken: "site-config-Infini Prime",
+      });
     });
     expect(queryClient.getQueryData(queryKeys.siteConfig.admin())).toEqual(withLogo);
     expect(useSiteConfigStore.getState().siteName).toBe("Infini Prime");

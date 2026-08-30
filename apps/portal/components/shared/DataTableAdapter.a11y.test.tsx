@@ -1,24 +1,27 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import {
   createColumnHelper,
-  getCoreRowModel,
-  useReactTable,
+  useTable,
 } from "@tanstack/react-table";
 import { describe, expect, it, vi } from "vitest";
 import { DataTableAdapter } from "./DataTableAdapter";
+import { dataTableFeatures } from "./data-table-features";
 
 type RowData = { id: string; name: string };
-const column = createColumnHelper<RowData>();
+const column = createColumnHelper<typeof dataTableFeatures, RowData>();
+const columns = column.columns([
+  column.accessor("name", { header: "Name" }),
+]);
 
 function TableHarness({
   onRowKeyDown,
 }: {
   onRowKeyDown: (id: string, key: string) => void;
 }) {
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     data: [{ id: "user-1", name: "Alice" }],
-    columns: [column.accessor("name", { header: "Name" })],
-    getCoreRowModel: getCoreRowModel(),
+    columns,
     getRowId: (row) => row.id,
   });
 
@@ -50,10 +53,10 @@ describe("DataTableAdapter accessibility", () => {
    样式表靠这个标记选中表头，所以标记本身要钉住。 */
 describe("DataTableAdapter sticky header", () => {
   function StickyHarness({ virtualize }: { virtualize: boolean }) {
-    const table = useReactTable({
+    const table = useTable({
+      features: dataTableFeatures,
       data: [{ id: "user-1", name: "Alice" }],
-      columns: [column.accessor("name", { header: "Name" })],
-      getCoreRowModel: getCoreRowModel(),
+      columns,
       getRowId: (row) => row.id,
     });
     return <DataTableAdapter table={table} virtualize={virtualize} />;

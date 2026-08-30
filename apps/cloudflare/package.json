@@ -15,10 +15,10 @@
     "@guild/server": "workspace:*",
     "@guild/shared": "workspace:*",
     "@guild/transport-http": "workspace:*",
-    "hono": "^4.12.34"
+    "hono": "^4.13.5"
   },
   "devDependencies": {
     "@guild/vps": "workspace:*",
-    "miniflare": "5.20260801.1-alpha"
+    "miniflare": "5.20260828.0-alpha"
   }
 }

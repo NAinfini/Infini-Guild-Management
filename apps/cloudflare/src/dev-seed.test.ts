@@ -17,11 +17,21 @@ const seedStatements = statements(readFileSync(resolve(process.cwd(), "scripts/d
 describe("Cloudflare local development seed", () => {
   it("repairs an expired partial seed and remains idempotent", async () => {
     const miniflare = new Miniflare({
-      compatibilityDate: "2026-07-28",
-      d1Databases: { DB: "development-seed" },
-      modules: true,
       port: 0,
-      script: "export default {}",
+      workers: [{
+        config: {
+          name: "development-seed",
+          type: "worker",
+          compatibilityDate: "2026-07-28",
+          manifest: {
+            mainModule: "script-0.mjs",
+            modules: {
+              "script-0.mjs": { type: "esm", contents: "export default {}" },
+            },
+          },
+          env: { DB: { type: "d1", id: "development-seed" } },
+        },
+      }],
     });
     try {
       const database = await miniflare.getD1Database("DB");
@@ -32,6 +42,11 @@ describe("Cloudflare local development seed", () => {
       ));
       expect(participantInsert).toBeGreaterThan(0);
       await execute(database, seedStatements.slice(0, participantInsert));
+      await database.prepare(`
+        UPDATE user_credentials
+        SET password_hash = 'pbkdf2-sha256$600000$aW5maW5pLWUyZS1vd25lcg$sZCPwQuC_-JxiVos8xhqUWE8XDoYzIfiG1krPbfO31I'
+        WHERE user_id IN ('dev-owner', 'dev-member-01')
+      `).run();
       await database.prepare(`
         UPDATE events
         SET start_at = '2026-01-01T00:00:00.000Z',
@@ -50,6 +65,12 @@ describe("Cloudflare local development seed", () => {
         guildWars: 12,
         concludedWars: 10,
         activeWarEndsInFuture: 1,
+        announcementCategories: 4,
+        announcementViewCounts: 4,
+        viewedWikiArticles: 4,
+        wikiViewCounts: 4,
+        galleryLikes: 7,
+        nonDefaultCredentialCosts: 0,
       });
     } finally {
       await miniflare.dispose();
@@ -72,6 +93,19 @@ async function snapshot(database: DevelopmentDatabase): Promise<Record<string, n
       (SELECT count(*) FROM event_participants WHERE id LIKE 'dev-participant-%') AS participants,
       (SELECT count(*) FROM guild_wars WHERE id LIKE 'dev-war-%') AS guildWars,
       (SELECT count(*) FROM guild_wars WHERE id LIKE 'dev-war-%' AND status = 'concluded') AS concludedWars,
+      (SELECT count(DISTINCT category) FROM announcements
+        WHERE id LIKE 'dev-announcement-%') AS announcementCategories,
+      (SELECT count(DISTINCT view_count) FROM announcements
+        WHERE id LIKE 'dev-announcement-%') AS announcementViewCounts,
+      (SELECT count(*) FROM wiki_articles
+        WHERE id LIKE 'dev-wiki-article-%' AND view_count > 0) AS viewedWikiArticles,
+      (SELECT count(DISTINCT view_count) FROM wiki_articles
+        WHERE id LIKE 'dev-wiki-article-%') AS wikiViewCounts,
+      (SELECT count(*) FROM gallery_likes
+        WHERE item_id LIKE 'dev-gallery-%') AS galleryLikes,
+      (SELECT count(*) FROM user_credentials
+        WHERE user_id LIKE 'dev-%'
+          AND password_hash NOT LIKE 'pbkdf2-sha256$10000$%') AS nonDefaultCredentialCosts,
       (SELECT count(*) FROM events
         WHERE id = 'dev-event-war-active'
           AND archived_at IS NULL

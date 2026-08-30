@@ -113,7 +113,7 @@ describe("image conversion", () => {
     stubImageEnvironment(10);
     const gif = file("loop.gif", "image/gif", 5_000);
     const svg = file("logo.svg", "image/svg+xml", 5_000);
-    const bmp = file("legacy.bmp", "image/bmp", 5_000);
+    const bmp = file("unsupported.bmp", "image/bmp", 5_000);
 
     await expect(convertImageForUpload(gif)).rejects.toThrow(/JPEG, PNG, AVIF, or WebP/i);
     await expect(convertImageForUpload(svg)).rejects.toThrow(/JPEG, PNG, AVIF, or WebP/i);

@@ -14,6 +14,13 @@ type UseEventsDataOptions = {
   searchQuery: string;
   pinnedOnly: boolean;
   lockedOnly: boolean;
+  publicMemberProjection: boolean;
+};
+
+type UseEventMemberDirectoryOptions = {
+  currentUserId?: string;
+  publicMemberProjection: boolean;
+  enabled?: boolean;
 };
 
 function toArchivedParam(status: EventStatusFilter): boolean | undefined {
@@ -22,10 +29,29 @@ function toArchivedParam(status: EventStatusFilter): boolean | undefined {
   return undefined;
 }
 
+export function useEventMemberDirectory({
+  currentUserId,
+  publicMemberProjection,
+  enabled = true,
+}: UseEventMemberDirectoryOptions) {
+  const viewerKey = viewerIdentity(currentUserId);
+
+  return useQuery({
+    queryKey: queryKeys.users.directory(
+      viewerKey,
+      publicMemberProjection ? "public" : "internal",
+    ),
+    queryFn: () => fetchAllUsersListWithOptions({ externalView: publicMemberProjection }),
+    enabled,
+    staleTime: 10 * 60_000,
+  });
+}
+
 export function useEventsData(options: UseEventsDataOptions) {
-  const { eventType, status, searchQuery, pinnedOnly, lockedOnly } = options;
+  const { eventType, status, searchQuery, pinnedOnly, lockedOnly, publicMemberProjection } = options;
   const normalizedSearch = searchQuery.trim();
-  const viewerKey = useAuthStore((state) => viewerIdentity(state.user?.id));
+  const currentUserId = useAuthStore((state) => state.user?.id);
+  const viewerKey = viewerIdentity(currentUserId);
 
   const eventsQuery = useInfiniteQuery({
     queryKey: [
@@ -62,10 +88,9 @@ export function useEventsData(options: UseEventsDataOptions) {
   const accumulatedEvents =
     eventsQuery.data?.pages.flatMap((page) => page.data) ?? [];
 
-  const usersQuery = useQuery({
-    queryKey: [...queryKeys.users.all, viewerKey],
-    queryFn: () => fetchAllUsersListWithOptions(),
-    staleTime: 10 * 60_000,
+  const usersQuery = useEventMemberDirectory({
+    currentUserId,
+    publicMemberProjection,
   });
 
   return {

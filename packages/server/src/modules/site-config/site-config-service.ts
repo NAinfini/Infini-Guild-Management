@@ -121,26 +121,28 @@ export class SiteConfigService {
   async update(context: RequestContext, patch: UpdateSiteConfigPayload): Promise<AdminSiteConfigResponse> {
     context.authorization.require(PERMISSION_ID.ADMIN_SITE_CONFIG_MANAGE);
     const existing = await this.store.get();
+    const { expected_revision_token: expectedRevisionToken, ...changes } = patch;
+    if (existing.revisionToken !== expectedRevisionToken) throw conflict();
     const merged = siteConfigSchema.parse({
       ...existing,
-      ...patch,
-      features: { ...existing.features, ...patch.features },
-      oauth: { ...existing.oauth, ...patch.oauth },
+      ...changes,
+      features: { ...existing.features, ...changes.features },
+      oauth: { ...existing.oauth, ...changes.oauth },
       media_policy: {
         max_file_size_bytes: {
           ...existing.media_policy.max_file_size_bytes,
-          ...patch.media_policy?.max_file_size_bytes,
+          ...changes.media_policy?.max_file_size_bytes,
         },
-        quotas: { ...existing.media_policy.quotas, ...patch.media_policy?.quotas },
+        quotas: { ...existing.media_policy.quotas, ...changes.media_policy?.quotas },
       },
-      storage_policy: { ...existing.storage_policy, ...patch.storage_policy },
-      absence_policy: { ...existing.absence_policy, ...patch.absence_policy },
+      storage_policy: { ...existing.storage_policy, ...changes.storage_policy },
+      absence_policy: { ...existing.absence_policy, ...changes.absence_policy },
       created_at: existing.created_at,
       updated_at: monotonicTimestamp(context.now, existing.updated_at),
     });
     const statuses = this.oauthStatuses();
-    const unavailable = (Object.keys(patch.oauth ?? {}) as OAuthProvider[])
-      .filter((provider) => patch.oauth?.[provider] && !existing.oauth[provider] && statuses[provider] !== "available");
+    const unavailable = (Object.keys(changes.oauth ?? {}) as OAuthProvider[])
+      .filter((provider) => changes.oauth?.[provider] && !existing.oauth[provider] && statuses[provider] !== "available");
     if (unavailable.length > 0) {
       throw new AppError({
         code: "VALIDATION_ERROR",
@@ -165,7 +167,7 @@ export class SiteConfigService {
         },
       }],
     });
-    if (!await this.store.update({ record, expectedRevisionToken: existing.revisionToken, audit })) {
+    if (!await this.store.update({ record, expectedRevisionToken, audit })) {
       throw conflict();
     }
     this.publish(record.updated_at);
@@ -175,9 +177,11 @@ export class SiteConfigService {
   async uploadLogo(
     context: RequestContext,
     upload: ImageUpload,
+    expectedRevisionToken: string,
   ): Promise<AdminSiteConfigResponse> {
     const actor = context.authorization.require(PERMISSION_ID.ADMIN_SITE_CONFIG_MANAGE);
     const existing = await this.store.get();
+    if (existing.revisionToken !== expectedRevisionToken) throw conflict();
     const [mediaId] = await this.media.uploadImages(
       context,
       "site_logo",
@@ -203,7 +207,7 @@ export class SiteConfigService {
     });
     if (!await this.store.setLogo({
       record,
-      expectedRevisionToken: existing.revisionToken,
+      expectedRevisionToken,
       mediaId,
       ownerUserId: actor.userId,
       audit,
@@ -258,8 +262,8 @@ function adminProjection(
   record: SiteConfigRecord,
   oauthProviderStatus: OAuthProviderStatuses,
 ): AdminSiteConfigResponse {
-  const { revisionToken: _revisionToken, analytics_settings: _analytics, ...site } = record;
-  return { site, oauth_provider_status: oauthProviderStatus };
+  const { revisionToken, analytics_settings: _analytics, ...site } = record;
+  return { site, revision_token: revisionToken, oauth_provider_status: oauthProviderStatus };
 }
 
 function oauthStatus(

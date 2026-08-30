@@ -2,7 +2,7 @@ export type EndpointDef = {
   /** Display label */
   label: string;
   /** HTTP method */
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** URL path (may include query params) */
   path: string;
   /** Context field used by the canonical media read route. */
@@ -39,19 +39,26 @@ export type TestRunContext = {
   userImageMediaId: string | null;
   userAudioMediaId: string | null;
   eventId: string | null;
+  eventUpdatedAt: string | null;
   eventParticipantUserId: string | null;
   pollOptionId: string | null;
   eventTemplateId: string | null;
+  eventTemplateUpdatedAt: string | null;
   announcementId: string | null;
+  announcementEtag: string | null;
   galleryItemId: string | null;
+  galleryItemEtag: string | null;
   galleryDeleteId: string | null;
   warEventId: string | null;
   warHistoryId: string | null;
+  warHistoryEtag: string | null;
   warTeamId: string | null;
   warMemberUserId: string | null;
   createdConcludedWarHistoryId: string | null;
   wikiCategoryId: string | null;
+  wikiCategoryRevisionToken: string | null;
   wikiArticleId: string | null;
+  wikiArticleEtag: string | null;
   wikiArticleSlug: string | null;
   wikiArticleCategoryId: string | null;
   inviteLinkId: string | null;
@@ -59,8 +66,9 @@ export type TestRunContext = {
   adminCreatedLoginName: string | null;
   adminCreatedUserPassword: string | null;
   adminRoleId: string | null;
+  adminRoleRevisionToken: string | null;
   auditArchiveMonth: string | null;
-  auditArchiveDownloadToken: string | null;
+  auditArchiveId: string | null;
   badgeId: string | null;
   eventImageMediaId: string | null;
   announcementImageMediaId: string | null;
@@ -82,17 +90,26 @@ export type TestRunContext = {
   createdGuildWarEventId: string | null;
   createdRoleId: string | null;
   createdBadgeId: string | null;
+  createdBadgeUpdatedAt: string | null;
   createdClassId: string | null;
+  createdClassUpdatedAt: string | null;
   createdClassIconMediaId: string | null;
   createdClassTagId: string | null;
+  createdClassTagUpdatedAt: string | null;
+  createdClassTagUsageCount: number | null;
   createdAbsenceId: string | null;
   createdEventId: string | null;
   createdPollEventId: string | null;
   createdRaffleEventId: string | null;
   createdTemplateId: string | null;
   storageId: string | null;
+  storageName: string | null;
+  storageDescription: string | null;
+  storageStructureRevision: number | null;
   storageCategoryId: string | null;
+  storageCategoryName: string | null;
   storageItemId: string | null;
+  storageItemUpdatedAt: string | null;
   storageImageMediaId: string | null;
   createdStorageId: string | null;
   createdStorageCategoryId: string | null;
@@ -116,6 +133,7 @@ export type EndpointResult = {
   error: string | null;
   ranAt: string;
   parsedJson: unknown | null;
+  etag?: string | null;
   skipped?: boolean;
 };
 
@@ -145,19 +163,26 @@ export function createInitialTestRunContext(): TestRunContext {
     userImageMediaId: null,
     userAudioMediaId: null,
     eventId: null,
+    eventUpdatedAt: null,
     eventParticipantUserId: null,
     pollOptionId: null,
     eventTemplateId: null,
+    eventTemplateUpdatedAt: null,
     announcementId: null,
+    announcementEtag: null,
     galleryItemId: null,
+    galleryItemEtag: null,
     galleryDeleteId: null,
     warEventId: null,
     warHistoryId: null,
+    warHistoryEtag: null,
     warTeamId: null,
     warMemberUserId: null,
     createdConcludedWarHistoryId: null,
     wikiCategoryId: null,
+    wikiCategoryRevisionToken: null,
     wikiArticleId: null,
+    wikiArticleEtag: null,
     wikiArticleSlug: null,
     wikiArticleCategoryId: null,
     inviteLinkId: null,
@@ -165,8 +190,9 @@ export function createInitialTestRunContext(): TestRunContext {
     adminCreatedLoginName: null,
     adminCreatedUserPassword: null,
     adminRoleId: null,
+    adminRoleRevisionToken: null,
     auditArchiveMonth: null,
-    auditArchiveDownloadToken: null,
+    auditArchiveId: null,
     badgeId: null,
     eventImageMediaId: null,
     announcementImageMediaId: null,
@@ -187,17 +213,26 @@ export function createInitialTestRunContext(): TestRunContext {
     createdGuildWarEventId: null,
     createdRoleId: null,
     createdBadgeId: null,
+    createdBadgeUpdatedAt: null,
     createdClassId: null,
+    createdClassUpdatedAt: null,
     createdClassIconMediaId: null,
     createdClassTagId: null,
+    createdClassTagUpdatedAt: null,
+    createdClassTagUsageCount: null,
     createdAbsenceId: null,
     createdEventId: null,
     createdPollEventId: null,
     createdRaffleEventId: null,
     createdTemplateId: null,
     storageId: null,
+    storageName: null,
+    storageDescription: null,
+    storageStructureRevision: null,
     storageCategoryId: null,
+    storageCategoryName: null,
     storageItemId: null,
+    storageItemUpdatedAt: null,
     storageImageMediaId: null,
     createdStorageId: null,
     createdStorageCategoryId: null,

@@ -23,6 +23,7 @@ export const mediaAssets = sqliteTable(
   },
   (table) => [
     index("idx_media_assets_gc").on(table.state, table.expiresAt, table.deleteClaimUntil, table.id),
+    index("idx_media_assets_gc_deleting").on(table.state, table.deleteClaimUntil, table.updatedAt, table.id),
     index("idx_media_assets_owner_purpose_state").on(table.ownerUserId, table.purpose, table.state, table.id),
     index("idx_media_assets_delete_claim")
       .on(table.deleteClaimToken)
@@ -76,6 +77,7 @@ export const mediaVariants = sqliteTable(
       sql`(${table.contentType} = 'image/webp' AND ${table.width} > 0 AND ${table.height} > 0)
         OR (${table.contentType} IN (
           'audio/ogg',
+          'application/octet-stream',
           'application/pdf',
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         ) AND ${table.width} IS NULL AND ${table.height} IS NULL)`,

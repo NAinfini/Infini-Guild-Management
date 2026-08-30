@@ -38,6 +38,13 @@ describe("portal Vite API proxy", () => {
 });
 
 describe("portal Vite development HTML", () => {
+  it("uses the configured site logo as the favicon without declaring a fixed MIME type", () => {
+    const html = readFileSync(resolve(process.cwd(), "apps/portal/index.html"), "utf8");
+
+    expect(html).toContain('<link rel="icon" href="{{SITE_LOGO_URL}}" />');
+    expect(html).not.toMatch(/<link\s+rel="icon"[^>]*\stype=/);
+  });
+
   it("uses one description placeholder for every public preview tag", () => {
     const html = readFileSync(resolve(process.cwd(), "apps/portal/index.html"), "utf8");
 
@@ -49,6 +56,7 @@ describe("portal Vite development HTML", () => {
     const html = [
       "<title>{{SITE_NAME}}</title>",
       '<meta name="description" content="{{SITE_DESCRIPTION}}">',
+      '<link rel="icon" href="{{SITE_LOGO_URL}}">',
       '<img src="{{SITE_LOGO_URL}}" alt="">',
     ].join("");
 
@@ -58,7 +66,7 @@ describe("portal Vite development HTML", () => {
       'Events & wiki <together> "safely" today\'s',
       "/guild-logo.svg?a=1&b=2",
     )).toBe(
-      '<title>Infini &amp; Guild</title><meta name="description" content="Events &amp; wiki &lt;together&gt; &quot;safely&quot; today&#39;s"><img src="/guild-logo.svg?a=1&amp;b=2" alt="">',
+      '<title>Infini &amp; Guild</title><meta name="description" content="Events &amp; wiki &lt;together&gt; &quot;safely&quot; today&#39;s"><link rel="icon" href="/guild-logo.svg?a=1&amp;b=2"><img src="/guild-logo.svg?a=1&amp;b=2" alt="">',
     );
   });
 });

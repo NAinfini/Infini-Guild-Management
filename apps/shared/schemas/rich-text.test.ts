@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { findRichTextProblem, isSafeCssValue } from "./rich-text";
+import {
+  canonicalizeRichTextLinkAttributes,
+  findRichTextProblem,
+  isSafeCssValue,
+} from "./rich-text";
 
 function doc(content: unknown[]): Record<string, unknown> {
   return { type: "doc", content };
@@ -85,6 +89,22 @@ describe("findRichTextProblem", () => {
     expect(findRichTextProblem(doc([{ type: "doc", content: [] }]))).toContain("only allowed at the root");
   });
 
+  it.each(["tableCell", "tableHeader"])("accepts editor-produced alignment on %s without accepting CSS injection", (type) => {
+    for (const align of [null, "left", "center", "right"]) {
+      expect(findRichTextProblem(doc([{ type, attrs: { align }, content: [{ type: "paragraph" }] }]))).toBeNull();
+    }
+    for (const align of ["left; background: url(https://evil.example)", "justify", "invalid", 1, {}]) {
+      expect(findRichTextProblem(doc([{ type, attrs: { align } }]))).toContain('attr "align"');
+    }
+  });
+
+  it.each(["tableCell", "tableHeader"])("accepts zero width placeholders on merged %s columns", (type) => {
+    expect(findRichTextProblem(doc([{ type, attrs: { colspan: 2, colwidth: [100, 0] } }]))).toBeNull();
+    for (const width of [-1, 0.5, 100_001, "100"]) {
+      expect(findRichTextProblem(doc([{ type, attrs: { colwidth: [width] } }]))).toContain('attr "colwidth"');
+    }
+  });
+
   it("rejects javascript: and data: URLs wherever a URL is stored", () => {
     expect(findRichTextProblem(doc([
       { type: "paragraph", content: [text("x", [{ type: "link", attrs: { href: "javascript:alert(1)" } }])] },
@@ -92,6 +112,9 @@ describe("findRichTextProblem", () => {
     // Browsers strip control characters before scheme detection; so do we.
     expect(findRichTextProblem(doc([
       { type: "paragraph", content: [text("x", [{ type: "link", attrs: { href: " java\nscript:alert(1)" } }])] },
+    ]))).toContain('attr "href"');
+    expect(findRichTextProblem(doc([
+      { type: "paragraph", content: [text("x", [{ type: "link", attrs: { href: "https://%" } }])] },
     ]))).toContain('attr "href"');
     expect(findRichTextProblem(doc([
       { type: "image", attrs: { src: "data:text/html,<script>alert(1)</script>" } },
@@ -102,6 +125,50 @@ describe("findRichTextProblem", () => {
     expect(findRichTextProblem(doc([
       { type: "bilibili", attrs: { src: "javascript:alert(1)" } },
     ]))).toContain('attr "src"');
+  });
+
+  it("rejects link rel values that could re-enable opener access", () => {
+    for (const rel of ["opener", "noopener opener", "noreferrer opener"]) {
+      expect(findRichTextProblem(doc([
+        { type: "paragraph", content: [text("x", [{ type: "link", attrs: { href: "https://example.com", rel } }])] },
+      ]))).toContain('attr "rel"');
+    }
+  });
+
+  it("accepts bounded editor link titles without accepting arbitrary attributes", () => {
+    const linked = (attrs: Record<string, unknown>) => doc([
+      { type: "paragraph", content: [text("Guide", [{ type: "link", attrs: { href: "https://example.com", ...attrs } }])] },
+    ]);
+    for (const title of [null, "", "Guide", "x".repeat(500)]) {
+      expect(findRichTextProblem(linked({ title }))).toBeNull();
+    }
+    for (const title of [1, {}, "x".repeat(501)]) {
+      expect(findRichTextProblem(linked({ title }))).toContain('attr "title"');
+    }
+    expect(findRichTextProblem(linked({ onclick: "alert(1)" }))).toContain('unknown attr "onclick"');
+  });
+
+  it("owns canonical link navigation attributes", () => {
+    expect(canonicalizeRichTextLinkAttributes({
+      href: "https://external.example/guide",
+      target: "_self",
+      rel: null,
+      class: null,
+    }, "https://guild.example/wiki")).toMatchObject({
+      target: "_blank",
+      rel: "noopener noreferrer",
+      class: null,
+    });
+    expect(canonicalizeRichTextLinkAttributes({
+      href: "/wiki/guide",
+      target: "_self",
+      rel: "noopener noreferrer",
+      class: null,
+    }, "https://guild.example/wiki")).toMatchObject({
+      target: "_self",
+      rel: null,
+      class: null,
+    });
   });
 
   it("rejects style values that could escape the style attribute", () => {

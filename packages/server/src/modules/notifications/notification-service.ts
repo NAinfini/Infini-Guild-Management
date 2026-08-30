@@ -1,6 +1,7 @@
 import {
   MEMBER_BROADCAST_HINTS,
   heartbeatMessageSchema,
+  notificationAuthorizationRefreshSchema,
   pushMessageSchema,
   type HeartbeatAckMessage,
   type HeartbeatMessage,
@@ -14,7 +15,8 @@ export class NotificationService implements NotificationPublisher {
   constructor(private readonly publisher: NotificationPublisher) {}
 
   async publish(message: Parameters<NotificationPublisher["publish"]>[0]): Promise<void> {
-    await this.publisher.publish(pushMessageSchema.parse(message));
+    const authorizationRefresh = notificationAuthorizationRefreshSchema.safeParse(message);
+    await this.publisher.publish(authorizationRefresh.success ? authorizationRefresh.data : pushMessageSchema.parse(message));
   }
 
   heartbeat(input: unknown, serverAt: string, connections: number): HeartbeatAckMessage {

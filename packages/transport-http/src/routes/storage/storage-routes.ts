@@ -2,16 +2,19 @@ import type { RequestContext } from "@guild/kernel";
 import { AppError } from "@guild/kernel";
 import type { ImageUpload } from "@guild/server/modules/media";
 import type { StorageService } from "@guild/server/modules/storage";
+import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { Hono } from "hono";
 import { z } from "zod";
 import { parseFormData, parseJsonBody, type ParsedMultipartForm } from "../../core/parsing.js";
 import {
   presentStorage,
   presentStorageBatch,
-  presentStorageCategory,
+  presentStorageCategoryDelete,
+  presentStorageCategoryMutation,
+  presentStorageImageDelete,
+  presentStorageImageUpload,
   presentStorageItem,
   presentStorageItems,
-  presentStorageMediaIds,
   presentStorageOk,
   presentStorageTransaction,
   presentStorageTransactions,
@@ -52,7 +55,11 @@ export function createStorageRoutes(dependencies: StorageRouteDependencies): Hon
   });
 
   routes.delete("/storages/:id", async (context) => {
-    const result = await dependencies.service.deleteStorage(requestContext(context), context.req.param("id"));
+    const result = await dependencies.service.deleteStorage(
+      requestContext(context),
+      context.req.param("id"),
+      await jsonBody(context.req.raw),
+    );
     return context.json(presentStorageOk(result));
   });
 
@@ -62,7 +69,7 @@ export function createStorageRoutes(dependencies: StorageRouteDependencies): Hon
       context.req.param("storageId"),
       await jsonBody(context.req.raw),
     );
-    return context.json(presentStorageCategory(category), 201);
+    return context.json(presentStorageCategoryMutation(category), 201);
   });
 
   routes.patch("/storages/:storageId/categories/:id", async (context) => {
@@ -72,7 +79,7 @@ export function createStorageRoutes(dependencies: StorageRouteDependencies): Hon
       context.req.param("id"),
       await jsonBody(context.req.raw),
     );
-    return context.json(presentStorageCategory(category));
+    return context.json(presentStorageCategoryMutation(category));
   });
 
   routes.delete("/storages/:storageId/categories/:id", async (context) => {
@@ -80,12 +87,14 @@ export function createStorageRoutes(dependencies: StorageRouteDependencies): Hon
       requestContext(context),
       context.req.param("storageId"),
       context.req.param("id"),
+      await jsonBody(context.req.raw),
     );
-    return context.json(presentStorageOk(result));
+    return context.json(presentStorageCategoryDelete(result));
   });
 
   routes.get("/transactions", async (context) => context.json(presentStorageTransactions(
     await dependencies.service.listTransactions(requestContext(context), {
+      storage_id: context.req.query("storage_id"),
       item_id: context.req.query("item_id"),
       recipient_user_id: context.req.query("recipient_user_id"),
       page: context.req.query("page"),
@@ -131,23 +140,30 @@ export function createStorageRoutes(dependencies: StorageRouteDependencies): Hon
   });
 
   routes.delete("/items/:id", async (context) => {
-    const result = await dependencies.service.deleteItem(requestContext(context), context.req.param("id"));
+    const result = await dependencies.service.deleteItem(
+      requestContext(context),
+      context.req.param("id"),
+      await jsonBody(context.req.raw),
+    );
     return context.json(presentStorageOk(result));
   });
 
   routes.post("/items/:id/images", async (context) => {
+    const request = requestContext(context);
+    request.authorization.require(PERMISSION_ID.ADMIN_STORAGE_ITEMS);
     let form: ParsedMultipartForm;
     try {
       form = await parseFormData(context.req.raw);
     } catch (cause) {
       throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Invalid or missing form data", cause });
     }
-    const mediaIds = await dependencies.service.uploadImages(
-      requestContext(context),
+    const result = await dependencies.service.uploadImages(
+      request,
       context.req.param("id"),
       await dependencies.parseImageFormData(form),
+      { expected_updated_at: form.get("expected_updated_at") },
     );
-    return context.json(presentStorageMediaIds(mediaIds), 201);
+    return context.json(presentStorageImageUpload(result), 201);
   });
 
   routes.delete("/items/:id/images/:mediaId", async (context) => {
@@ -155,8 +171,9 @@ export function createStorageRoutes(dependencies: StorageRouteDependencies): Hon
       requestContext(context),
       context.req.param("id"),
       context.req.param("mediaId"),
+      await jsonBody(context.req.raw),
     );
-    return context.json(presentStorageOk(result));
+    return context.json(presentStorageImageDelete(result));
   });
 
   routes.post("/items/:id/transactions", async (context) => {

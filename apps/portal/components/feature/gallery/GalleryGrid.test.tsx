@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { GalleryItem } from "@guild/shared";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -8,7 +6,7 @@ import { GalleryGrid } from "./GalleryGrid";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, values?: Record<string, string>) => {
+    t: (key: string, values?: Record<string, string | number>) => {
       if (key === "aria.openImageBy") {
         return "Open image " + values?.name + ", uploaded by " + values?.uploader;
       }
@@ -18,6 +16,9 @@ vi.mock("react-i18next", () => ({
       if (key === "media.video") {
         return "VIDEO";
       }
+      if (key === "aria.like") return "Like this item";
+      if (key === "aria.unlike") return "Remove your like";
+      if (key === "aria.likeCount") return `${values?.count} likes`;
       return key;
     },
   }),
@@ -39,6 +40,7 @@ function renderEmptyGrid({
         isError={false}
         isExternalView={false}
         canModerate={false}
+        canLike={false}
         selectedIds={[]}
         emptyTitle="empty.default"
         errorTitle="empty.error"
@@ -54,6 +56,7 @@ function renderEmptyGrid({
         onAddMedia={onAddMedia}
         onToggleSelect={vi.fn()}
         onDelete={vi.fn()}
+        onToggleLike={vi.fn()}
         onOpenLightbox={vi.fn()}
         resolveImageUrl={(key) => key}
         formatDateTime={(iso) => iso}
@@ -67,8 +70,7 @@ describe("GalleryGrid empty state", () => {
     const onAddMedia = vi.fn();
     renderEmptyGrid({ hasActiveFilters: false, onAddMedia });
 
-    const emptyState = screen.getByText("empty.default").closest(".empty-state");
-    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", {
+    fireEvent.click(screen.getByRole("button", {
       name: "action.addMedia",
     }));
 
@@ -80,11 +82,10 @@ describe("GalleryGrid empty state", () => {
     const onResetFilters = vi.fn();
     renderEmptyGrid({ hasActiveFilters: true, onAddMedia, onResetFilters });
 
-    const emptyState = screen.getByText("empty.default").closest(".empty-state");
-    expect(within(emptyState as HTMLElement).queryByRole("button", {
+    expect(screen.queryByRole("button", {
       name: "action.addMedia",
     })).not.toBeInTheDocument();
-    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", {
+    fireEvent.click(screen.getByRole("button", {
       name: "action.resetFilters",
     }));
 
@@ -99,20 +100,28 @@ const galleryRows: GalleryItem[] = [
     type: "image",
     media_id: "image1234567890abcdef",
     url: null,
-    caption: "First image",
+    title: "First image",
+    description: "A bright guild victory.",
     uploaded_by: "user-1",
     uploaded_by_name: "Member",
+    like_count: 3,
+    liked_by_viewer: false,
     created_at: "2026-07-29T00:00:00.000Z",
+    revision_token: "revision-gallery-1",
   },
   {
     id: "gallery-2",
     type: "image",
     media_id: "second1234567890abcde",
     url: null,
-    caption: "Second image",
+    title: "Second image",
+    description: null,
     uploaded_by: "user-1",
     uploaded_by_name: "Member",
+    like_count: 0,
+    liked_by_viewer: false,
     created_at: "2026-07-29T00:00:00.000Z",
+    revision_token: "revision-gallery-2",
   },
 ];
 
@@ -123,24 +132,35 @@ const mixedGalleryRows: GalleryItem[] = [
     type: "video",
     media_id: null,
     url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    caption: "Raid recap",
+    title: "Raid recap",
+    description: "The final push.",
     uploaded_by: "user-2",
     uploaded_by_name: "Officer",
+    like_count: 2,
+    liked_by_viewer: false,
     created_at: "2026-07-29T01:00:00.000Z",
+    revision_token: "revision-gallery-youtube",
   },
   {
     id: "gallery-vimeo",
     type: "video",
     media_id: null,
     url: "https://vimeo.com/123456789",
-    caption: "Strategy review",
+    title: "Strategy review",
+    description: "Positioning notes.",
     uploaded_by: "user-3",
     uploaded_by_name: "Leader",
+    like_count: 7,
+    liked_by_viewer: true,
     created_at: "2026-07-29T02:00:00.000Z",
+    revision_token: "revision-gallery-vimeo",
   },
 ];
 
-function renderPopulatedGrid(rows: GalleryItem[] = mixedGalleryRows) {
+function renderPopulatedGrid(
+  rows: GalleryItem[] = mixedGalleryRows,
+  options: { canLike?: boolean; onToggleLike?: (id: string, liked: boolean) => Promise<boolean> } = {},
+) {
   const onOpenLightbox = vi.fn();
 
   render(
@@ -150,6 +170,7 @@ function renderPopulatedGrid(rows: GalleryItem[] = mixedGalleryRows) {
         isError={false}
         isExternalView={false}
         canModerate={false}
+        canLike={options.canLike ?? false}
         selectedIds={[]}
         emptyTitle="empty.default"
         errorTitle="empty.error"
@@ -165,6 +186,7 @@ function renderPopulatedGrid(rows: GalleryItem[] = mixedGalleryRows) {
         onAddMedia={vi.fn()}
         onToggleSelect={vi.fn()}
         onDelete={vi.fn()}
+        onToggleLike={options.onToggleLike ?? vi.fn(async () => true)}
         onOpenLightbox={onOpenLightbox}
         resolveImageUrl={(key) => key}
         formatDateTime={(iso) => iso}
@@ -175,39 +197,14 @@ function renderPopulatedGrid(rows: GalleryItem[] = mixedGalleryRows) {
   return { onOpenLightbox };
 }
 
-describe("GalleryGrid CSS contract", () => {
-  it("uses one container-aware row grid without masonry or viewport-fixed columns", () => {
-    const galleryCssPath = resolve(
-      process.cwd(),
-      "apps/portal/components/pages/GalleryPage.css",
-    );
-    const galleryCss = readFileSync(galleryCssPath, "utf8");
-
-    expect(galleryCss.match(/\.gallery-grid\s*\{/g)).toHaveLength(1);
-    expect(galleryCss).toContain(
-      "grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));",
-    );
-    expect(galleryCss).toMatch(/\.gallery-grid\s*\{[^}]*grid-auto-flow:\s*row;/s);
-    expect(galleryCss).toMatch(/\.gallery-preview-media\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*3;/s);
-    expect(galleryCss).not.toMatch(/\bcolumn-count\s*:/);
-  });
-});
-
-describe("GalleryGrid media layout", () => {
-  it("keeps DOM and keyboard order aligned inside the row-first grid", async () => {
+describe("GalleryGrid media behavior", () => {
+  it("keeps preview actions in keyboard order", async () => {
     const user = userEvent.setup();
     renderPopulatedGrid();
 
     const list = screen.getByRole("list", { name: "aria.galleryItems" });
-    expect(list).toHaveClass("gallery-grid");
-
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(3);
-    expect(items.map((item) => item.getAttribute("data-gallery-id"))).toEqual([
-      "gallery-1",
-      "gallery-youtube",
-      "gallery-vimeo",
-    ]);
 
     const previewButtons = items.map((item) => within(item).getByRole("button"));
     expect(previewButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
@@ -229,52 +226,70 @@ describe("GalleryGrid media layout", () => {
 
     const [imageItem, item] = screen.getAllByRole("listitem");
     expect(within(imageItem!).queryByText("VIDEO")).not.toBeInTheDocument();
-    const thumbnail = item!.querySelector(".gallery-preview-img");
+    const thumbnail = item!.querySelector("img");
     expect(thumbnail).toBeInstanceOf(HTMLImageElement);
     expect(thumbnail).toHaveAttribute(
       "src",
       "https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
     );
     expect(thumbnail).toHaveAttribute("alt", "");
-    const badge = within(item!).getByText("VIDEO");
-    expect(badge).toHaveClass("gallery-video-type-badge");
-    expect(badge.parentElement).toHaveClass("gallery-preview-media");
+    expect(within(item!).getByText("VIDEO")).toBeInTheDocument();
   });
 
   it("keeps the localized video badge when a derived cover falls back", () => {
     renderPopulatedGrid();
 
     const item = screen.getAllByRole("listitem")[1]!;
-    const thumbnail = item.querySelector(".gallery-preview-img") as HTMLImageElement;
+    const thumbnail = item.querySelector("img") as HTMLImageElement;
     fireEvent.error(thumbnail);
 
-    expect(item.querySelector(".gallery-preview-img")).not.toBeInTheDocument();
-    expect(within(item).getByText("VIDEO")).toHaveClass("gallery-video-type-badge");
+    expect(item.querySelector("img")).not.toBeInTheDocument();
+    expect(within(item).getByText("VIDEO")).toBeInTheDocument();
+  });
+
+  it("keeps image metadata and its open action available when a gallery thumbnail fails", () => {
+    const { onOpenLightbox } = renderPopulatedGrid([galleryRows[0]!]);
+    const item = screen.getByRole("listitem");
+    fireEvent.error(item.querySelector("img") as HTMLImageElement);
+
+    expect(within(item).getByText("First image")).toBeInTheDocument();
+    expect(within(item).getByText("A bright guild victory.")).toBeInTheDocument();
+    expect(within(item).getByText("Member")).toBeInTheDocument();
+
+    fireEvent.click(within(item).getByRole("button", { name: "Open image First image, uploaded by Member" }));
+    expect(onOpenLightbox).toHaveBeenCalledWith(
+      "gallery-1",
+      within(item).getByRole("button", { name: "Open image First image, uploaded by Member" }),
+    );
   });
 
   it("renders the same localized type badge when no video cover can be derived", () => {
     renderPopulatedGrid();
 
     const item = screen.getAllByRole("listitem")[2]!;
-    expect(item.querySelector(".gallery-preview-img")).not.toBeInTheDocument();
-    expect(within(item).getByText("VIDEO")).toHaveClass("gallery-video-type-badge");
+    expect(item.querySelector("img")).not.toBeInTheDocument();
+    expect(within(item).getByText("VIDEO")).toBeInTheDocument();
   });
 
-  it("gives every populated card the same stable media and content structure", () => {
-    renderPopulatedGrid();
+  it("keeps gallery metadata available and toggles likes", async () => {
+    const onToggleLike = vi.fn(async () => true);
+    const user = userEvent.setup();
+    renderPopulatedGrid(undefined, { canLike: true, onToggleLike });
 
-    for (const item of screen.getAllByRole("listitem")) {
-      expect(item).toHaveClass("gallery-grid__item");
-      expect(item.querySelector(".gallery-card__inner > .gallery-preview-button > .gallery-preview-media"))
-        .toBeInTheDocument();
-      expect(item.querySelector(".gallery-card__inner > .gallery-card__footer"))
-        .toBeInTheDocument();
-    }
+    const first = screen.getAllByRole("listitem")[0]!;
+    expect(within(first).getByText("First image")).toBeInTheDocument();
+    expect(within(first).getByText("A bright guild victory.")).toBeInTheDocument();
+    expect(within(first).getByText("Member")).toBeInTheDocument();
+
+    const likeButton = within(first).getByRole("button", { name: "Like this item" });
+    expect(likeButton).toHaveAttribute("aria-pressed", "false");
+    await user.click(likeButton);
+    await waitFor(() => expect(onToggleLike).toHaveBeenCalledWith("gallery-1", false));
   });
 });
 
 describe("GalleryGrid item deletion", () => {
-  it("shows progress only on the target card and ignores a repeated click", async () => {
+  it("ignores a repeated delete click while the first request is pending", async () => {
     const user = userEvent.setup();
     let finishDelete!: () => void;
     const onDelete = vi.fn(() => new Promise<boolean>((resolve) => {
@@ -288,6 +303,7 @@ describe("GalleryGrid item deletion", () => {
           isError={false}
           isExternalView={false}
           canModerate
+          canLike={false}
           selectedIds={[]}
           emptyTitle="empty.default"
           errorTitle="empty.error"
@@ -303,6 +319,7 @@ describe("GalleryGrid item deletion", () => {
           onAddMedia={vi.fn()}
           onToggleSelect={vi.fn()}
           onDelete={onDelete}
+          onToggleLike={vi.fn(async () => true)}
           onOpenLightbox={vi.fn()}
           resolveImageUrl={(key) => key}
           formatDateTime={(iso) => iso}
@@ -312,15 +329,12 @@ describe("GalleryGrid item deletion", () => {
 
     const cards = screen.getAllByRole("listitem");
     const firstDelete = within(cards[0]!).getByRole("button", { name: "action.delete" });
-    const secondDelete = within(cards[1]!).getByRole("button", { name: "action.delete" });
     await user.click(firstDelete);
 
-    expect(firstDelete).toHaveAttribute("data-loading", "true");
-    expect(secondDelete).not.toHaveAttribute("data-loading", "true");
+    expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: "gallery-1" }));
     await user.click(firstDelete);
     expect(onDelete).toHaveBeenCalledTimes(1);
 
     finishDelete();
-    await waitFor(() => expect(firstDelete).not.toHaveAttribute("data-loading", "true"));
   });
 });

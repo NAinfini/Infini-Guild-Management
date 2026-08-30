@@ -7,16 +7,16 @@ import {
 } from "@guild/kernel";
 import { PERMISSIONS, PERMISSION_ID, type Permission } from "@guild/shared/constants/roles";
 import { isReservedSystemTestIdentityName } from "@guild/shared/config/system-test";
+import type { MemberAvailability } from "@guild/shared";
 import { createAuditEvent } from "../audit/public.js";
-import { assertRoleAssignable, assertTargetBelowActor, requirePermission } from "./authorization";
+import { assertRoleAssignable, assertTargetBelowActor, requireAnyPermission, requirePermission } from "./authorization";
 import {
+  createInviteCode,
   createOpaqueToken,
   createPasswordHash,
-  digestToken,
   PASSWORD_HASH_ITERATIONS,
   requireSafePasswordIterations,
   verifyPassword,
-  type InviteTokenCodec,
 } from "./crypto";
 import type {
   AuthStore,
@@ -28,15 +28,13 @@ import type {
   InviteVisibility,
   ManagedUserTarget,
   RoleRecord,
-  LoginLockState,
+  RoleUpdateMutationResult,
 } from "./auth-types";
 import { assertPortableLikeSearch } from "../../portable-search.js";
-import { projectLoginLock } from "./login-lock";
+import { sanitizeInlineHtml, type MembersStore } from "../members/public.js";
 
 const MAX_MANAGED_USER_BATCH = 50;
 const TEMPORARY_PASSWORD_TTL_MS = 15 * 60 * 1_000;
-
-type InviteWithCode = InviteRecord & Readonly<{ code: string }>;
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
@@ -107,7 +105,7 @@ function encodeCursor(cursor: InviteCursor | null): string | null {
 export type IdentityAdminServiceOptions = Readonly<{
   store: AuthStore;
   provisioning: AccountProvisioningStore;
-  inviteTokens: InviteTokenCodec;
+  memberProfiles: Pick<MembersStore, "getMemberTarget" | "findMissingClassIds">;
   passwordIterations?: number;
   generateId?: () => string;
   generateTemporaryPassword?: () => string;
@@ -135,26 +133,19 @@ export class IdentityAdminService {
     limit: number;
     cursor?: string;
     search?: string;
-  }>): Promise<Readonly<{ data: readonly InviteWithCode[]; nextCursor: string | null; total: number }>> {
+  }>): Promise<Readonly<{ data: readonly InviteRecord[]; nextCursor: string | null; total: number }>> {
     requirePermission(context.authorization, PERMISSION_ID.ADMIN_INVITE_VIEW);
-    const suppliedSearch = input.search?.trim() ?? "";
-    const exactCode = suppliedSearch ? this.options.inviteTokens.normalize(suppliedSearch) : null;
-    const exactTokenDigest = exactCode ? await digestToken(exactCode) : null;
-    const search = exactTokenDigest ? "" : suppliedSearch.toLowerCase();
-    if (!exactTokenDigest) assertPortableLikeSearch(search, "Invite search");
+    const search = (input.search?.trim() ?? "").toLowerCase();
+    assertPortableLikeSearch(search, "Invite search");
     const page = await this.options.store.listInvites({
       visibility: input.visibility,
       limit: input.limit,
       cursor: parseCursor(input.cursor),
       search,
-      ...(exactTokenDigest ? { exactTokenDigest } : {}),
       now: context.now,
     });
     return {
-      data: await Promise.all(page.data.map(async (invite) => ({
-        ...invite,
-        code: await this.options.inviteTokens.encode(invite.id),
-      }))),
+      data: page.data,
       nextCursor: encodeCursor(page.nextCursor),
       total: page.total,
     };
@@ -169,14 +160,14 @@ export class IdentityAdminService {
     roleId: string;
     maxUses: number;
     expiresAt: string | null;
-  }>): Promise<InviteWithCode> {
+  }>): Promise<InviteRecord> {
     const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_INVITE_MANAGE);
     const role = await this.requireAssignableRole(actor, input.roleId);
     const id = this.generateId();
-    const code = await this.options.inviteTokens.encode(id);
+    const code = createInviteCode();
     const invite = await this.options.store.createInvite({
       id,
-      tokenDigest: await digestToken(code),
+      code,
       createdBy: actor.userId,
       roleId: role.id,
       maxUses: input.maxUses,
@@ -198,7 +189,7 @@ export class IdentityAdminService {
         { field: "status", value: { type: "code", value: "active" } },
       ],
     }));
-    return { ...invite, code };
+    return invite;
   }
 
   async revokeInvite(context: RequestContext, inviteId: string): Promise<{ ok: true }> {
@@ -240,6 +231,7 @@ export class IdentityAdminService {
     loginName: string;
     displayName: string;
     roleId: string;
+    notes?: string | null;
   }>): Promise<Readonly<{
     ok: true;
     userId: string;
@@ -262,6 +254,7 @@ export class IdentityAdminService {
       passwordHash: await createPasswordHash(temporaryPassword, this.passwordIterations),
       temporaryPasswordExpiresAt: new Date(Date.parse(context.now) + TEMPORARY_PASSWORD_TTL_MS).toISOString(),
       destinationRole,
+      notes: input.notes?.trim() || null,
       now: context.now,
     }, createAuditEvent(context, {
       subjectType: "user",
@@ -286,6 +279,130 @@ export class IdentityAdminService {
     };
   }
 
+  async updateMember(context: RequestContext, targetUserId: string, input: Readonly<{
+    expectedUserRevisionToken: string;
+    expectedProfileRevisionToken: string;
+    displayName?: string;
+    profile?: Readonly<{
+      power: number;
+      classes: readonly string[];
+      titleHtml: string | null;
+      bio: string | null;
+      availability: MemberAvailability | null;
+      notes: string | null;
+    }>;
+    roleId?: string;
+    isActive?: boolean;
+  }>): Promise<{ ok: true; user_revision_token: string; profile_revision_token: string }> {
+    if (!input.profile && input.displayName === undefined && input.roleId === undefined && input.isActive === undefined) {
+      throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "At least one member field is required" });
+    }
+    const actor = context.authorization.requireAuthenticated();
+    if (input.profile || input.displayName !== undefined) context.authorization.require(PERMISSION_ID.ADMIN_USERS_EDIT);
+    if (input.roleId !== undefined) context.authorization.require(PERMISSION_ID.ADMIN_USERS_ROLE);
+    if (input.isActive !== undefined) context.authorization.require(PERMISSION_ID.ADMIN_USERS_ACTIVATE);
+    const displayName = input.displayName?.trim();
+    if (displayName !== undefined && isReservedSystemTestIdentityName(displayName)) {
+      throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Name is reserved" });
+    }
+
+    const [target, destinationRole, profileTarget, missingClassIds] = await Promise.all([
+      this.requireTarget(actor, targetUserId, false),
+      input.roleId === undefined ? Promise.resolve(undefined) : this.requireAssignableRole(actor, input.roleId),
+      this.options.memberProfiles.getMemberTarget(targetUserId),
+      input.profile === undefined ? Promise.resolve([]) : this.options.memberProfiles.findMissingClassIds(input.profile.classes),
+    ]);
+    if (!profileTarget || profileTarget.deletedAt !== null
+      || target.revisionToken !== input.expectedUserRevisionToken
+      || profileTarget.profileRevisionToken !== input.expectedProfileRevisionToken) {
+      this.throwConcurrentAuthorizationChange();
+    }
+    if (missingClassIds.length > 0) {
+      throw new AppError({
+        code: "VALIDATION_ERROR",
+        status: 400,
+        message: "Profile references unknown classes",
+        details: { class_ids: missingClassIds },
+      });
+    }
+    if (input.isActive !== undefined && target.isActive === input.isActive) {
+      throw new AppError({
+        code: "CONFLICT",
+        status: 409,
+        message: input.isActive ? "User is already active" : "User already deactivated",
+      });
+    }
+
+    const currentRole = input.roleId === undefined ? undefined : await this.requireRole(target.roleId);
+    const finalActive = input.isActive ?? target.isActive;
+    const finalRoleCanManage = (destinationRole?.permissions ?? target.rolePermissions).has(PERMISSION_ID.ADMIN_ROLES_MANAGE);
+    if (!finalActive || !finalRoleCanManage) await this.assertRoleManagersRemain([target.id]);
+
+    const audit = createAuditEvent(context, {
+      subjectType: "user",
+      subjectId: target.id,
+      subjectLabel: target.displayName,
+      action: "update",
+      changes: [
+        ...(displayName === undefined ? [] : [{
+          field: "display_name" as const,
+          before: { type: "text" as const, value: target.displayName },
+          after: { type: "text" as const, value: displayName },
+        }]),
+        ...(destinationRole === undefined ? [] : [{
+          field: "role_id" as const,
+          before: { type: "reference" as const, value: { id: target.roleId, label: currentRole!.name } },
+          after: { type: "reference" as const, value: { id: destinationRole.id, label: destinationRole.name } },
+        }]),
+        ...(input.isActive === undefined ? [] : [{
+          field: "active" as const,
+          before: { type: "boolean" as const, value: target.isActive },
+          after: { type: "boolean" as const, value: input.isActive },
+        }]),
+      ],
+      context: input.profile === undefined ? [] : [{
+        field: "changed_sections" as const,
+        value: { type: "list" as const, value: ["power", "classes", "title", "bio", "availability", "notes"].map((value) => ({
+          type: "code" as const,
+          value,
+        })) },
+      }],
+    });
+    const outcome = await this.options.provisioning.updateManagedMember({
+      target,
+      expectedUserRevisionToken: input.expectedUserRevisionToken,
+      expectedProfileRevisionToken: input.expectedProfileRevisionToken,
+      ...(displayName === undefined ? {} : { displayName }),
+      ...(destinationRole === undefined ? {} : { destinationRole }),
+      ...(input.isActive === undefined ? {} : { active: input.isActive }),
+      ...(input.profile === undefined ? {} : {
+        profile: {
+          power: input.profile.power,
+          classes: input.profile.classes,
+          titleHtml: input.profile.titleHtml === null ? null : sanitizeInlineHtml(input.profile.titleHtml),
+          bio: input.profile.bio,
+          availability: input.profile.availability,
+          notes: input.profile.notes,
+        },
+      }),
+      now: context.now,
+    }, audit);
+    if (outcome === "display_name_taken") {
+      throw new AppError({ code: "CONFLICT", status: 409, message: "Name already taken" });
+    }
+    this.handleGuardedMutation(outcome);
+    if (displayName !== undefined || input.roleId !== undefined || input.isActive !== undefined) {
+      this.signalAuthorizationRefresh({ user_ids: [target.id] });
+    }
+    return {
+      ok: true,
+      user_revision_token: displayName === undefined && input.roleId === undefined && input.isActive === undefined
+        ? input.expectedUserRevisionToken
+        : audit.eventId,
+      profile_revision_token: input.profile === undefined ? input.expectedProfileRevisionToken : audit.eventId,
+    };
+  }
+
   async updateUserRole(context: RequestContext, targetUserId: string, roleId: string): Promise<{ ok: true }> {
     const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_USERS_ROLE);
     const target = await this.requireTarget(actor, targetUserId, false);
@@ -305,6 +422,7 @@ export class IdentityAdminService {
         after: { type: "reference", value: { id: role.id, label: role.name } },
       }],
     })));
+    this.signalAuthorizationRefresh({ user_ids: [target.id] });
     return { ok: true };
   }
 
@@ -332,6 +450,7 @@ export class IdentityAdminService {
       }],
       context: reason === undefined ? [] : [{ field: "reason", value: { type: "text", value: reason } }],
     })));
+    this.signalAuthorizationRefresh({ user_ids: [target.id] });
     return { ok: true };
   }
 
@@ -366,29 +485,13 @@ export class IdentityAdminService {
           action: "reset_password",
         }),
       });
-      if (outcome === "updated") return { ok: true, temporaryLoginName, temporaryPassword };
+      if (outcome === "updated") {
+        this.signalAuthorizationRefresh({ user_ids: [target.id] });
+        return { ok: true, temporaryLoginName, temporaryPassword };
+      }
       if (outcome === "conflict") this.throwConcurrentAuthorizationChange();
     }
     throw new AppError({ code: "CONFLICT", status: 409, message: "Could not issue temporary login credentials" });
-  }
-
-  async getLoginLock(context: RequestContext, targetUserId: string): Promise<LoginLockState> {
-    const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_USERS_PASSWORD);
-    const target = await this.requireTarget(actor, targetUserId, false);
-    return projectLoginLock(await this.options.store.readLoginFailure(target.loginName.toLowerCase()), context.now);
-  }
-
-  async resetLoginLock(context: RequestContext, targetUserId: string): Promise<LoginLockState & { ok: true }> {
-    const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_USERS_PASSWORD);
-    const target = await this.requireTarget(actor, targetUserId, false);
-    const outcome = await this.options.store.resetUserLoginLock(target, createAuditEvent(context, {
-      subjectType: "user_auth",
-      subjectId: target.id,
-      subjectLabel: target.displayName,
-      action: "reset_login_lock",
-    }));
-    if (outcome.outcome === "conflict") this.throwConcurrentAuthorizationChange();
-    return { ok: true, ...projectLoginLock(outcome.previous, context.now) };
   }
 
   batchUpdateRole(context: RequestContext, userIds: readonly string[], roleId: string): Promise<Readonly<{ ok: true; updated: number }>> {
@@ -412,7 +515,7 @@ export class IdentityAdminService {
   }
 
   async listRoles(context: RequestContext): Promise<readonly RoleRecord[]> {
-    requirePermission(context.authorization, PERMISSION_ID.ADMIN_ROLES_VIEW);
+    requireAnyPermission(context.authorization, [PERMISSION_ID.ADMIN_ROLES_VIEW, PERMISSION_ID.ADMIN_ROLES_MANAGE]);
     return this.options.store.listRoles();
   }
 
@@ -426,7 +529,9 @@ export class IdentityAdminService {
     const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_ROLES_MANAGE);
     const id = input.id?.trim().toLowerCase() || `custom_${this.generateId().toLowerCase()}`;
     const permissions = new Set(PERMISSIONS.filter((permission) => input.permissions?.[permission] === true));
-    assertRoleAssignable(actor, { id, level: input.level, permissions });
+    if (input.level >= actor.roleLevel) {
+      throw new AppError({ code: "FORBIDDEN", status: 403, message: "Role level must be below your own" });
+    }
     const outcome = await this.options.store.createRole({
       id,
       name: input.name.trim(),
@@ -446,11 +551,12 @@ export class IdentityAdminService {
         })) } },
       ],
     }));
-    if (outcome === "conflict") throw new AppError({ code: "CONFLICT", status: 409, message: "Role already exists" });
-    return this.requireRole(id);
+    if (outcome.status === "conflict") throw new AppError({ code: "CONFLICT", status: 409, message: "Role already exists" });
+    return outcome.role;
   }
 
   async updateRole(context: RequestContext, roleId: string, input: Readonly<{
+    expectedRevisionToken: string;
     name?: string;
     level?: number;
     color?: string | null;
@@ -458,17 +564,12 @@ export class IdentityAdminService {
   }>): Promise<RoleRecord> {
     const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_ROLES_MANAGE);
     const existing = await this.requireRole(roleId);
-    const isOwnRole = existing.id === actor.roleId;
-    if (!isOwnRole && existing.level >= actor.roleLevel) {
-      throw new AppError({ code: "FORBIDDEN", status: 403, message: "You cannot edit a role at or above your level" });
+    if (existing.revisionToken !== input.expectedRevisionToken) this.throwConcurrentAuthorizationChange();
+    if (existing.level > actor.roleLevel) {
+      throw new AppError({ code: "FORBIDDEN", status: 403, message: "You cannot edit a role above your level" });
     }
-    if (input.level !== undefined) {
-      if (isOwnRole && input.level > existing.level) {
-        throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "You cannot raise your own role level" });
-      }
-      if (!isOwnRole && input.level >= actor.roleLevel) {
-        throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Role level must be below your own" });
-      }
+    if (input.level !== undefined && input.level > actor.roleLevel) {
+      throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Role level cannot exceed your own" });
     }
 
     const nextPermissions = new Set(existing.permissions);
@@ -479,16 +580,6 @@ export class IdentityAdminService {
         }
       }
     }
-    const escalated = [...nextPermissions].filter((permission) => !actor.permissions.has(permission));
-    if (escalated.length > 0) {
-      throw new AppError({
-        code: "FORBIDDEN",
-        status: 403,
-        message: `You cannot grant permissions you do not hold: ${escalated.join(", ")}`,
-        details: { permissions: escalated },
-      });
-    }
-
     const add = [...nextPermissions].filter((permission) => !existing.permissions.has(permission));
     const remove = [...existing.permissions].filter((permission) => !nextPermissions.has(permission));
     const outcome = await this.options.store.updateRole({
@@ -497,7 +588,7 @@ export class IdentityAdminService {
       ...(input.level === undefined ? {} : { level: input.level }),
       ...(input.color === undefined ? {} : { color: input.color }),
       permissionDelta: { add, remove },
-      expectedRevisionToken: existing.revisionToken,
+      expectedRevisionToken: input.expectedRevisionToken,
       expectedPermissions: [...existing.permissions],
       now: context.now,
     }, createAuditEvent(context, {
@@ -535,8 +626,11 @@ export class IdentityAdminService {
         })) } },
       ],
     }));
-    this.handleGuardedMutation(outcome);
-    return this.requireRole(roleId);
+    this.requireUpdatedRole(outcome);
+    if (input.level !== undefined || input.permissions !== undefined) {
+      this.signalAuthorizationRefresh({ role_ids: [roleId] });
+    }
+    return outcome.role;
   }
 
   async deleteRole(context: RequestContext, roleId: string): Promise<{ ok: true }> {
@@ -598,6 +692,7 @@ export class IdentityAdminService {
       ],
     }));
     this.handleGuardedMutation(outcome);
+    this.signalAuthorizationRefresh({ user_ids: targets.map(({ id }) => id) });
     return { ok: true as const, updated: targets.length };
   }
 
@@ -643,6 +738,7 @@ export class IdentityAdminService {
       ? await this.options.store.softDeleteUsers({ targets, now: context.now }, audit)
       : await this.options.store.setUsersActive({ targets, active: action === "reactivate", now: context.now }, audit);
     this.handleGuardedMutation(outcome);
+    this.signalAuthorizationRefresh({ user_ids: targets.map(({ id }) => id) });
     return { ok: true as const, updated: targets.length };
   }
 
@@ -708,6 +804,12 @@ export class IdentityAdminService {
     if (outcome === "conflict") this.throwConcurrentAuthorizationChange();
   }
 
+  private requireUpdatedRole(
+    outcome: RoleUpdateMutationResult,
+  ): asserts outcome is Extract<RoleUpdateMutationResult, Readonly<{ status: "updated" }>> {
+    if (outcome.status !== "updated") this.handleGuardedMutation(outcome.status);
+  }
+
   private throwConcurrentAuthorizationChange(): never {
     throw new AppError({
       code: "CONFLICT",
@@ -720,5 +822,14 @@ export class IdentityAdminService {
     const { deferred, notifications } = this.options;
     if (!deferred || !notifications) return;
     deferred.defer(() => notifications.publish({ type: "inbox_changed" }));
+  }
+
+  private signalAuthorizationRefresh(targets: Readonly<{
+    user_ids?: readonly string[];
+    role_ids?: readonly string[];
+  }>): void {
+    const { deferred, notifications } = this.options;
+    if (!deferred || !notifications) return;
+    deferred.defer(() => notifications.publish({ type: "authorization_refresh", ...targets }));
   }
 }

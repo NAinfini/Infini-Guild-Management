@@ -1,7 +1,5 @@
-import type {
-  ImportantNoticeAcknowledgement,
-  ImportantNoticeActive,
-} from "@guild/shared";
+import type { ImportantNoticeActive, ImportantNoticeAudienceRole } from "@guild/shared";
+import { MAX_ACTIVE_IMPORTANT_NOTICES } from "@guild/shared/constants/important-notices";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
 import type {
   ImportantNoticeRecord,
@@ -12,8 +10,15 @@ import { returnedRowCount } from "./sql-result.js";
 
 const RECORD_COLUMNS = [
   "id", "title", "body_json", "status", "publish_at", "expires_at", "publication_revision",
-  "revision_token", "created_by", "updated_by", "created_at", "updated_at",
+  "requires_acknowledgement", "audience_scope", "audience_role_ids", "revision_token",
+  "created_by", "updated_by", "created_at", "updated_at",
 ] as const;
+
+const RECORD_SELECT = `id, title, body_json, status, publish_at, expires_at, publication_revision,
+  requires_acknowledgement, audience_scope,
+  coalesce((SELECT json_group_array(role_id) FROM important_notice_audience_roles
+    WHERE notice_id = important_notices.id), '[]') AS audience_role_ids,
+  revision_token, created_by, updated_by, created_at, updated_at`;
 
 export class SqliteImportantNoticeStore implements ImportantNoticeStore {
   constructor(private readonly sql: SqlExecutor) {}
@@ -22,7 +27,7 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
     const result = await this.sql.execute({
       method: "all",
       columns: RECORD_COLUMNS,
-      sql: `SELECT ${RECORD_COLUMNS.join(", ")} FROM important_notices
+      sql: `SELECT ${RECORD_SELECT} FROM important_notices
         ORDER BY updated_at DESC, id DESC`,
     });
     return allRows(result, "Important notice list").map(mapRecord);
@@ -32,7 +37,7 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
     const result = await this.sql.execute({
       method: "get",
       columns: RECORD_COLUMNS,
-      sql: `SELECT ${RECORD_COLUMNS.join(", ")} FROM important_notices WHERE id = ?`,
+      sql: `SELECT ${RECORD_SELECT} FROM important_notices WHERE id = ?`,
       params: [id],
     });
     const row = oneRow(result, "Important notice");
@@ -42,6 +47,7 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
   async create(input: Parameters<ImportantNoticeStore["create"]>[0]): Promise<void> {
     await this.sql.batch([
       insertRecord(input.record),
+      replaceAudienceRolesStatement(input.record),
       auditInsertStatement(input.audit),
     ]);
   }
@@ -54,7 +60,7 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
         columns: ["id"],
         sql: `UPDATE important_notices
           SET title = ?, body_json = ?, status = ?, publish_at = ?, expires_at = ?, publication_revision = ?,
-              revision_token = ?, updated_by = ?, updated_at = ?
+              requires_acknowledgement = ?, audience_scope = ?, revision_token = ?, updated_by = ?, updated_at = ?
           WHERE id = ? AND revision_token = ? RETURNING id`,
         params: [
           input.record.title,
@@ -63,6 +69,8 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
           input.record.publish_at,
           input.record.expires_at,
           input.record.publication_revision,
+          input.record.requires_acknowledgement ? 1 : 0,
+          input.record.audience_scope,
           input.record.revisionToken,
           input.record.updatedBy,
           input.record.updated_at,
@@ -70,6 +78,15 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
           input.expectedRevisionToken,
         ],
       },
+      {
+        method: "run",
+        sql: `DELETE FROM important_notice_audience_roles
+          WHERE notice_id = ? AND EXISTS (
+            SELECT 1 FROM important_notices WHERE id = ? AND revision_token = ?
+          )`,
+        params: [input.record.id, input.record.id, input.record.revisionToken],
+      },
+      replaceAudienceRolesStatement(input.record, input.record.revisionToken),
       auditInsertStatement(input.audit, guard),
     ]);
     return returnedRowCount(required(results[0], "Important notice update")) === 1;
@@ -96,23 +113,55 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
     return returnedRowCount(required(results[0], "Important notice delete")) === 1;
   }
 
-  async listActive(now: string): Promise<readonly ImportantNoticeActive[]> {
+  async listAudienceRoles(): Promise<readonly ImportantNoticeAudienceRole[]> {
     const result = await this.sql.execute({
       method: "all",
-      columns: ["id", "title", "body_json", "published_at", "expires_at", "publication_revision"],
-      sql: `SELECT id, title, body_json, publish_at AS published_at, expires_at, publication_revision
-        FROM important_notices INDEXED BY idx_important_notices_active
-        WHERE status IN ('scheduled', 'published') AND publish_at <= ?
-          AND (expires_at IS NULL OR expires_at > ?)
-        ORDER BY publish_at ASC, id ASC`,
-      params: [now, now],
+      columns: ["id", "name", "color", "level"],
+      sql: "SELECT id, name, color, level FROM roles ORDER BY level DESC, name COLLATE NOCASE, id",
+    });
+    return allRows(result, "Important notice audience roles").map((row) => {
+      const [id, name, color, level] = row;
+      if (
+        typeof id !== "string" || typeof name !== "string" || (color !== null && typeof color !== "string")
+        || typeof level !== "number" || !Number.isSafeInteger(level)
+      ) throw new TypeError("Invalid important notice audience role row");
+      return { id, name, color, level };
+    });
+  }
+
+  async listActive(input: Parameters<ImportantNoticeStore["listActive"]>[0]): Promise<readonly ImportantNoticeActive[]> {
+    const result = await this.sql.execute({
+      method: "all",
+      columns: [
+        "id", "title", "body_json", "published_at", "expires_at", "requires_acknowledgement",
+        "read_at", "acknowledged_at",
+      ],
+      sql: `SELECT notices.id, notices.title, notices.body_json, notices.publish_at AS published_at,
+          notices.expires_at, notices.requires_acknowledgement,
+          CASE WHEN receipts.read_publication_revision = notices.publication_revision
+            THEN receipts.read_at ELSE NULL END AS read_at,
+          receipts.acknowledged_at
+        FROM important_notices AS notices INDEXED BY idx_important_notices_active
+        LEFT JOIN important_notice_receipts AS receipts
+          ON receipts.notice_id = notices.id AND receipts.user_id = ?
+        WHERE notices.status IN ('scheduled', 'published') AND notices.publish_at <= ?
+          AND (notices.expires_at IS NULL OR notices.expires_at > ?)
+          AND (notices.audience_scope = 'all' OR EXISTS (
+            SELECT 1 FROM important_notice_audience_roles AS audience
+            WHERE audience.notice_id = notices.id AND audience.role_id = ?
+          ))
+        ORDER BY notices.publish_at ASC, notices.id ASC
+        LIMIT ${MAX_ACTIVE_IMPORTANT_NOTICES + 1}`,
+      params: [input.userId, input.now, input.now, input.roleId],
     });
     return allRows(result, "Active important notices").map((row) => {
-      const [id, title, bodyJson, publishedAt, expiresAt, publicationRevision] = row;
+      const [id, title, bodyJson, publishedAt, expiresAt, requiresAcknowledgement, readAt, acknowledgedAt] = row;
       if (
         typeof id !== "string" || typeof title !== "string" || typeof bodyJson !== "string"
         || typeof publishedAt !== "string" || (expiresAt !== null && typeof expiresAt !== "string")
-        || typeof publicationRevision !== "number" || !Number.isSafeInteger(publicationRevision) || publicationRevision < 1
+        || (requiresAcknowledgement !== 0 && requiresAcknowledgement !== 1)
+        || (readAt !== null && typeof readAt !== "string")
+        || (acknowledgedAt !== null && typeof acknowledgedAt !== "string")
       ) throw new TypeError("Invalid active important notice row");
       return {
         id,
@@ -120,63 +169,72 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
         body_json: bodyJson,
         published_at: publishedAt,
         expires_at: expiresAt,
-        publication_revision: positiveInteger(publicationRevision, "Active important notice revision"),
+        requires_acknowledgement: requiresAcknowledgement === 1,
+        read_at: readAt,
+        acknowledged_at: acknowledgedAt,
       };
     });
   }
 
-  async listAcknowledgements(userId: string, now: string): Promise<readonly ImportantNoticeAcknowledgement[]> {
+  async markRead(input: Parameters<ImportantNoticeStore["markRead"]>[0]): Promise<number> {
+    const idsJson = input.ids === null ? null : JSON.stringify(input.ids);
     const result = await this.sql.execute({
       method: "all",
-      columns: ["notice_id", "publication_revision"],
-      sql: `SELECT acknowledgements.notice_id, acknowledgements.publication_revision
-        FROM important_notice_acknowledgements AS acknowledgements
-        JOIN important_notices AS notices ON notices.id = acknowledgements.notice_id
-          AND notices.publication_revision = acknowledgements.publication_revision
-        WHERE acknowledgements.user_id = ?
-          AND notices.status IN ('scheduled', 'published') AND notices.publish_at <= ?
+      columns: ["notice_id"],
+      sql: `INSERT INTO important_notice_receipts
+          (notice_id, user_id, read_at, read_publication_revision, acknowledged_at)
+        SELECT notices.id, ?, ?, notices.publication_revision, NULL
+        FROM important_notices AS notices INDEXED BY idx_important_notices_active
+        WHERE notices.status IN ('scheduled', 'published') AND notices.publish_at <= ?
           AND (notices.expires_at IS NULL OR notices.expires_at > ?)
-        ORDER BY acknowledgements.notice_id`,
-      params: [userId, now, now],
+          AND (notices.audience_scope = 'all' OR EXISTS (
+            SELECT 1 FROM important_notice_audience_roles AS audience
+            WHERE audience.notice_id = notices.id AND audience.role_id = ?
+          ))
+          ${idsJson === null ? "" : "AND notices.id IN (SELECT value FROM json_each(?))"}
+        ON CONFLICT(notice_id, user_id) DO UPDATE SET
+          read_at = excluded.read_at,
+          read_publication_revision = excluded.read_publication_revision
+          WHERE important_notice_receipts.read_publication_revision <> excluded.read_publication_revision
+        RETURNING notice_id`,
+      params: [
+        input.userId,
+        input.now,
+        input.now,
+        input.now,
+        input.roleId,
+        ...(idsJson === null ? [] : [idsJson]),
+      ],
     });
-    return allRows(result, "Important notice acknowledgements").map((row) => {
-      const [noticeId, revision] = row;
-      if (typeof noticeId !== "string" || typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 1) {
-        throw new TypeError("Invalid important notice acknowledgement row");
-      }
-      return {
-        notice_id: noticeId,
-        publication_revision: positiveInteger(revision, "Important notice acknowledgement revision"),
-      };
-    });
+    return allRows(result, "Important notice read receipts").length;
   }
 
   async acknowledge(input: Parameters<ImportantNoticeStore["acknowledge"]>[0]): Promise<boolean> {
-    const results = await this.sql.batch([
-      {
-        method: "run",
-        sql: `INSERT INTO important_notice_acknowledgements
-          (notice_id, user_id, publication_revision, acknowledged_at)
-          SELECT id, ?, publication_revision, ? FROM important_notices
-          WHERE id = ? AND publication_revision = ?
-            AND status IN ('scheduled', 'published') AND publish_at <= ?
-            AND (expires_at IS NULL OR expires_at > ?)
-          ON CONFLICT(notice_id, user_id, publication_revision) DO NOTHING`,
-        params: [input.userId, input.now, input.id, input.publicationRevision, input.now, input.now],
-      },
-      {
-        method: "get",
-        columns: ["active"],
-        sql: `SELECT EXISTS(
-          SELECT 1 FROM important_notices
-          WHERE id = ? AND publication_revision = ?
-            AND status IN ('scheduled', 'published') AND publish_at <= ?
-            AND (expires_at IS NULL OR expires_at > ?)
-        ) AS active`,
-        params: [input.id, input.publicationRevision, input.now, input.now],
-      },
-    ]);
-    return numberCell(required(results[1], "Important notice acknowledgement"), "Important notice active flag") === 1;
+    const result = await this.sql.execute({
+      method: "all",
+      columns: ["notice_id"],
+      sql: `INSERT INTO important_notice_receipts
+          (notice_id, user_id, read_at, read_publication_revision, acknowledged_at)
+        SELECT notices.id, ?, ?, notices.publication_revision, ? FROM important_notices AS notices
+        WHERE notices.id = ? AND notices.requires_acknowledgement = 1
+          AND notices.status IN ('scheduled', 'published') AND notices.publish_at <= ?
+          AND (notices.expires_at IS NULL OR notices.expires_at > ?)
+          AND (notices.audience_scope = 'all' OR EXISTS (
+            SELECT 1 FROM important_notice_audience_roles AS audience
+            WHERE audience.notice_id = notices.id AND audience.role_id = ?
+          ))
+        ON CONFLICT(notice_id, user_id) DO UPDATE SET
+          read_at = CASE
+            WHEN important_notice_receipts.read_publication_revision = excluded.read_publication_revision
+              THEN important_notice_receipts.read_at
+            ELSE excluded.read_at
+          END,
+          read_publication_revision = excluded.read_publication_revision,
+          acknowledged_at = coalesce(important_notice_receipts.acknowledged_at, excluded.acknowledged_at)
+        RETURNING notice_id`,
+      params: [input.userId, input.now, input.now, input.id, input.now, input.now, input.roleId],
+    });
+    return allRows(result, "Important notice acknowledgement").length === 1;
   }
 }
 
@@ -185,8 +243,8 @@ function insertRecord(record: ImportantNoticeRecord): SqlBatchStatement {
     method: "run",
     sql: `INSERT INTO important_notices (
       id, title, body_json, status, publish_at, expires_at, publication_revision, revision_token,
-      created_by, updated_by, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      requires_acknowledgement, audience_scope, created_by, updated_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       record.id,
       record.title,
@@ -196,6 +254,8 @@ function insertRecord(record: ImportantNoticeRecord): SqlBatchStatement {
       record.expires_at,
       record.publication_revision,
       record.revisionToken,
+      record.requires_acknowledgement ? 1 : 0,
+      record.audience_scope,
       record.createdBy,
       record.updatedBy,
       record.created_at,
@@ -207,15 +267,22 @@ function insertRecord(record: ImportantNoticeRecord): SqlBatchStatement {
 function mapRecord(row: readonly SqlValue[]): ImportantNoticeRecord {
   const [
     id, title, bodyJson, status, publishAt, expiresAt, publicationRevision,
-    revisionToken, createdBy, updatedBy, createdAt, updatedAt,
+    requiresAcknowledgement, audienceScope, audienceRoleIdsJson, revisionToken,
+    createdBy, updatedBy, createdAt, updatedAt,
   ] = row;
   if (
     typeof id !== "string" || typeof title !== "string" || typeof bodyJson !== "string" || typeof status !== "string"
     || (publishAt !== null && typeof publishAt !== "string") || (expiresAt !== null && typeof expiresAt !== "string")
     || typeof publicationRevision !== "number" || !Number.isSafeInteger(publicationRevision)
+    || (requiresAcknowledgement !== 0 && requiresAcknowledgement !== 1)
+    || (audienceScope !== "all" && audienceScope !== "roles") || typeof audienceRoleIdsJson !== "string"
     || typeof revisionToken !== "string" || typeof createdBy !== "string"
     || (updatedBy !== null && typeof updatedBy !== "string") || typeof createdAt !== "string" || typeof updatedAt !== "string"
   ) throw new TypeError("Invalid important notice row");
+  const audienceRoleIds = parseAudienceRoleIds(audienceRoleIdsJson);
+  if (audienceScope === "all" && audienceRoleIds.length > 0) {
+    throw new TypeError("Invalid important notice audience");
+  }
   if (status !== "draft" && status !== "scheduled" && status !== "published" && status !== "withdrawn") {
     throw new TypeError("Invalid important notice status");
   }
@@ -227,12 +294,43 @@ function mapRecord(row: readonly SqlValue[]): ImportantNoticeRecord {
     publish_at: publishAt,
     expires_at: expiresAt,
     publication_revision: nonnegativeInteger(publicationRevision, "Important notice publication revision"),
+    requires_acknowledgement: requiresAcknowledgement === 1,
+    audience_scope: audienceScope,
+    audience_role_ids: audienceRoleIds,
     revisionToken,
     createdBy,
     updatedBy,
     created_at: createdAt,
     updated_at: updatedAt,
   };
+}
+
+function replaceAudienceRolesStatement(
+  record: ImportantNoticeRecord,
+  revisionToken?: string,
+): SqlBatchStatement {
+  return {
+    method: "run",
+    sql: `INSERT INTO important_notice_audience_roles (notice_id, role_id)
+      SELECT ?, value FROM json_each(?)
+      ${revisionToken === undefined ? "" : "WHERE EXISTS (SELECT 1 FROM important_notices WHERE id = ? AND revision_token = ?)"}`,
+    params: revisionToken === undefined
+      ? [record.id, JSON.stringify(record.audience_role_ids)]
+      : [record.id, JSON.stringify(record.audience_role_ids), record.id, revisionToken],
+  };
+}
+
+function parseAudienceRoleIds(value: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch {
+    throw new TypeError("Invalid important notice audience roles");
+  }
+  if (!Array.isArray(parsed) || parsed.some((roleId) => typeof roleId !== "string")) {
+    throw new TypeError("Invalid important notice audience roles");
+  }
+  return [...parsed].sort();
 }
 
 function required(result: SqlResult | undefined, label: string): SqlResult {
@@ -254,18 +352,6 @@ function oneRow(result: SqlResult, label: string): readonly SqlValue[] | null {
     throw new TypeError(`${label} row is invalid`);
   }
   return result.rows as readonly SqlValue[];
-}
-
-function numberCell(result: SqlResult, label: string): number {
-  const row = oneRow(result, label);
-  return nonnegativeInteger(row?.[0], label);
-}
-
-function positiveInteger(value: SqlValue | undefined, label: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
-    throw new TypeError(`${label} is invalid`);
-  }
-  return value;
 }
 
 function nonnegativeInteger(value: SqlValue | undefined, label: string): number {

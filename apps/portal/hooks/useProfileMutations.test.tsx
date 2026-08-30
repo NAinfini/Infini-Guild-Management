@@ -10,7 +10,7 @@ const serviceMocks = vi.hoisted(() => ({
   changeMyUsername: vi.fn(),
   deleteProfileAudio: vi.fn(),
   deleteProfileImage: vi.fn(),
-  updateMyProfile: vi.fn(),
+  updateOwnProfile: vi.fn(),
 }));
 const setProfileMock = vi.hoisted(() => vi.fn());
 const setSessionMock = vi.hoisted(() => vi.fn());
@@ -57,9 +57,40 @@ describe("useProfileMutations", () => {
     notifySuccessMock.mockReset();
   });
 
+  it.each(["image", "audio"] as const)("adopts the committed revision after removing profile %s", async (kind) => {
+    serviceMocks.deleteProfileImage.mockResolvedValue({ profileRevisionToken: "profile-v2" });
+    serviceMocks.deleteProfileAudio.mockResolvedValue({ profileRevisionToken: "profile-v2" });
+    const form = {
+      profileRevisionToken: "profile-v1",
+      acceptOwnImageRemoval: vi.fn(),
+      acceptOwnMediaRevision: vi.fn(),
+    } as unknown as MutationParams["form"];
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const { result } = renderHook(() => useProfileMutations({
+      form,
+      imageUploader: { upload: vi.fn() } as unknown as MutationParams["imageUploader"],
+      audioUploader: { upload: vi.fn() } as unknown as MutationParams["audioUploader"],
+    }), { wrapper: createWrapper(queryClient) });
+
+    act(() => kind === "image" ? result.current.removeImage("image-1") : result.current.removeAudio());
+
+    if (kind === "image") {
+      await waitFor(() => expect(form.acceptOwnImageRemoval).toHaveBeenCalledWith("image-1", "profile-v2"));
+      expect(serviceMocks.deleteProfileImage).toHaveBeenCalledWith("user-1", "image-1", "profile-v1");
+    } else {
+      await waitFor(() => expect(form.acceptOwnMediaRevision).toHaveBeenCalledWith("profile-v2"));
+      expect(serviceMocks.deleteProfileAudio).toHaveBeenCalledWith("user-1", "profile-v1");
+    }
+  });
+
   it("finishes a successful save before slow cache refreshes settle", async () => {
     const updatedProfile = { user_id: "user-1" };
-    serviceMocks.updateMyProfile.mockResolvedValue(updatedProfile);
+    serviceMocks.updateOwnProfile.mockResolvedValue({
+      profile: updatedProfile,
+      profileRevisionToken: "profile-v2",
+    });
 
     let finishRefresh!: () => void;
     const slowRefresh = new Promise<void>((resolve) => {
@@ -90,13 +121,15 @@ describe("useProfileMutations", () => {
           saturday: [],
         },
       },
+      profileRevisionToken: "profile-v1",
       acceptServerProfile,
     } as unknown as MutationParams["form"];
-    const uploader = { upload: vi.fn() } as unknown as MutationParams["imageUploader"];
+    const imageUploader = { upload: vi.fn() } as unknown as MutationParams["imageUploader"];
+    const audioUploader = { upload: vi.fn() } as unknown as MutationParams["audioUploader"];
     const { result } = renderHook(() => useProfileMutations({
       form,
-      imageUploader: uploader,
-      audioUploader: uploader,
+      imageUploader,
+      audioUploader,
     }), { wrapper: createWrapper(queryClient) });
 
     try {
@@ -112,12 +145,62 @@ describe("useProfileMutations", () => {
         queryKey: queryKeys.users.all,
       });
       expect(notifySuccessMock).toHaveBeenCalledWith("message.profileSaved");
-      expect(serviceMocks.updateMyProfile).toHaveBeenCalledWith("user-1", expect.objectContaining({
-        display_name: "Saved Member",
-      }));
-      expect(acceptServerProfile).toHaveBeenCalledWith(updatedProfile, "Saved Member", expect.any(Object));
+      expect(serviceMocks.updateOwnProfile).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({ display_name: "Saved Member" }),
+        "profile-v1",
+      );
+      expect(acceptServerProfile).toHaveBeenCalledWith(updatedProfile, "Saved Member", expect.any(Object), "profile-v2");
     } finally {
       finishRefresh();
     }
+  });
+
+  it("writes the returned profile revision into the local detail cache", async () => {
+    const updatedProfile = { user_id: "user-1", bio: "Saved bio" };
+    serviceMocks.updateOwnProfile.mockResolvedValue({
+      profile: updatedProfile,
+      profileRevisionToken: "profile-v2",
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    queryClient.setQueryData(queryKeys.myProfile.detail("user-1"), {
+      user: { id: "user-1", display_name: "Member" },
+      profile: { user_id: "user-1", bio: "Old bio" },
+      badges: [],
+      edit_revisions: {
+        user_revision_token: "user-v1",
+        profile_revision_token: "profile-v1",
+      },
+    });
+    const form = {
+      displayName: "Member",
+      bio: "Saved bio",
+      titleHtml: "",
+      power: 0,
+      classList: [],
+      videoList: [],
+      imageList: [],
+      availabilityData: null,
+      profileRevisionToken: "profile-v1",
+      acceptServerProfile: vi.fn(),
+    } as unknown as MutationParams["form"];
+    const imageUploader = { upload: vi.fn() } as unknown as MutationParams["imageUploader"];
+    const audioUploader = { upload: vi.fn() } as unknown as MutationParams["audioUploader"];
+    const { result } = renderHook(() => useProfileMutations({ form, imageUploader, audioUploader }), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    act(() => result.current.saveProfile());
+
+    await waitFor(() => expect(form.acceptServerProfile).toHaveBeenCalled());
+    expect(queryClient.getQueryData(queryKeys.myProfile.detail("user-1"))).toMatchObject({
+      profile: updatedProfile,
+      edit_revisions: {
+        user_revision_token: "user-v1",
+        profile_revision_token: "profile-v2",
+      },
+    });
   });
 });

@@ -9,30 +9,24 @@ import {
   type FeatureFlags,
   type UpdateSiteConfigPayload,
 } from "@guild/shared";
-import { AlertTriangleIcon, BookTextIcon, CloudIcon, GalleryThumbnailsIcon, InfoCircleIcon, SaveIcon, SettingsIcon, UploadIcon, WarehouseIcon } from "@portal/components/icons";
+import { AlertTriangleIcon, BookTextIcon, CloudIcon, GalleryThumbnailsIcon, SaveIcon, SettingsIcon, UploadIcon, WarehouseIcon } from "@portal/components/icons";
 import { Button } from "@portal/components/ui/button";
 import { Input } from "@portal/components/ui/input";
 import { Label } from "@portal/components/ui/label";
 import { Switch } from "@portal/components/ui/switch";
 import { Textarea } from "@portal/components/ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { resolveMediaUrl } from "@portal/utils/media";
+import { formatMb, SiteConfigInfo, SiteConfigNumberField } from "./SiteConfigFields";
 
 type AdminSiteConfigSectionProps = {
   data: AdminSiteConfigResponse | null;
   loading: boolean;
   saving: boolean;
   logoUploading: boolean;
-  onSaveSite: (payload: UpdateSiteConfigPayload) => void;
-  onUploadLogo: (file: File) => void;
-};
-
-type SiteConfigInfoProps = {
-  title: string;
-  description: string;
-  icon: ReactNode;
+  onSaveSite: (payload: UpdateSiteConfigPayload) => Promise<AdminSiteConfigResponse>;
+  onUploadLogo: (file: File, expectedRevisionToken: string) => Promise<AdminSiteConfigResponse>;
 };
 
 type EditableSiteConfig = {
@@ -57,14 +51,6 @@ const FEATURE_INFO_META: Record<keyof FeatureFlags, { icon: ReactNode }> = {
   tools: { icon: <SettingsIcon size={16} /> },
   storage: { icon: <WarehouseIcon size={16} /> },
 };
-
-function numberOr(value: string | number, fallback: number) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function formatMb(bytes: number) {
-  return Math.round(bytes / 1024 / 1024);
-}
 
 function copyEditableConfig(data: AdminSiteConfigResponse): EditableSiteConfig {
   const features = data.site.features;
@@ -102,65 +88,6 @@ function areEditableConfigsEqual(left: EditableSiteConfig, right: EditableSiteCo
     && haveSameFields(left.absence_policy, right.absence_policy);
 }
 
-function SiteConfigInfo({ title, description, icon }: SiteConfigInfoProps) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={<button type="button" className="site-config-info-trigger" aria-label={title} />}
-      >
-          <InfoCircleIcon size={15} />
-      </TooltipTrigger>
-      <TooltipContent className="site-config-info-card">
-        <span className="site-config-info-card__icon" aria-hidden="true">{icon}</span>
-        <span className="site-config-info-card__copy">
-          <strong>{title}</strong>
-          <span>{description}</span>
-        </span>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function SiteConfigNumberField({
-  id,
-  label,
-  value,
-  min,
-  max,
-  suffix,
-  onValueChange,
-}: {
-  id: string;
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  suffix?: string;
-  onValueChange: (value: number) => void;
-}) {
-  const suffixId = suffix ? `${id}-suffix` : undefined;
-
-  return (
-    <div className="site-config-number-field">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="site-config-number-control">
-        <Input
-          id={id}
-          className="site-config-number-input"
-          type="number"
-          inputMode="numeric"
-          value={value}
-          min={min}
-          max={max}
-          aria-describedby={suffixId}
-          onChange={(event) => onValueChange(numberOr(event.currentTarget.valueAsNumber, value))}
-        />
-        {suffix ? <span id={suffixId} className="site-config-number-suffix">{suffix}</span> : null}
-      </div>
-    </div>
-  );
-}
-
 export function AdminSiteConfigSection({
   data,
   loading,
@@ -180,22 +107,24 @@ export function AdminSiteConfigSection({
   const [storagePolicy, setStoragePolicy] = useState<AdminSiteConfigResponse["site"]["storage_policy"] | null>(null);
   const [absencePolicy, setAbsencePolicy] = useState<AdminSiteConfigResponse["site"]["absence_policy"] | null>(null);
   const [baselineConfig, setBaselineConfig] = useState<EditableSiteConfig | null>(null);
+  const [baselineRevisionToken, setBaselineRevisionToken] = useState<string | null>(null);
+  const hasPendingChangesRef = useRef(false);
 
-  useEffect(() => {
-    if (!data) return;
-    const nextConfig = copyEditableConfig(data);
+  const applyServerConfig = useCallback((next: AdminSiteConfigResponse) => {
+    const nextConfig = copyEditableConfig(next);
     setSiteName(nextConfig.site_name);
     setSiteDescription(nextConfig.site_description);
-    setSiteLogoUrl(data.site.site_logo_media_id
-      ? resolveMediaUrl(data.site.site_logo_media_id)
-      : data.site.default_site_logo_url);
+    setSiteLogoUrl(next.site.site_logo_media_id
+      ? resolveMediaUrl(next.site.site_logo_media_id)
+      : next.site.default_site_logo_url);
     setFeatures(nextConfig.features);
     setOauth(nextConfig.oauth);
     setMediaPolicy(nextConfig.media_policy);
     setStoragePolicy(nextConfig.storage_policy);
     setAbsencePolicy(nextConfig.absence_policy);
     setBaselineConfig(nextConfig);
-  }, [data]);
+    setBaselineRevisionToken(next.revision_token);
+  }, []);
 
   const currentConfig: EditableSiteConfig | null = features && oauth && mediaPolicy && storagePolicy && absencePolicy ? {
     site_name: siteName,
@@ -208,19 +137,50 @@ export function AdminSiteConfigSection({
   } : null;
   const hasPendingChanges = currentConfig !== null && baselineConfig !== null
     && !areEditableConfigsEqual(currentConfig, baselineConfig);
+  hasPendingChangesRef.current = hasPendingChanges;
+
+  useEffect(() => {
+    if (!data || hasPendingChangesRef.current) return;
+    applyServerConfig(data);
+  }, [applyServerConfig, data]);
+
   const canSave = hasPendingChanges
     && siteName.trim().length > 0
     && siteDescription.trim().length > 0
     && siteDescription.trim().length <= SITE_DESCRIPTION_MAX_LENGTH
+    && baselineRevisionToken !== null
     && !saving;
   if (loading || !data || !currentConfig || !features || !oauth || !mediaPolicy || !storagePolicy || !absencePolicy) {
     return <p className="site-config-loading">{t("common:message.loading")}</p>;
   }
   const enabledFeatureCount = FEATURE_KEYS.filter((key) => features[key]).length;
 
-  const handleSave = () => {
-    if (!canSave) return;
-    onSaveSite(currentConfig);
+  const handleSave = async () => {
+    if (!currentConfig || !canSave || !baselineRevisionToken) return;
+    try {
+      const saved = await onSaveSite({ ...currentConfig, expected_revision_token: baselineRevisionToken });
+      if (saved) applyServerConfig(saved);
+    } catch {
+      // The mutation toast explains the error; keep this editor's local draft intact for a retry.
+    }
+  };
+
+  const handleUploadLogo = async (file: File) => {
+    if (!baselineRevisionToken) return;
+    try {
+      const saved = await onUploadLogo(file, baselineRevisionToken);
+      if (!saved) return;
+      if (hasPendingChangesRef.current) {
+        setSiteLogoUrl(saved.site.site_logo_media_id
+          ? resolveMediaUrl(saved.site.site_logo_media_id)
+          : saved.site.default_site_logo_url);
+        setBaselineRevisionToken(saved.revision_token);
+        return;
+      }
+      applyServerConfig(saved);
+    } catch {
+      // The mutation toast explains the error; keep any independent configuration draft intact.
+    }
   };
 
   return (
@@ -263,7 +223,7 @@ export function AdminSiteConfigSection({
               aria-hidden="true"
               onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
-                if (file) onUploadLogo(file);
+                if (file) void handleUploadLogo(file);
                 event.currentTarget.value = "";
               }}
             />
@@ -493,7 +453,7 @@ export function AdminSiteConfigSection({
       {hasPendingChanges ? (
         <div className="site-config-savebar" role="status">
           <strong>{t("siteConfig.unsavedChanges")}</strong>
-          <Button onClick={handleSave} loading={saving} disabled={!canSave}>
+          <Button onClick={() => { void handleSave(); }} loading={saving} disabled={!canSave}>
             <SaveIcon size={16} data-icon="inline-start" />
             {t("siteConfig.action.saveAll")}
           </Button>

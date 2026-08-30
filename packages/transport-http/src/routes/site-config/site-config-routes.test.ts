@@ -52,6 +52,7 @@ const { created_at: _createdAt, updated_at: _updatedAt, ...publicSite } = site;
 
 const adminSiteConfig = {
   site,
+  revision_token: "site-config-v1",
   oauth_provider_status: {
     google: "missing_credentials",
     discord: "available",
@@ -136,7 +137,10 @@ describe("site config HTTP routes", () => {
     const secretInPayload = await app.request("/api/admin/site-config", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ oauth: { google: true, client_secret: "must-not-cross-the-api" } }),
+      body: JSON.stringify({
+        expected_revision_token: "site-config-v1",
+        oauth: { google: true, client_secret: "must-not-cross-the-api" },
+      }),
     });
     expect(secretInPayload.status).toBe(400);
     expect(update).not.toHaveBeenCalled();
@@ -144,22 +148,48 @@ describe("site config HTTP routes", () => {
     const valid = await app.request("/api/admin/site-config", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ site_name: "New Guild" }),
+      body: JSON.stringify({ expected_revision_token: "site-config-v1", site_name: "New Guild" }),
     });
     expect(valid.status).toBe(200);
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ requestId: "request-1" }), {
       site_name: "New Guild",
+      expected_revision_token: "site-config-v1",
     });
 
     const description = await app.request("/api/admin/site-config", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ site_description: "  A new public preview.  " }),
+      body: JSON.stringify({
+        expected_revision_token: "site-config-v1",
+        site_description: "  A new public preview.  ",
+      }),
     });
     expect(description.status).toBe(200);
     expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ requestId: "request-1" }), {
       site_description: "A new public preview.",
+      expected_revision_token: "site-config-v1",
     });
+  });
+
+  it("passes the multipart logo baseline to the guarded service", async () => {
+    const uploadLogo = vi.fn().mockResolvedValue(adminSiteConfig);
+    const app = appWithContext(["admin.siteConfig.manage"]);
+    app.route("/api/admin/site-config", createAdminSiteConfigRoutes({
+      service: { getAdmin: vi.fn(), update: vi.fn(), uploadLogo },
+    }));
+    const form = new FormData();
+    form.append("expected_revision_token", "site-config-v1");
+    form.append("full", new Blob(["full"], { type: "image/webp" }), "full.webp");
+    form.append("view", new Blob(["view"], { type: "image/webp" }), "view.webp");
+
+    const response = await app.request("/api/admin/site-config/logo", { method: "POST", body: form });
+
+    expect(response.status).toBe(200);
+    expect(uploadLogo).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: "request-1" }),
+      expect.anything(),
+      "site-config-v1",
+    );
   });
 
   it("can be composition-gated by the shared mutation and body middleware", async () => {

@@ -1,6 +1,11 @@
-import type {
-  GuildWarActiveView,
-  GuildWarAnalytics,
+import {
+  guildWarHistoryEtag,
+  type GuildWarAggregate,
+  type GuildWarActiveView,
+  type GuildWarAnalytics,
+  type GuildWarRecord,
+  type WarMemberRecord,
+  type WarTeamRecord,
 } from "@guild/server/modules/guild-war";
 import {
   guildWarActiveResponseSchema,
@@ -17,12 +22,6 @@ import {
   guildWarRoleTagsResponseSchema,
   warHistorySchema,
 } from "@guild/shared";
-import type {
-  GuildWarAggregate,
-  GuildWarRecord,
-  WarMemberRecord,
-  WarTeamRecord,
-} from "@guild/server/modules/guild-war";
 import { presentEvent } from "../events/events-presenter.js";
 
 export function presentGuildWarActive(view: GuildWarActiveView) {
@@ -35,6 +34,8 @@ export function presentGuildWarActive(view: GuildWarActiveView) {
       warHistoryId: null,
       eventId: view.event?.event.id ?? null,
       userId: member.userId,
+      display_name: member.display_name,
+      avatar_media_id: member.avatarMediaId,
     })),
     participants: view.participants.map((participant) => ({ ...participant })),
     etag: view.etag,
@@ -63,6 +64,7 @@ export function presentHistoryDetail(aggregate: GuildWarAggregate) {
   const members = aggregate.teams.flatMap((team) => team.members);
   return guildWarHistoryDetailResponseSchema.parse({
     ...presentHistory(aggregate.war),
+    etag: guildWarHistoryEtag(aggregate.war),
     teams: aggregate.teams.map((team) => presentTeam(team, aggregate.war, true)),
     pool: aggregate.pool.map((member) => ({
       id: member.id,

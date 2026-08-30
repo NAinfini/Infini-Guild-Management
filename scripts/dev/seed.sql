@@ -16,12 +16,15 @@ SELECT
 WHERE NOT EXISTS (SELECT 1 FROM users);
 --> statement-breakpoint
 
-INSERT OR IGNORE INTO user_credentials (user_id, login_name, password_hash, updated_at)
+INSERT INTO user_credentials (user_id, login_name, password_hash, updated_at)
 SELECT
   'dev-owner', 'admin',
   'pbkdf2-sha256$10000$aW5maW5pLWUyZS1vd25lcg$-VYi6RNWPNIdHw3hXNV9jsMaTTUvgCy-AqKVhQy7kVw',
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
+WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner')
+ON CONFLICT(user_id) DO UPDATE SET
+  password_hash = excluded.password_hash,
+  updated_at = excluded.updated_at;
 --> statement-breakpoint
 
 -- 一个开了两年的公会：会长 + 3 名管理 + 28 名成员，入会时间散在两年里。
@@ -75,14 +78,17 @@ FROM seed
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
 --> statement-breakpoint
 
-INSERT OR IGNORE INTO user_credentials (user_id, login_name, password_hash, updated_at)
+INSERT INTO user_credentials (user_id, login_name, password_hash, updated_at)
 SELECT
   id, display_name,
   'pbkdf2-sha256$10000$aW5maW5pLWUyZS1vd25lcg$-VYi6RNWPNIdHw3hXNV9jsMaTTUvgCy-AqKVhQy7kVw',
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 FROM users
 WHERE id LIKE 'dev-%' AND id <> 'dev-owner'
-  AND EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
+  AND EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner')
+ON CONFLICT(user_id) DO UPDATE SET
+  password_hash = excluded.password_hash,
+  updated_at = excluded.updated_at;
 --> statement-breakpoint
 
 -- 只填从未登录过的行：真实登录时刻由会话签发写入（auth-store 的 touchLastLogin），
@@ -108,10 +114,10 @@ WHERE id LIKE 'dev-%' AND last_login_at IS NULL
 --> statement-breakpoint
 
 INSERT INTO invite_links (
-  id, token_digest, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
+  id, code, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at
 )
 SELECT
-  id, token_digest, 'dev-owner', role_id, max_uses, used_count,
+  id, code, 'dev-owner', role_id, max_uses, used_count,
   CASE WHEN expires_modifier IS NULL THEN NULL
     ELSE strftime('%Y-%m-%dT%H:%M:%fZ', 'now', expires_modifier)
   END,
@@ -122,25 +128,25 @@ SELECT
 FROM (
   SELECT
     'dev-invite-active' AS id,
-    '1111111111111111111111111111111111111111111111111111111111111111' AS token_digest,
+    'ACTIVE0001' AS code,
     'member' AS role_id, 10 AS max_uses, 2 AS used_count,
     '+14 days' AS expires_modifier, '-2 days' AS created_modifier, NULL AS revoked_modifier
   UNION ALL SELECT
     'dev-invite-expired',
-    '2222222222222222222222222222222222222222222222222222222222222222',
+    'EXPIRE0001',
     'member', 5, 1, '-1 day', '-10 days', NULL
   UNION ALL SELECT
     'dev-invite-revoked',
-    '3333333333333333333333333333333333333333333333333333333333333333',
+    'REVOKE0001',
     'moderator', 3, 0, '+14 days', '-4 days', '-1 hour'
   UNION ALL SELECT
     'dev-invite-used-out',
-    '4444444444444444444444444444444444444444444444444444444444444444',
+    'USEDUP0001',
     'member', 2, 2, '+30 days', '-6 days', NULL
 )
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner')
 ON CONFLICT(id) DO UPDATE SET
-  token_digest = excluded.token_digest,
+  code = excluded.code,
   created_by = excluded.created_by,
   role_id = excluded.role_id,
   max_uses = excluded.max_uses,
@@ -148,18 +154,6 @@ ON CONFLICT(id) DO UPDATE SET
   expires_at = excluded.expires_at,
   created_at = excluded.created_at,
   revoked_at = excluded.revoked_at;
---> statement-breakpoint
-
-INSERT INTO login_failures (login_name, fail_count, locked_until, last_failed_at)
-SELECT
-  'member_08', 6,
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+10 minutes'),
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 minute')
-WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-member-08')
-ON CONFLICT(login_name) DO UPDATE SET
-  fail_count = excluded.fail_count,
-  locked_until = excluded.locked_until,
-  last_failed_at = excluded.last_failed_at;
 --> statement-breakpoint
 
 INSERT OR IGNORE INTO class_catalog (
@@ -347,14 +341,15 @@ WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
 
 INSERT INTO announcements (
   id, title, body_json, pinned, status, publish_at, expires_at, archived_at,
-  created_by, updated_by, revision_token, created_at, updated_at
+  created_by, updated_by, revision_token, created_at, updated_at, category, view_count
 )
 SELECT
   'dev-announcement-welcome', 'Welcome to the development guild',
   '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"This local database is populated with representative development data."}]},{"type":"image","attrs":{"src":"/api/media/dev-media-00000000019/view","alt":"Development guild hall","title":null}}]}',
   1, 'published', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day'), NULL, NULL,
   'dev-owner', 'dev-owner', 'dev-announcement-welcome-revision',
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day')
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day'),
+  'announcement', 128
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner')
 ON CONFLICT(id) DO UPDATE SET
   title = excluded.title,
@@ -366,19 +361,22 @@ ON CONFLICT(id) DO UPDATE SET
   archived_at = excluded.archived_at,
   updated_by = excluded.updated_by,
   revision_token = excluded.revision_token,
+  category = excluded.category,
+  view_count = excluded.view_count,
   updated_at = excluded.updated_at;
 --> statement-breakpoint
 
 INSERT INTO announcements (
   id, title, body_json, pinned, status, publish_at, expires_at, archived_at,
-  created_by, updated_by, revision_token, created_at, updated_at
+  created_by, updated_by, revision_token, created_at, updated_at, category, view_count
 )
 SELECT
   'dev-announcement-war', 'Guild war preparation',
   '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Review your team assignment before the upcoming guild war."}]}]}',
   0, 'published', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours'), NULL, NULL,
   'dev-owner', 'dev-moderator-29', 'dev-announcement-war-revision',
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours')
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours'),
+  'war', 84
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner')
 ON CONFLICT(id) DO UPDATE SET
   title = excluded.title,
@@ -390,12 +388,14 @@ ON CONFLICT(id) DO UPDATE SET
   archived_at = excluded.archived_at,
   updated_by = excluded.updated_by,
   revision_token = excluded.revision_token,
+  category = excluded.category,
+  view_count = excluded.view_count,
   updated_at = excluded.updated_at;
 --> statement-breakpoint
 
 INSERT INTO announcements (
   id, title, body_json, pinned, status, publish_at, expires_at, archived_at,
-  created_by, updated_by, revision_token, created_at, updated_at
+  created_by, updated_by, revision_token, created_at, updated_at, category, view_count
 )
 SELECT
   id, title, body_json, pinned, status,
@@ -410,7 +410,7 @@ SELECT
   END,
   'dev-owner', updated_by, revision_token,
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', created_modifier),
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', updated_modifier)
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', updated_modifier), category, view_count
 FROM (
   SELECT
     'dev-announcement-draft' AS id,
@@ -419,17 +419,17 @@ FROM (
     0 AS pinned, 'draft' AS status, NULL AS publish_modifier, NULL AS expires_modifier,
     NULL AS archived_modifier, 'dev-owner' AS updated_by,
     'dev-announcement-draft-revision' AS revision_token, '-3 hours' AS created_modifier,
-    '-3 hours' AS updated_modifier
+    '-3 hours' AS updated_modifier, 'event' AS category, 0 AS view_count
   UNION ALL SELECT
     'dev-announcement-scheduled', 'Scheduled: Weekend callout',
     '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"This announcement is scheduled to publish before the weekend event."}]}]}',
     0, 'scheduled', '+2 days', '+9 days', NULL, 'dev-moderator-29',
-    'dev-announcement-scheduled-revision', '-1 day', '-2 hours'
+    'dev-announcement-scheduled-revision', '-1 day', '-2 hours', 'important', 0
   UNION ALL SELECT
     'dev-announcement-archived', 'Archived: Previous season summary',
     '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"This archived announcement preserves the previous season summary."}]}]}',
     0, 'archived', '-9 days', '-6 days', '-5 days', 'dev-owner',
-    'dev-announcement-archived-revision', '-10 days', '-5 days'
+    'dev-announcement-archived-revision', '-10 days', '-5 days', 'announcement', 36
 )
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner')
 ON CONFLICT(id) DO UPDATE SET
@@ -442,6 +442,8 @@ ON CONFLICT(id) DO UPDATE SET
   archived_at = excluded.archived_at,
   updated_by = excluded.updated_by,
   revision_token = excluded.revision_token,
+  category = excluded.category,
+  view_count = excluded.view_count,
   updated_at = excluded.updated_at;
 --> statement-breakpoint
 
@@ -678,7 +680,6 @@ SELECT event_id, tag_id, required
 FROM (
   SELECT 'dev-event-weekly' AS event_id, 'dev-tag-frontline' AS tag_id, 2 AS required
   UNION ALL SELECT 'dev-event-other', 'dev-tag-support', 1
-  UNION ALL SELECT 'dev-event-raffle', 'dev-tag-damage', 1
 )
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
 --> statement-breakpoint
@@ -792,21 +793,21 @@ WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
 
 INSERT OR IGNORE INTO wiki_articles (
   id, title, slug, category_id, body_json, sort_order, pinned, archived_at, deleted_at,
-  created_by, updated_by, current_revision, revision_token, created_at, updated_at
+  created_by, updated_by, current_revision, revision_token, created_at, updated_at, view_count
 )
 SELECT id, title, slug, category_id, body_json, sort_order, pinned, NULL, NULL,
   'dev-owner', 'dev-owner', 1, revision_token,
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), view_count
 FROM (
   SELECT 'dev-wiki-article-start' AS id, 'Getting Started' AS title, 'dev-getting-started' AS slug,
     'dev-wiki-category-guides' AS category_id,
     '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Use this development wiki article to test reading, editing, revision history, and restore."}]}]}' AS body_json,
-    0 AS sort_order, 1 AS pinned, 'dev-wiki-start-revision' AS revision_token
+    0 AS sort_order, 0 AS pinned, 'dev-wiki-start-revision' AS revision_token, 96 AS view_count
   UNION ALL
   SELECT 'dev-wiki-article-conduct', 'Code of Conduct', 'dev-code-of-conduct',
     'dev-wiki-category-rules',
     '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Treat guild members with respect and keep collaboration constructive."}]}]}',
-    0, 0, 'dev-wiki-conduct-revision'
+    0, 0, 'dev-wiki-conduct-revision', 63
 )
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
 --> statement-breakpoint
@@ -826,16 +827,16 @@ WHERE article.id IN ('dev-wiki-article-start', 'dev-wiki-article-conduct')
 
 INSERT OR IGNORE INTO wiki_articles (
   id, title, slug, category_id, body_json, sort_order, pinned, archived_at, deleted_at,
-  created_by, updated_by, current_revision, revision_token, created_at, updated_at
+  created_by, updated_by, current_revision, revision_token, created_at, updated_at, view_count
 )
 SELECT
   'dev-wiki-article-war-playbook', 'Guild War Playbook', 'dev-guild-war-playbook',
   'dev-wiki-category-guides',
   '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Begin every guild war by confirming the roster and objectives."}]},{"type":"image","attrs":{"src":"/api/media/dev-media-00000000020/view","alt":"Guild war strategy","title":null}}]}',
-  1, 0, NULL, NULL, 'dev-owner', 'dev-owner', 1,
+  1, 1, NULL, NULL, 'dev-owner', 'dev-owner', 1,
   'dev-wiki-playbook-revision-v1',
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 days'),
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 days')
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 days'), 214
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
 --> statement-breakpoint
 
@@ -905,7 +906,7 @@ WHERE article.id = 'dev-wiki-article-war-playbook'
 
 INSERT OR IGNORE INTO wiki_articles (
   id, title, slug, category_id, body_json, sort_order, pinned, archived_at, deleted_at,
-  created_by, updated_by, current_revision, revision_token, created_at, updated_at
+  created_by, updated_by, current_revision, revision_token, created_at, updated_at, view_count
 )
 SELECT
   'dev-wiki-article-archived', 'Retired Strategy', 'dev-retired-strategy',
@@ -914,7 +915,7 @@ SELECT
   1, 0, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-12 days'), NULL,
   'dev-owner', 'dev-owner', 1, 'dev-wiki-archived-revision',
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-14 days'),
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-12 days')
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-12 days'), 41
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
 --> statement-breakpoint
 
@@ -947,16 +948,21 @@ WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
 --> statement-breakpoint
 
 INSERT OR IGNORE INTO storage_items (
-  id, storage_id, category_id, name, description, allow_member_deposit, allow_member_withdraw, created_at, updated_at
+  id, storage_id, category_id, name, description, rarity, unit,
+  allow_member_deposit, allow_member_withdraw, created_at, updated_at
 )
-SELECT id, 'dev-storage-main', category_id, name, description, deposit, withdraw,
+SELECT id, 'dev-storage-main', category_id, name, description, rarity, unit, deposit, withdraw,
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 FROM (
   SELECT 'dev-storage-item-crystal' AS id, 'dev-storage-category-materials' AS category_id,
-    'Refined Crystal' AS name, 'A common guild crafting material.' AS description, 1 AS deposit, 1 AS withdraw
-  UNION ALL SELECT 'dev-storage-item-ore', 'dev-storage-category-materials', 'Star Ore', 'Rare construction material.', 1, 0
-  UNION ALL SELECT 'dev-storage-item-potion', 'dev-storage-category-consumables', 'Recovery Potion', 'Shared event consumable.', 1, 1
-  UNION ALL SELECT 'dev-storage-item-token', 'dev-storage-category-consumables', 'Guild Token', 'Administrative guild currency.', 0, 0
+    'Refined Crystal' AS name, 'A common guild crafting material.' AS description,
+    'uncommon' AS rarity, 'shards' AS unit, 1 AS deposit, 1 AS withdraw
+  UNION ALL SELECT 'dev-storage-item-ore', 'dev-storage-category-materials', 'Star Ore',
+    'Rare construction material.', 'rare', 'ore', 1, 0
+  UNION ALL SELECT 'dev-storage-item-potion', 'dev-storage-category-consumables', 'Recovery Potion',
+    'Shared event consumable.', 'common', 'bottles', 1, 1
+  UNION ALL SELECT 'dev-storage-item-token', 'dev-storage-category-consumables', 'Guild Token',
+    'Administrative guild currency.', 'legendary', 'tokens', 0, 0
 )
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
 --> statement-breakpoint
@@ -1207,7 +1213,7 @@ FROM (
     END AS enemy_towers,
     CASE tally.result
       WHEN 'win' THEN 22 + (tally.week * 7) % 40
-      WHEN 'loss' THEN 0
+      WHEN 'loss' THEN 5 + (tally.week * 3) % 8
       ELSE 14 + tally.week % 9
     END AS own_base_hp,
     CASE tally.result
@@ -1269,27 +1275,45 @@ WHERE events.id LIKE 'dev-event-war-history-%'
 --> statement-breakpoint
 
 INSERT OR IGNORE INTO gallery_items (
-  id, type, url, caption, uploaded_by, revision_token, created_at
+  id, type, url, title, caption, uploaded_by, revision_token, created_at
 )
-SELECT id, type, url, caption, uploaded_by, revision_token,
+SELECT id, type, url, title, caption, uploaded_by, revision_token,
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', created_modifier)
 FROM (
   SELECT
     'dev-gallery-01' AS id, 'image' AS type, NULL AS url,
-    'Guild formation preview' AS caption, 'dev-owner' AS uploaded_by,
+    'Guild Formation at Dawn' AS title, 'Guild formation preview' AS caption, 'dev-owner' AS uploaded_by,
     'dev-gallery-01-revision' AS revision_token, '-5 days' AS created_modifier
   UNION ALL SELECT
-    'dev-gallery-02', 'image', NULL, 'Strategy workshop preview', 'dev-moderator-29',
+    'dev-gallery-02', 'image', NULL, 'Strategy Workshop', 'Strategy workshop preview', 'dev-moderator-29',
     'dev-gallery-02-revision', '-4 days'
   UNION ALL SELECT
-    'dev-gallery-03', 'image', NULL, 'Weekly mission preview', 'dev-member-01',
+    'dev-gallery-03', 'image', NULL, 'Weekly Mission Briefing', 'Weekly mission preview', 'dev-member-01',
     'dev-gallery-03-revision', '-3 days'
   UNION ALL SELECT
     'dev-gallery-video-01', 'video', 'https://www.youtube.com/watch?v=ScMzIvxBSi4',
-    'External development video preview', 'dev-moderator-29',
+    'Training Hall Walkthrough', 'External development video preview', 'dev-moderator-29',
     'dev-gallery-video-01-revision', '-2 days'
 )
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
+--> statement-breakpoint
+
+-- 点赞分布刻意不平均：预览页能同时看到热门、普通、本人已赞和零赞状态。
+WITH likes(item_id, user_id, created_modifier) AS (
+  VALUES
+    ('dev-gallery-01', 'dev-owner', '-4 days'),
+    ('dev-gallery-01', 'dev-moderator-29', '-84 hours'),
+    ('dev-gallery-01', 'dev-member-01', '-3 days'),
+    ('dev-gallery-01', 'dev-member-02', '-66 hours'),
+    ('dev-gallery-02', 'dev-member-03', '-2 days'),
+    ('dev-gallery-02', 'dev-member-04', '-36 hours'),
+    ('dev-gallery-03', 'dev-owner', '-1 day')
+)
+INSERT OR IGNORE INTO gallery_likes (item_id, user_id, created_at)
+SELECT likes.item_id, likes.user_id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', likes.created_modifier)
+FROM likes
+WHERE EXISTS (SELECT 1 FROM gallery_items WHERE gallery_items.id = likes.item_id)
+  AND EXISTS (SELECT 1 FROM users WHERE users.id = likes.user_id);
 --> statement-breakpoint
 
 INSERT OR IGNORE INTO audit_log (

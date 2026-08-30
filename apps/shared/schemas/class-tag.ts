@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
 import { classIdSchema } from "./class-catalog";
+import { catalogRecordRevisionSchema, catalogRevisionTokenSchema, catalogUpdatedAtSchema } from "./catalog-revision";
 
 const L = LIMITS.content;
 
@@ -47,6 +48,9 @@ export const classTagSchema = z.object({
 
 export const classTagListSchema = z.array(classTagSchema).max(L.classTags.max);
 export const classTagDeletedResponseSchema = z.object({ deleted: z.literal(true) }).strict();
+export const deleteClassTagSchema = catalogRecordRevisionSchema.extend({
+  expected_usage_count: z.number().int().min(0),
+}).strict();
 
 const classTagSortOrderSchema = z.number().int().min(0).max(100_000);
 
@@ -65,7 +69,10 @@ export const updateClassTagSchema = z.object({
   label: classTagLabelSchema,
   class_ids: classTagMembersSchema,
   sort_order: classTagSortOrderSchema,
-}).partial().strict().refine((value) => Object.keys(value).length > 0, {
+}).partial().extend({ expected_updated_at: catalogUpdatedAtSchema }).strict().refine(({
+  expected_updated_at: _expectedUpdatedAt,
+  ...patch
+}) => Object.keys(patch).length > 0, {
   message: "At least one class tag field is required",
 });
 
@@ -75,6 +82,7 @@ export const updateClassTagSchema = z.object({
  * class-catalog.ts 那份 schema 上面，两处不重复一遍。
  */
 export const reorderClassTagsSchema = z.object({
+  expected_revision_token: catalogRevisionTokenSchema,
   order: z.array(classTagIdSchema)
     .min(1)
     .max(L.classTags.max)

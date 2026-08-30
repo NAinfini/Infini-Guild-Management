@@ -8,40 +8,52 @@ import {
   type AuditEventInput,
   type AuditEventWrite,
 } from "../audit/public.js";
+import { MEDIA_GARBAGE_COLLECTION_BATCH_SIZE } from "../media/public.js";
 
 const JOB_LEASE_MS = 10 * 60_000;
 const JOB_LEASE_RENEWAL_MS = Math.floor(JOB_LEASE_MS / 3);
 const SESSION_ABSOLUTE_TTL_MS = 90 * 24 * 60 * 60_000;
-const MAX_BATCHES_PER_RUN = 8;
+const MAX_BATCHES_PER_RUN = 1;
 const MAX_RUN_DURATION_MS = 25_000;
 
 export const SCHEDULER_SYSTEM_ACTOR_ID = "system:scheduler";
 
 export const SCHEDULED_JOB_LIMITS = Object.freeze({
-  recurrenceMaterialization: Object.freeze({ templates: 25, occurrencesPerTemplate: 10 }),
+  recurrenceMaterialization: Object.freeze({ templates: 2, occurrencesPerTemplate: 10 }),
   announcementPublish: 50,
-  raffleAutoDraw: 25,
+  raffleAutoDraw: 2,
   eventAutoArchive: 50,
-  mediaGarbageCollection: 50,
+  mediaGarbageCollection: MEDIA_GARBAGE_COLLECTION_BATCH_SIZE,
   auditArchive: 100,
   sessionCleanup: 500,
-  systemTestCleanup: 25,
+  systemTestCleanup: 1,
 } as const);
 
 export const SCHEDULED_JOB_NAMES = ADMIN_OPERATION_JOB_NAMES;
 
 export type ScheduledJobName = AdminOperationJobName;
-export type ScheduledJobSchedule = "quarter-hourly" | "daily";
+export type ScheduledJobSchedule =
+  | "quarter-hourly"
+  | "half-hourly"
+  | "hourly-media"
+  | "hourly-cleanup"
+  | "daily";
 
 export const SCHEDULED_JOB_GROUPS = Object.freeze({
   "quarter-hourly": [
-    "recurrence-materialization",
     "announcement-publish",
     "raffle-auto-draw",
+  ] as const,
+  "half-hourly": [
+    "recurrence-materialization",
+    "event-auto-archive",
+  ] as const,
+  "hourly-media": [
+    "media-gc",
+  ] as const,
+  "hourly-cleanup": [
     "session-cleanup",
     "system-test-cleanup",
-    "event-auto-archive",
-    "media-gc",
   ] as const,
   daily: ["audit-archive"] as const,
 }) satisfies Readonly<Record<ScheduledJobSchedule, readonly ScheduledJobName[]>>;
@@ -108,11 +120,12 @@ export interface MediaGarbageCollectionJob {
 export interface AuditArchiveJob {
   run(input: Readonly<{
     before: string;
+    expiredBefore: string;
     now: string;
     limit: number;
     audit: SchedulerAuditFactory;
   }>): Promise<ScheduledJobBatchResult>;
-  inspectBacklog(input: Readonly<{ before: string }>): Promise<ScheduledJobBacklog>;
+  inspectBacklog(input: Readonly<{ before: string; expiredBefore: string }>): Promise<ScheduledJobBacklog>;
 }
 
 export interface SessionCleanupJob {
@@ -240,6 +253,24 @@ export function createSchedulerAuditFactory(runId: string, now: string): Schedul
 
 function auditArchiveCutoff(now: Date): string {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 1)).toISOString();
+}
+
+function auditArchiveRetentionCutoff(now: Date): string {
+  const year = now.getUTCFullYear() - 1;
+  const month = now.getUTCMonth();
+  const day = Math.min(
+    now.getUTCDate(),
+    new Date(Date.UTC(year, month + 1, 0)).getUTCDate(),
+  );
+  return new Date(Date.UTC(
+    year,
+    month,
+    day,
+    now.getUTCHours(),
+    now.getUTCMinutes(),
+    now.getUTCSeconds(),
+    now.getUTCMilliseconds(),
+  )).toISOString();
 }
 
 function assertBatchResult(result: ScheduledJobBatchResult, maximum: number, name: ScheduledJobName): void {
@@ -573,7 +604,10 @@ export class ScheduledJobCoordinator {
       case "media-gc":
         return this.dependencies.mediaGarbageCollection.inspectBacklog({ before: now });
       case "audit-archive":
-        return this.dependencies.auditArchive.inspectBacklog({ before: auditArchiveCutoff(nowDate) });
+        return this.dependencies.auditArchive.inspectBacklog({
+          before: auditArchiveCutoff(nowDate),
+          expiredBefore: auditArchiveRetentionCutoff(nowDate),
+        });
       case "session-cleanup":
         return this.dependencies.sessionCleanup.inspectBacklog({
           expiresBefore: now,
@@ -633,6 +667,7 @@ export class ScheduledJobCoordinator {
       case "audit-archive":
         result = await this.dependencies.auditArchive.run({
           before: auditArchiveCutoff(nowDate),
+          expiredBefore: auditArchiveRetentionCutoff(nowDate),
           now,
           limit: SCHEDULED_JOB_LIMITS.auditArchive,
           audit,

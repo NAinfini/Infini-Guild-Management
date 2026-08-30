@@ -1,6 +1,7 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
+import { webpUpload } from "../../support/files";
 import { confirmDialog, field, selectOption, setToggle } from "../../support/ui";
 
 /*
@@ -39,6 +40,7 @@ type ServerTemplate = {
   };
   visibility_offset_minutes: number;
   auto_archive: boolean;
+  attachments: string[];
   paused: boolean;
 };
 
@@ -87,7 +89,8 @@ async function createTemplate(api: APIRequestContext, extra: Record<string, unkn
 
 async function openRecurringView(page: Page): Promise<void> {
   await page.goto("/events/recurring");
-  await expect(page.getByRole("button", { name: "Recurring", exact: true })).toHaveAttribute("aria-current", "page");
+  const workspace = page.getByRole("navigation", { name: "Events workspace", exact: true });
+  await expect(workspace.getByRole("button", { name: "Recurring templates", exact: true })).toHaveAttribute("aria-current", "page");
 }
 
 /** 模板卡片。整张卡片被一个覆盖层按钮盖住，点它就是编辑。 */
@@ -149,6 +152,8 @@ test("新建模板：必填项不齐就存不了，填齐之后每个字段都�
   await field(editor, "Create event before start (Minutes)").fill("30");
 
   await setToggle(editor, "Auto archive", true);
+  await editor.locator("input[type='file']").setInputFiles(webpUpload(`template-create-${stamp}.webp`));
+  await expect(editor.getByText("Attachments (1/5)", { exact: true })).toBeVisible();
 
   await flow.click(submit, CREATE_TEMPLATE);
   await expect(page).toHaveURL(/\/events\/recurring$/);
@@ -165,6 +170,7 @@ test("新建模板：必填项不齐就存不了，填齐之后每个字段都�
   expect(saved.recurrence_rule.endAfter).toBe(5);
   expect(saved.visibility_offset_minutes, "1 天 2 小时 30 分 = 1590 分钟").toBe(1590);
   expect(saved.auto_archive).toBe(true);
+  expect(saved.attachments).toHaveLength(1);
   expect(saved.paused, "新建的模板应当是启用状态").toBe(false);
 
   const card = templateCard(page);
@@ -172,6 +178,11 @@ test("新建模板：必填项不齐就存不了，填齐之后每个字段都�
   await expect(card).toContainText("Every 2 week(s) on Tue");
   await expect(card).toContainText("24");
   await expect(card.getByText("Active", { exact: true })).toBeVisible();
+
+  await editOverlay(page).click();
+  await expect(templateEditor(page).getByText("Attachments (1/5)", { exact: true })).toBeVisible();
+  await templateEditor(page).getByRole("button", { name: "Back to template list", exact: true }).click();
+  await expect(page).toHaveURL(/\/events\/recurring$/);
 });
 
 test("编辑模板：改动落到服务端，没碰的字段一个也不能丢", async ({ page, flow, api }) => {
@@ -198,6 +209,8 @@ test("编辑模板：改动落到服务端，没碰的字段一个也不能丢",
   await field(editor, "Event title").fill(renamed);
   await field(editor, "Capacity").fill("30");
   await selectOption(editor, "Repeat frequency", "Day");
+  await editor.locator("input[type='file']").setInputFiles(webpUpload(`template-edit-${stamp}.webp`));
+  await expect(editor.getByText("Attachments (1/5)", { exact: true })).toBeVisible();
 
   await flow.click(editor.getByRole("button", { name: "Save", exact: true }), UPDATE_TEMPLATE);
   await expect(page).toHaveURL(/\/events\/recurring$/);
@@ -208,6 +221,7 @@ test("编辑模板：改动落到服务端，没碰的字段一个也不能丢",
   expect(saved.recurrence_rule.frequency).toBe("daily");
   expect(saved.description, "没动过的描述必须原样保留").toBe(`keep ${stamp}`);
   expect(saved.duration_minutes, "没动过的时长也一样").toBe(120);
+  expect(saved.attachments).toHaveLength(1);
 
   await expect(templateCard(page, renamed)).toContainText("Every 1 day(s)");
 });

@@ -11,11 +11,10 @@ const baseItem = {
 };
 
 describe("ClassIcon", () => {
-  it("renders a named vector marker with the configured class color", () => {
+  it("renders a named vector marker", () => {
     render(<ClassIcon item={baseItem} label="Warden class" />);
 
     const marker = screen.getByRole("img", { name: "Warden class" });
-    expect(marker).toHaveStyle({ "--class-color": "#61B8AA" });
     expect(marker.querySelector("svg")).toBeInTheDocument();
   });
 

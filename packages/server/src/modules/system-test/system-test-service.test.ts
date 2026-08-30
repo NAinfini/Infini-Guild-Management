@@ -44,9 +44,47 @@ describe("SystemTestService", () => {
       {} as BlobStore,
     );
 
-    await expect(service.cleanupExpired(NOW, 51)).rejects.toThrow(/between 1 and 50/);
-    await expect(service.cleanupExpired(NOW, 50)).resolves.toEqual({ processed: 0, completed: 0, failed: 0 });
-    expect(listExpiredRunIds).toHaveBeenCalledWith(NOW, 50);
+    await expect(service.cleanupExpired(NOW, 2)).rejects.toThrow(/between 1 and 1/);
+    await expect(service.cleanupExpired(NOW, 1)).resolves.toEqual({ processed: 0, completed: 0, failed: 0 });
+    expect(listExpiredRunIds).toHaveBeenCalledWith(NOW, 1);
+  });
+
+  it("removes the expired run registry after its artifacts are reclaimed", async () => {
+    let status = "running" as "running" | "completed";
+    const finalizeRun = vi.fn().mockResolvedValue(true);
+    const store = {
+      listExpiredRunIds: vi.fn().mockResolvedValue(["run-1"]),
+      getRun: vi.fn().mockImplementation(async () => ({
+        id: "run-1",
+        actorUserId: "admin-1",
+        status,
+        cleanupAttempts: status === "completed" ? 1 : 0,
+      })),
+      expireRequests: vi.fn().mockResolvedValue(undefined),
+      claimCleanup: vi.fn().mockResolvedValue(true),
+      listArtifacts: vi.fn().mockResolvedValue([]),
+      completeCleanup: vi.fn().mockImplementation(async () => {
+        status = "completed";
+        return true;
+      }),
+      failCleanup: vi.fn().mockResolvedValue(undefined),
+      finalizeRun,
+    } as unknown as SystemTestStore;
+    const artifacts = {
+      listBeforeImages: vi.fn().mockResolvedValue([]),
+    } as unknown as SystemTestArtifactCleaner;
+    const service = new SystemTestService(store, artifacts, {} as BlobStore);
+
+    await expect(service.cleanupExpired(NOW, 1)).resolves.toEqual({
+      processed: 1,
+      completed: 1,
+      failed: 0,
+    });
+    expect(finalizeRun).toHaveBeenCalledWith({
+      runId: "run-1",
+      actorUserId: "admin-1",
+      audit: null,
+    });
   });
 
   it("records only bounded system-test totals, not endpoint paths or error messages", async () => {

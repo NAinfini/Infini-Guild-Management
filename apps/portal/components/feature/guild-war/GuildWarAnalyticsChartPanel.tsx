@@ -17,6 +17,13 @@ type AnalyticsChartHeading = {
   note?: string;
 };
 
+type AnalyticsWarOutcome = {
+  id: string;
+  label: string;
+  result: string | null;
+  resultLabel: string;
+};
+
 type GuildWarAnalyticsChartPanelProps = {
   ReactEChartsCore: typeof import("echarts-for-react/esm/core").default;
   echarts: unknown;
@@ -29,6 +36,7 @@ type GuildWarAnalyticsChartPanelProps = {
   expanded: boolean;
   onToggleExpanded: () => void;
   heading: AnalyticsChartHeading;
+  warOutcomes?: AnalyticsWarOutcome[];
   t: (key: string) => string;
   emptyState?: AnalyticsChartEmptyState;
 };
@@ -45,6 +53,7 @@ export function GuildWarAnalyticsChartPanel({
   expanded,
   onToggleExpanded,
   heading,
+  warOutcomes = [],
   t,
   emptyState,
 }: GuildWarAnalyticsChartPanelProps) {
@@ -117,6 +126,19 @@ export function GuildWarAnalyticsChartPanel({
             style={{ width: "100%", height }}
           />
         )}
+        {!emptyState && warOutcomes.length > 0 ? (
+          <ol className="gwa-chart__outcomes" aria-label={t("analytics.wars.timeline")}>
+            {warOutcomes.map((outcome) => (
+              <Tooltip key={outcome.id}>
+                <TooltipTrigger render={<li data-result={outcome.result ?? "unknown"} tabIndex={0} />}>
+                  <strong>{outcome.resultLabel}</strong>
+                  <span>{outcome.label}</span>
+                </TooltipTrigger>
+                <TooltipContent>{outcome.label}</TooltipContent>
+              </Tooltip>
+            ))}
+          </ol>
+        ) : null}
       </section>
     </div>
   );

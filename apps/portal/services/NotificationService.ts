@@ -3,6 +3,8 @@ export {
   createAdminImportantNotice,
   deleteAdminImportantNotice,
   markInboxNotificationsRead,
+  markImportantNoticesRead,
+  updateNotificationPreferences,
   publishAdminImportantNotice,
   updateAdminImportantNotice,
   withdrawAdminImportantNotice,
@@ -15,6 +17,7 @@ export {
   fetchActiveImportantNotices,
   fetchAdminImportantNotice,
   fetchAdminImportantNotices,
-  fetchImportantNoticeAcknowledgements,
+  fetchImportantNoticeAudienceRoles,
   fetchInboxNotifications,
+  fetchNotificationPreferences,
 } from "../api/queries/notifications";

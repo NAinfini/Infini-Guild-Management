@@ -32,7 +32,10 @@ describe("useStorageMutations cache lifecycle", () => {
     const resetSpy = vi.spyOn(client, "resetQueries");
     const invalidateSpy = vi.spyOn(client, "invalidateQueries");
 
-    await result.current.updateItemMutation.mutateAsync({ id: "item-1", payload: { name: "Updated" } });
+    await result.current.updateItemMutation.mutateAsync({
+      id: "item-1",
+      payload: { name: "Updated", expected_updated_at: "2026-08-09T00:00:00.000Z" },
+    });
 
     expect(client.getQueryData(queryKeys.storage.item("item-1"))).toBe(item);
     expect(resetSpy).not.toHaveBeenCalled();
@@ -44,7 +47,10 @@ describe("useStorageMutations cache lifecycle", () => {
     const { client, result } = setup();
     const invalidateSpy = vi.spyOn(client, "invalidateQueries");
 
-    await result.current.createTransactionMutation.mutateAsync({ itemId: "item-1", payload: { type: "intake", quantity: 2 } });
+    await result.current.createTransactionMutation.mutateAsync({
+      itemId: "item-1",
+      payload: { idempotency_key: "mutation-stock-0001", type: "intake", quantity: 2 },
+    });
 
     const keys = invalidateSpy.mock.calls.flatMap(([filters]) => filters?.queryKey ? [filters.queryKey] : []);
     expect(keys).toContainEqual(queryKeys.storage.item("item-1"));

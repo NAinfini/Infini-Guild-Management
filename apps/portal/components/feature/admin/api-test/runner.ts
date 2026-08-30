@@ -54,6 +54,7 @@ export function methodColor(method: string): string {
     case "GET":
       return "blue";
     case "POST":
+    case "PUT":
       return "green";
     case "PATCH":
       return "yellow";
@@ -74,6 +75,27 @@ export function statusColor(status: number | null): string {
 export function truncateJson(json: string, maxLen = 2000): string {
   if (json.length <= maxLen) return json;
   return `${json.slice(0, maxLen)}\n... (truncated)`;
+}
+
+/** The console uses this code only for the following verification/registration requests. */
+export function redactInviteCreationResult(endpoint: EndpointDef, result: EndpointResult): EndpointResult {
+  if (endpoint.method !== "POST" || endpoint.path !== "/api/admin/invite-links"
+    || !isRecord(result.parsedJson) || typeof result.parsedJson.code !== "string") {
+    return result;
+  }
+  const parsedJson = { ...result.parsedJson, code: "[redacted]" };
+  return {
+    ...result,
+    body: truncateJson(JSON.stringify(parsedJson, null, 2)),
+    parsedJson,
+  };
+}
+
+export function redactInviteCredentialPath(path: string): string {
+  return path.replace(
+    /^(\/api\/auth\/(?:verify-invite|register)\/)[^/?#]+/,
+    "$1:redacted",
+  );
 }
 
 function responseMediaType(response: Response): string {
@@ -226,7 +248,7 @@ export async function runEndpointTest(
       [SYSTEM_TEST_AUDIT_HEADER]: "suppress",
       [SYSTEM_TEST_RUN_ID_HEADER]: runId,
     };
-    if (endpoint.method === "POST" || endpoint.method === "PATCH" || endpoint.method === "DELETE") {
+    if (endpoint.method === "POST" || endpoint.method === "PUT" || endpoint.method === "PATCH" || endpoint.method === "DELETE") {
       mergedHeaders["X-Requested-With"] = "XMLHttpRequest";
     }
 
@@ -246,6 +268,7 @@ export async function runEndpointTest(
       error: response.ok ? null : `${response.status} ${response.statusText}`,
       ranAt,
       parsedJson,
+      etag: response.headers.get("ETag"),
     };
   } catch (err) {
     if (signal?.aborted) {

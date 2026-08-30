@@ -82,7 +82,6 @@ export function AdminPage() {
     activateUser,
     deactivateUser,
     resetUserPassword,
-    resetUserLoginLock,
     invite,
     inviteRows,
     inviteTotal,
@@ -220,7 +219,10 @@ export function AdminPage() {
   }
 
   return (
-    <PageLayout className="admin-page" workspaceMode="contained">
+    <PageLayout
+      className="admin-page"
+      workspaceMode={activeTab === "siteConfig" ? "scroll" : "contained"}
+    >
         {activeTab === "member" && tabAccess.member ? (
         <section className="admin-page__panel">
           <ErrorBoundary>
@@ -256,7 +258,6 @@ export function AdminPage() {
               onSingleActivate={activateUser}
               onSingleDeactivate={deactivateUser}
               onSingleResetPassword={resetUserPassword}
-              onSingleResetLoginLock={resetUserLoginLock}
             />
           </Suspense>
           </ErrorBoundary>
@@ -367,8 +368,11 @@ export function AdminPage() {
                 loading={siteConfigQuery.isLoading}
                 saving={siteConfigMutations.updateSiteConfigMutation.isPending}
                 logoUploading={siteConfigMutations.uploadSiteLogoMutation.isPending}
-                onSaveSite={(payload) => siteConfigMutations.updateSiteConfigMutation.mutate(payload)}
-                onUploadLogo={(file) => siteConfigMutations.uploadSiteLogoMutation.mutate(file)}
+                onSaveSite={(payload) => siteConfigMutations.updateSiteConfigMutation.mutateAsync(payload)}
+                onUploadLogo={(file, expectedRevisionToken) => siteConfigMutations.uploadSiteLogoMutation.mutateAsync({
+                  file,
+                  expectedRevisionToken,
+                })}
               />
             </Suspense>
             </ErrorBoundary>
@@ -396,7 +400,7 @@ export function AdminPage() {
         ) : null}
 
         {activeTab === "badges" && tabAccess.badges ? (
-          <section className="admin-page__panel">
+          <section className="admin-page__panel admin-page__panel--badges">
             <ErrorBoundary>
             <Suspense fallback={suspenseFallback}>
               <LazyAdminBadgesSection

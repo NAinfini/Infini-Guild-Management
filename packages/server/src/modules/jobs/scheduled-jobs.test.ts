@@ -48,18 +48,24 @@ function createDependencies(): ScheduledJobCoordinatorDependencies {
 }
 
 describe("ScheduledJobCoordinator", () => {
-  it("runs the shared quarter-hourly jobs sequentially with bounded inputs and a system audit actor", async () => {
+  it("runs the staggered schedules with bounded inputs and a system audit actor", async () => {
     const dependencies = createDependencies();
-    const outcomes = await new ScheduledJobCoordinator(dependencies).runSchedule("quarter-hourly");
+    const coordinator = new ScheduledJobCoordinator(dependencies);
+    const outcomes = [
+      ...await coordinator.runSchedule("quarter-hourly"),
+      ...await coordinator.runSchedule("half-hourly"),
+      ...await coordinator.runSchedule("hourly-media"),
+      ...await coordinator.runSchedule("hourly-cleanup"),
+    ];
 
     expect(outcomes.map(({ name }) => name)).toEqual([
-      "recurrence-materialization",
       "announcement-publish",
       "raffle-auto-draw",
-      "session-cleanup",
-      "system-test-cleanup",
+      "recurrence-materialization",
       "event-auto-archive",
       "media-gc",
+      "session-cleanup",
+      "system-test-cleanup",
     ]);
     const recurrenceInput = vi.mocked(dependencies.recurrenceMaterialization.run).mock.calls[0]![0];
     expect(recurrenceInput).toMatchObject({
@@ -103,14 +109,19 @@ describe("ScheduledJobCoordinator", () => {
     expect(dependencies.statuses.recordOutcome).toHaveBeenCalledTimes(7);
   });
 
-  it("uses a three-full-month cutoff for the bounded daily audit batch", async () => {
+  it("uses three full online months and a one-year archive retention cutoff", async () => {
     const dependencies = createDependencies();
     await new ScheduledJobCoordinator(dependencies).runSchedule("daily");
     expect(dependencies.auditArchive.run).toHaveBeenCalledWith(expect.objectContaining({
       before: "2026-05-01T00:00:00.000Z",
+      expiredBefore: "2025-08-09T00:00:00.000Z",
       now: "2026-08-09T00:00:00.000Z",
       limit: SCHEDULED_JOB_LIMITS.auditArchive,
     }));
+    expect(dependencies.auditArchive.inspectBacklog).toHaveBeenCalledWith({
+      before: "2026-05-01T00:00:00.000Z",
+      expiredBefore: "2025-08-09T00:00:00.000Z",
+    });
   });
 
   it("skips a held lease and rejects a job that violates its bound", async () => {
@@ -132,32 +143,32 @@ describe("ScheduledJobCoordinator", () => {
     expect(overflowing.leases.release).toHaveBeenCalledOnce();
   });
 
-  it("drains remaining work within one lease and renews between batches", async () => {
+  it("stops after one media batch so one invocation stays within its D1 budget", async () => {
     const dependencies = createDependencies();
     vi.mocked(dependencies.mediaGarbageCollection.run)
-      .mockResolvedValueOnce({ processed: 50, hasMore: true })
+      .mockResolvedValueOnce({ processed: SCHEDULED_JOB_LIMITS.mediaGarbageCollection, hasMore: true })
       .mockResolvedValueOnce({ processed: 7, hasMore: false });
 
     await expect(new ScheduledJobCoordinator(dependencies).run("media-gc")).resolves.toMatchObject({
       status: "completed",
-      processed: 57,
-      hasMore: false,
-      batches: 2,
+      processed: SCHEDULED_JOB_LIMITS.mediaGarbageCollection,
+      hasMore: true,
+      batches: 1,
     });
-    expect(dependencies.mediaGarbageCollection.run).toHaveBeenCalledTimes(2);
-    expect(dependencies.leases.renew).toHaveBeenCalledOnce();
+    expect(dependencies.mediaGarbageCollection.run).toHaveBeenCalledOnce();
+    expect(dependencies.leases.renew).not.toHaveBeenCalled();
   });
 
-  it("drains scheduled publications through the shared leased batch loop", async () => {
+  it("leaves scheduled publication backlog for the next invocation", async () => {
     const dependencies = createDependencies();
     vi.mocked(dependencies.announcementPublish.run)
       .mockResolvedValueOnce({ processed: 50, hasMore: true })
       .mockResolvedValueOnce({ processed: 2, hasMore: false });
 
     await expect(new ScheduledJobCoordinator(dependencies).run("announcement-publish"))
-      .resolves.toMatchObject({ processed: 52, hasMore: false, batches: 2 });
-    expect(dependencies.announcementPublish.run).toHaveBeenCalledTimes(2);
-    expect(dependencies.leases.renew).toHaveBeenCalledOnce();
+      .resolves.toMatchObject({ processed: 50, hasMore: true, batches: 1 });
+    expect(dependencies.announcementPublish.run).toHaveBeenCalledOnce();
+    expect(dependencies.leases.renew).not.toHaveBeenCalled();
   });
 
   it("leaves hasMore set when the bounded run budget is exhausted", async () => {
@@ -165,12 +176,12 @@ describe("ScheduledJobCoordinator", () => {
     vi.mocked(dependencies.sessionCleanup.run).mockResolvedValue({ processed: 500, hasMore: true });
 
     await expect(new ScheduledJobCoordinator(dependencies).run("session-cleanup")).resolves.toMatchObject({
-      processed: 4_000,
+      processed: 500,
       hasMore: true,
-      batches: 8,
+      batches: 1,
     });
-    expect(dependencies.sessionCleanup.run).toHaveBeenCalledTimes(8);
-    expect(dependencies.leases.renew).toHaveBeenCalledTimes(7);
+    expect(dependencies.sessionCleanup.run).toHaveBeenCalledOnce();
+    expect(dependencies.leases.renew).not.toHaveBeenCalled();
   });
 
   it("isolates a failed job and reports backlog inspection failures explicitly", async () => {
@@ -178,7 +189,15 @@ describe("ScheduledJobCoordinator", () => {
     vi.mocked(dependencies.recurrenceMaterialization.run).mockRejectedValue(new Error("recurrence failed"));
     vi.mocked(dependencies.sessionCleanup.inspectBacklog).mockRejectedValue(new Error("backlog unavailable"));
 
-    const outcomes = await new ScheduledJobCoordinator(dependencies).runSchedule("quarter-hourly");
+    const outcomes = await new ScheduledJobCoordinator(dependencies).runMany([
+      "recurrence-materialization",
+      "announcement-publish",
+      "raffle-auto-draw",
+      "session-cleanup",
+      "system-test-cleanup",
+      "event-auto-archive",
+      "media-gc",
+    ]);
 
     expect(outcomes[0]).toMatchObject({
       name: "recurrence-materialization",

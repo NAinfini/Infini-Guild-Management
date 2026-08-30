@@ -52,8 +52,12 @@ test.beforeEach(async ({ api, page }) => {
   ) as ArticleDetail;
 
   for (const text of [v2, v3]) {
+    const etag = await readArticleEtag(api, article.slug);
     await readJson(
-      await api.patch(`/api/wiki/articles/${article.id}`, { data: { body_json: bodyJson(text) } }),
+      await api.patch(`/api/wiki/articles/${article.id}`, {
+        headers: { "If-Match": etag },
+        data: { body_json: bodyJson(text) },
+      }),
       `写入版本 ${text}`,
     );
   }
@@ -63,7 +67,7 @@ test.beforeEach(async ({ api, page }) => {
     .toEqual([3, 2, 1]);
 
   await page.goto(`/wiki/${article.slug}`);
-  await expect(page.locator(".wiki-article-reader-title")).toHaveText(article.title);
+  await expect(articleHeading(page, article.title)).toHaveText(article.title);
 });
 
 function bodyJson(text: string): string {
@@ -96,8 +100,20 @@ async function readBody(api: APIRequestContext): Promise<string> {
   return detail.body_json;
 }
 
+async function readArticleEtag(api: APIRequestContext, slug: string): Promise<string> {
+  const response = await api.get(`/api/wiki/articles/${slug}`);
+  await readJson(response, `读取文章版本 ${slug}`);
+  const etag = response.headers().etag;
+  if (!etag) throw new Error(`文章 ${slug} 的响应缺少 ETag`);
+  return etag;
+}
+
 function modal(page: Page): Locator {
   return dialogTitled(page, "Version History");
+}
+
+function articleHeading(page: Page, title: string): Locator {
+  return page.getByRole("heading", { name: title, exact: true, level: 2 });
 }
 
 function revisionRows(page: Page): Locator {
@@ -114,16 +130,15 @@ function revisionRow(page: Page, revision: number): Locator {
 }
 
 /*
- * 红绿片段没有类名，只有内联样式（WikiHistoryModal 的 ADDED_STYLE / REMOVED_STYLE），
- * 只能按 style 属性挑。删除段认删除线，新增段认绿色底——这两条是差异区的全部语义，
- * 不这么分就只能断言「文字都在」，那连红绿画反了都测不出来。
+ * 差异片段用稳定的语义类名区分新增与删除。不能只断言文字都在，
+ * 否则新增/删除方向画反时用例仍会通过。
  */
 function removedParts(page: Page): Locator {
-  return modal(page).locator('span[style*="line-through"]');
+  return modal(page).locator(".wiki-history-diff-removed");
 }
 
 function addedParts(page: Page): Locator {
-  return modal(page).locator('span[style*="green"]');
+  return modal(page).locator(".wiki-history-diff-added");
 }
 
 function restoreButton(page: Page): Locator {
@@ -216,7 +231,7 @@ test("恢复：取消什么都不做，确认后正文回到旧版并多记一�
 
   await expectNoDialog(page);
   await expect(
-    page.locator(".wiki-article-reader-title"),
+    articleHeading(page, article.title),
     "恢复完弹窗关掉，回到阅读态",
   ).toHaveText(article.title);
 

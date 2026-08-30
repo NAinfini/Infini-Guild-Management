@@ -7,6 +7,7 @@ import {
   eventDetailSchema,
   eventDetailBatchSchema,
   eventListResponseSchema,
+  eventMediaIdsResponseSchema,
   eventOkResponseSchema,
   eventParticipantListResponseSchema,
   eventParticipantRemovalResponseSchema,
@@ -14,7 +15,6 @@ import {
   eventRaffleDrawResponseSchema,
   eventRaffleWinnerSchema,
   eventSchema,
-  mediaIdsResponseSchema,
   recurringTemplateListResponseSchema,
   recurringTemplateSchema,
 } from "@guild/shared";
@@ -79,8 +79,8 @@ export function presentEventOk() {
   return eventOkResponseSchema.parse({ ok: true });
 }
 
-export function presentEventMediaIds(mediaIds: readonly string[]) {
-  return mediaIdsResponseSchema.parse({ media_ids: mediaIds });
+export function presentEventMediaIds(mediaIds: readonly string[], updatedAt: string) {
+  return eventMediaIdsResponseSchema.parse({ media_ids: mediaIds, updated_at: updatedAt });
 }
 
 export function presentParticipantList(participants: readonly EventViewerAggregate["participants"][number][]) {

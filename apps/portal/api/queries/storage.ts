@@ -36,6 +36,7 @@ export function fetchStorageItem(id: string): Promise<StorageItem> {
 }
 
 export function fetchStorageTransactions(params: {
+  storageId?: string;
   itemId?: string;
   recipientUserId?: string;
   page?: number;
@@ -44,6 +45,7 @@ export function fetchStorageTransactions(params: {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
   query.set("limit", String(params.limit ?? 50));
+  if (params.storageId) query.set("storage_id", params.storageId);
   if (params.itemId) query.set("item_id", params.itemId);
   if (params.recipientUserId) query.set("recipient_user_id", params.recipientUserId);
   return apiRequest<PaginatedResponse<StorageTransaction>>(`/api/storage/transactions?${query.toString()}`);

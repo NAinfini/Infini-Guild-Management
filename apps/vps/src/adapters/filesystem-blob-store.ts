@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants, lstatSync, mkdirSync, realpathSync, type Dirent } from "node:fs";
+import { constants, type Dirent } from "node:fs";
 import {
   lstat,
   link,
-  mkdir,
   open,
   opendir,
+  realpath,
   unlink,
   type FileHandle,
 } from "node:fs/promises";
@@ -27,10 +27,21 @@ import {
   type BlobRead,
   type BlobStore,
 } from "@guild/kernel";
+import {
+  ensurePrivateDirectory,
+  protectPrivateFileHandle,
+  requirePrivateDirectory,
+} from "./private-filesystem.js";
 
 const FILE_MAGIC = Buffer.from("IGB1");
 const PREFIX_BYTES = 8;
 const MAX_HEADER_BYTES = 4_096;
+const INTERNAL_TEMP_DIRECTORY = ".infini-guild-blob-temp-v1";
+const INTERNAL_TEMP_PATTERN = /^\.igb-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.pending$/i;
+const TEMP_RECOVERY_MIN_AGE_MS = 60 * 60 * 1_000;
+const TEMP_RECOVERY_SCAN_LIMIT = 128;
+const TEMP_RECOVERY_DELETE_LIMIT = 16;
+const POSIX_DIRECTORY_SYNC = process.platform !== "win32";
 
 type StoredHeader = Omit<BlobMetadata, "key">;
 type InventoryEntry = Readonly<{ entry: Dirent; key: string; sortKey: string }>;
@@ -41,6 +52,46 @@ export type FilesystemBlobStoreOptions = Readonly<{
 
 function isErrno(error: unknown, code: string): boolean {
   return error instanceof Error && "code" in error && error.code === code;
+}
+
+function assertFilesystemBlobKey(key: string): void {
+  assertBlobKey(key);
+  if (key.split("/", 1)[0] === INTERNAL_TEMP_DIRECTORY) {
+    throw new TypeError("Blob key uses the filesystem store's reserved internal namespace");
+  }
+}
+
+function isUnsupportedWindowsDirectorySync(error: unknown): boolean {
+  return !POSIX_DIRECTORY_SYNC
+    && ["EISDIR", "EINVAL", "ENOTSUP", "EPERM"].some((code) => isErrno(error, code));
+}
+
+async function syncDirectory(directory: string): Promise<void> {
+  let handle: FileHandle;
+  try {
+    handle = await open(
+      directory,
+      constants.O_RDONLY | (POSIX_DIRECTORY_SYNC ? constants.O_DIRECTORY : 0),
+    );
+  } catch (error) {
+    if (isUnsupportedWindowsDirectorySync(error)) return;
+    throw error;
+  }
+  try {
+    await handle.sync();
+  } catch (error) {
+    if (!isUnsupportedWindowsDirectorySync(error)) throw error;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function assertCanonicalPath(resolved: string): Promise<string> {
+  const canonical = await realpath(resolved);
+  if (path.relative(resolved, canonical) !== "" || path.relative(canonical, resolved) !== "") {
+    throw new Error("Blob data path changed during validation");
+  }
+  return canonical;
 }
 
 async function writeAll(handle: FileHandle, bytes: Uint8Array, position: number): Promise<void> {
@@ -118,37 +169,71 @@ function emptyBody(): ReadableStream<Uint8Array> {
   });
 }
 
+async function cleanCrashTemps(directory: string, active: ReadonlySet<string>): Promise<void> {
+  const cutoff = Date.now() - TEMP_RECOVERY_MIN_AGE_MS;
+  let scanned = 0;
+  let deleted = 0;
+  const handle = await opendir(directory);
+  for await (const entry of handle) {
+    scanned += 1;
+    if (scanned > TEMP_RECOVERY_SCAN_LIMIT) break;
+    if (!INTERNAL_TEMP_PATTERN.test(entry.name)) continue;
+    const candidate = path.join(directory, entry.name);
+    if (active.has(candidate)) continue;
+    let stats;
+    try {
+      stats = await lstat(candidate);
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) continue;
+      throw error;
+    }
+    if (stats.isSymbolicLink() || !stats.isFile() || stats.mtimeMs >= cutoff) continue;
+    try {
+      await unlink(candidate);
+      deleted += 1;
+    } catch (error) {
+      if (!isErrno(error, "ENOENT")) throw error;
+    }
+    if (deleted === TEMP_RECOVERY_DELETE_LIMIT) break;
+  }
+  if (deleted > 0) await syncDirectory(directory);
+}
+
 export class FilesystemBlobStore implements BlobStore, BlobInventory {
   private readonly root: string;
+  private readonly enforcePrivatePermissions: boolean;
+  private readonly activeTemps = new Set<string>();
 
   constructor(rootDirectory: string, options: FilesystemBlobStoreOptions = {}) {
     if (!rootDirectory.trim()) throw new TypeError("Blob root directory is required");
-    const resolved = path.resolve(rootDirectory);
-    if (options.createRoot !== false) mkdirSync(resolved, { recursive: true });
-    else {
-      try {
-        lstatSync(resolved);
-      } catch (error) {
-        if (isErrno(error, "ENOENT")) throw new Error("Blob root directory does not exist", { cause: error });
-        throw error;
+    try {
+      this.root = options.createRoot !== false
+        ? ensurePrivateDirectory(rootDirectory)
+        : requirePrivateDirectory(rootDirectory);
+    } catch (error) {
+      if (options.createRoot === false && isErrno(error, "ENOENT")) {
+        throw new Error("Blob root directory does not exist", { cause: error });
       }
+      throw error;
     }
-    this.root = realpathSync.native(resolved);
-    if (!lstatSync(this.root).isDirectory()) throw new Error("Blob root path is not a directory");
+    this.enforcePrivatePermissions = options.createRoot !== false;
   }
 
   async putIfAbsent(key: string, input: BlobPutInput): Promise<BlobMetadata> {
-    assertBlobKey(key);
+    assertFilesystemBlobKey(key);
     assertBlobPutInput(input);
     const existing = await this.head(key);
     if (existing) {
       await input.body.cancel().catch(() => undefined);
       assertBlobPutMatches(existing, key, input);
+      await syncDirectory(path.dirname(this.target(key)));
       return existing;
     }
 
     const target = await this.prepareTarget(key);
-    const temp = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.tmp`);
+    const tempDirectory = ensurePrivateDirectory(path.join(this.root, INTERNAL_TEMP_DIRECTORY));
+    await cleanCrashTemps(tempDirectory, this.activeTemps);
+    const temp = path.join(tempDirectory, `.igb-${randomUUID()}.pending`);
     const lastModified = new Date().toISOString();
     const stored: StoredHeader = {
       size: input.size,
@@ -158,8 +243,13 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
       lastModified,
     };
     const header = encodeHeader(stored);
-    const handle = await open(temp, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+    let handle: FileHandle | null = null;
+    let tempCreated = false;
+    this.activeTemps.add(temp);
     try {
+      handle = await open(temp, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+      tempCreated = true;
+      await protectPrivateFileHandle(handle, true);
       await writeAll(handle, header, 0);
       const hash = createHash("sha256");
       const reader = input.body.getReader();
@@ -188,6 +278,7 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
       if (hash.digest("hex") !== input.sha256) throw new Error("Blob sha256 does not match its content");
       await handle.sync();
       await handle.close();
+      handle = null;
       try {
         await link(temp, target);
       } catch (error) {
@@ -195,24 +286,39 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
         const winner = await this.head(key);
         if (!winner) throw new Error(`Blob ${key} disappeared after an exclusive write conflict`);
         assertBlobPutMatches(winner, key, input);
+        await syncDirectory(path.dirname(target));
         return winner;
       }
+      await assertCanonicalPath(target);
+      await syncDirectory(path.dirname(target));
       return { key, ...stored };
     } finally {
-      try {
-        await handle.close();
-      } catch {
-        // The write failure remains authoritative.
+      if (handle) {
+        try {
+          await handle.close();
+        } catch {
+          // The write failure remains authoritative.
+        }
       }
       try {
-        await unlink(temp);
-      } catch (error) {
-        if (!isErrno(error, "ENOENT")) throw error;
+        if (tempCreated) {
+          let removed = false;
+          try {
+            await unlink(temp);
+            removed = true;
+          } catch (error) {
+            if (!isErrno(error, "ENOENT")) throw error;
+          }
+          if (removed) await syncDirectory(tempDirectory);
+        }
+      } finally {
+        this.activeTemps.delete(temp);
       }
     }
   }
 
   async head(key: string): Promise<BlobMetadata | null> {
+    assertFilesystemBlobKey(key);
     const opened = await this.openObject(key);
     if (!opened) return null;
     try {
@@ -223,6 +329,7 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
   }
 
   async get(key: string, requestedRange?: BlobRange): Promise<BlobRead | null> {
+    assertFilesystemBlobKey(key);
     const opened = await this.openObject(key);
     if (!opened) return null;
     try {
@@ -255,12 +362,13 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
 
   async delete(keyOrKeys: string | readonly string[]): Promise<void> {
     const keys = typeof keyOrKeys === "string" ? [keyOrKeys] : [...keyOrKeys];
-    keys.forEach(assertBlobKey);
+    keys.forEach(assertFilesystemBlobKey);
     for (const key of keys) {
       const target = await this.existingTarget(key);
       if (!target) continue;
       try {
         await unlink(target);
+        await syncDirectory(path.dirname(target));
       } catch (error) {
         if (!isErrno(error, "ENOENT")) throw error;
       }
@@ -269,6 +377,7 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
 
   async listPrefix(request: BlobInventoryRequest): Promise<BlobInventoryPage> {
     assertBlobInventoryRequest(request);
+    this.validateDirectory(this.root);
     const keys: string[] = [];
     for await (const key of this.inventoryKeys(
       this.root,
@@ -294,33 +403,28 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
   }
 
   private target(key: string): string {
-    assertBlobKey(key);
+    assertFilesystemBlobKey(key);
     return path.join(this.root, ...key.split("/"));
   }
 
   private async prepareTarget(key: string): Promise<string> {
     const segments = key.split("/");
-    let current = this.root;
+    let current = this.validateDirectory(this.root);
     for (const segment of segments.slice(0, -1)) {
-      current = path.join(current, segment);
       try {
-        const stats = await lstat(current);
-        if (stats.isSymbolicLink() || !stats.isDirectory()) throw new Error("Blob key crosses a non-directory path");
+        current = ensurePrivateDirectory(path.join(current, segment));
       } catch (error) {
-        if (!isErrno(error, "ENOENT")) throw error;
-        try {
-          await mkdir(current);
-        } catch (mkdirError) {
-          if (!isErrno(mkdirError, "EEXIST")) throw mkdirError;
+        if (error instanceof Error && /not a directory|symbolic/i.test(error.message)) {
+          throw new Error("Blob key crosses a non-directory path", { cause: error });
         }
-        const stats = await lstat(current);
-        if (stats.isSymbolicLink() || !stats.isDirectory()) throw new Error("Blob key crosses a non-directory path");
+        throw error;
       }
     }
     const target = this.target(key);
     try {
       const stats = await lstat(target);
       if (stats.isSymbolicLink() || !stats.isFile()) throw new Error("Blob key resolves to a non-file path");
+      await assertCanonicalPath(target);
     } catch (error) {
       if (!isErrno(error, "ENOENT")) throw error;
     }
@@ -329,7 +433,7 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
 
   private async existingTarget(key: string): Promise<string | null> {
     const segments = key.split("/");
-    let current = this.root;
+    let current = this.validateDirectory(this.root);
     for (const [index, segment] of segments.entries()) {
       current = path.join(current, segment);
       try {
@@ -338,20 +442,28 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
         if (stats.isSymbolicLink() || (leaf ? !stats.isFile() : !stats.isDirectory())) {
           throw new Error("Blob key crosses a non-file path");
         }
+        if (!leaf) current = this.validateDirectory(current);
       } catch (error) {
         if (isErrno(error, "ENOENT")) return null;
         throw error;
       }
     }
-    return current;
+    return await assertCanonicalPath(current);
   }
 
   private async openObject(key: string): Promise<FileHandle | null> {
-    assertBlobKey(key);
+    assertFilesystemBlobKey(key);
     const target = await this.existingTarget(key);
     if (!target) return null;
     try {
-      return await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const handle = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        await protectPrivateFileHandle(handle, this.enforcePrivatePermissions);
+        return handle;
+      } catch (error) {
+        await handle.close().catch(() => undefined);
+        throw error;
+      }
     } catch (error) {
       if (isErrno(error, "ENOENT")) return null;
       throw error;
@@ -365,10 +477,11 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
     batchSize: number,
     checkpoint?: string,
   ): AsyncGenerator<string> {
+    const validatedDirectory = this.validateDirectory(directory);
     let after: string | undefined;
     while (true) {
       const entries = await this.selectInventoryEntries(
-        directory,
+        validatedDirectory,
         prefix,
         requestedPrefix,
         batchSize,
@@ -379,7 +492,7 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
       for (const { entry, key } of entries) {
         if (entry.isDirectory()) {
           yield* this.inventoryKeys(
-            path.join(directory, entry.name),
+            path.join(validatedDirectory, entry.name),
             key,
             requestedPrefix,
             batchSize,
@@ -405,6 +518,7 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
     const selected: InventoryEntry[] = [];
     const handle = await opendir(directory);
     for await (const entry of handle) {
+      if (prefix === "" && entry.name === INTERNAL_TEMP_DIRECTORY) continue;
       if (entry.isSymbolicLink()) throw new Error("Blob inventory cannot cross a symbolic link");
       if (!entry.isDirectory() && !entry.isFile()) {
         throw new Error("Blob inventory found an unsupported filesystem entry");
@@ -424,6 +538,12 @@ export class FilesystemBlobStore implements BlobStore, BlobInventory {
       offerInventoryEntry(selected, { entry, key, sortKey }, limit);
     }
     return selected.sort(compareInventoryEntries);
+  }
+
+  private validateDirectory(directory: string): string {
+    return this.enforcePrivatePermissions
+      ? ensurePrivateDirectory(directory)
+      : requirePrivateDirectory(directory);
   }
 }
 

@@ -46,5 +46,65 @@
     "ordinal": 7,
     "file": "0007_announcement_attachments.sql",
     "checksum": "3550da438d0fc008d7a943f221d86eae95ba9e87f7a494b8dccc4f958faa6eca"
+  },
+  {
+    "id": "0008_content_engagement",
+    "ordinal": 8,
+    "file": "0008_content_engagement.sql",
+    "checksum": "00438adf61d6c8bca73e63cf49c10729c667aa8b76c75d3f931f1a5ba8fd04f4"
+  },
+  {
+    "id": "0009_storage_single_idempotency",
+    "ordinal": 9,
+    "file": "0009_storage_single_idempotency.sql",
+    "checksum": "79e347dc5ebbd91aa59a5fe78e75b9490e7aadd6f9b51bd487f128ae12cb6516"
+  },
+  {
+    "id": "0010_login_failure_sources",
+    "ordinal": 10,
+    "file": "0010_login_failure_sources.sql",
+    "checksum": "20caad367837fb888ad5664f30767760ff060dd3cd9305d0e726085f0a34a4cd"
+  },
+  {
+    "id": "0011_storage_structure_revisions",
+    "ordinal": 11,
+    "file": "0011_storage_structure_revisions.sql",
+    "checksum": "eae62a97fd9577585074113b3c79f89983032921e589b33a93fed9b505970161"
+  },
+  {
+    "id": "0012_generic_announcement_attachments",
+    "ordinal": 12,
+    "file": "0012_generic_announcement_attachments.sql",
+    "checksum": "1e9ac10c32f58b9cd7d6723f9e0e46103ca4b7bd3694c926ae7ec56a6d26ab2a"
+  },
+  {
+    "id": "0013_remove_login_failures",
+    "ordinal": 13,
+    "file": "0013_remove_login_failures.sql",
+    "checksum": "fb1a6ec8d2c51d03b5356e00e53793b19c9fe77d8b149ad99f213adbcee82f19"
+  },
+  {
+    "id": "0014_audit_archive_retention",
+    "ordinal": 14,
+    "file": "0014_audit_archive_retention.sql",
+    "checksum": "5ec1667d6c8e673025f87b19aa6c11505e290b55b70410876ad1c99ee8baeb91"
+  },
+  {
+    "id": "0015_plain_invite_codes",
+    "ordinal": 15,
+    "file": "0015_plain_invite_codes.sql",
+    "checksum": "ceabce77b56139e60e0fedd33d69e59284ab4c57d644c68dfff61e5b44a727cc"
+  },
+  {
+    "id": "0016_d1_query_indexes",
+    "ordinal": 16,
+    "file": "0016_d1_query_indexes.sql",
+    "checksum": "1c453bbf328dd11da9a53bc9851f0db5cc8e1efb36f02e2755bc8112f9317cdd"
+  },
+  {
+    "id": "0017_notice_delivery",
+    "ordinal": 17,
+    "file": "0017_notice_delivery.sql",
+    "checksum": "99397d1bbf9afd8c46d7dba1639e01cbf99e3ac6178b49a8479bf4c990c0d0e7"
   }
 ]

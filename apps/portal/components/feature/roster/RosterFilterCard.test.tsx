@@ -1,8 +1,10 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RosterFilterCard } from "./RosterFilterCard";
+
+const { useClassCatalogMock } = vi.hoisted(() => ({ useClassCatalogMock: vi.fn() }));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -16,10 +18,7 @@ vi.mock("../../../utils/audio-player", () => ({
 }));
 
 vi.mock("../../../hooks/data/useClassData", () => ({
-  useClassCatalog: () => [
-    { id: "vanguard", label: "Vanguard" },
-    { id: "healer", label: "Healer" },
-  ],
+  useClassCatalog: useClassCatalogMock,
 }));
 
 Object.defineProperty(HTMLElement.prototype, "getAnimations", {
@@ -42,6 +41,10 @@ class WideResizeObserver {
 describe("RosterFilterCard", () => {
   beforeEach(() => {
     window.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
+    useClassCatalogMock.mockReturnValue([
+      { id: "vanguard", label: "Vanguard" },
+      { id: "healer", label: "Healer" },
+    ]);
   });
 
   it("keeps BGM playback preferences available without dominating the filter row", async () => {
@@ -101,6 +104,32 @@ describe("RosterFilterCard", () => {
 
     expect(onClassFilterChange).toHaveBeenCalledWith(["vanguard"]);
     expect(onSortModeChange).toHaveBeenCalledWith("display_name");
+  });
+
+  it("omits the empty class group while keeping sort controls available", async () => {
+    useClassCatalogMock.mockReturnValue([]);
+
+    render(
+      <RosterFilterCard
+        search=""
+        onSearchChange={vi.fn()}
+        classFilter={[]}
+        onClassFilterChange={vi.fn()}
+        sortMode="power"
+        onSortModeChange={vi.fn()}
+        audioMuted={false}
+        onAudioMutedChange={vi.fn()}
+        audioVolume={60}
+        onAudioVolumeChange={vi.fn()}
+        renderedCount={0}
+        totalCount={0}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "common:filter.toggle" }));
+    const filters = within(await screen.findByRole("dialog"));
+    expect(filters.queryByText("filter.class.aria")).not.toBeInTheDocument();
+    expect(filters.getByText("sort.aria")).toBeInTheDocument();
   });
 
 });

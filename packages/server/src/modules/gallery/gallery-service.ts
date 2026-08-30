@@ -1,15 +1,21 @@
-import type { CursorResponse, GalleryItem } from "@guild/shared";
+import { galleryItemEtag, type AuditChange, type CursorResponse, type GalleryItem } from "@guild/shared";
 import type { DeferredTasks, NotificationPublisher, RequestContext } from "@guild/kernel";
 import { AppError } from "@guild/kernel";
 import { galleryVideoHost } from "@guild/shared/utils/video";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
+import type { PushHint } from "@guild/shared/constants/push-hints";
 import { nanoid } from "nanoid";
 import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
 import type { ImageUpload, MediaService } from "../media/public.js";
 import { assertPortableLikeSearch } from "../../portable-search.js";
 
 export type GalleryCursor = Readonly<{ createdAt: string; id: string; order: "asc" | "desc" }>;
-export type GalleryRecord = GalleryItem & Readonly<{ revisionToken: string }>;
+type WithoutGalleryRevision<T> = T extends unknown ? Omit<T, "revision_token"> : never;
+export type GalleryRecord = WithoutGalleryRevision<GalleryItem> & Readonly<{ revisionToken: string }>;
+export type GalleryImageMetadata = Readonly<{ title: string; description: string | null }>;
+export type GalleryLikeWriteResult =
+  | Readonly<{ outcome: "not_found" }>
+  | Readonly<{ outcome: "ok"; changed: boolean; likeCount: number }>;
 
 export type GalleryListQuery = Readonly<{
   cursor: GalleryCursor | null;
@@ -19,11 +25,12 @@ export type GalleryListQuery = Readonly<{
   dateTo?: string;
   search?: string;
   order: "asc" | "desc";
+  viewerUserId: string | null;
 }>;
 
 export interface GalleryStore {
   list(query: GalleryListQuery): Promise<Readonly<{ data: readonly GalleryRecord[]; hasMore: boolean }>>;
-  get(id: string): Promise<GalleryRecord | null>;
+  get(id: string, viewerUserId: string | null): Promise<GalleryRecord | null>;
   createImages(input: Readonly<{
     records: readonly GalleryRecord[];
     mediaIds: readonly string[];
@@ -32,6 +39,14 @@ export interface GalleryStore {
     audit: AuditEventWrite;
   }>): Promise<void>;
   createVideo(input: Readonly<{ record: GalleryRecord; audit: AuditEventWrite }>): Promise<void>;
+  updateMetadata(input: Readonly<{
+    id: string;
+    expectedRevisionToken: string;
+    newRevisionToken: string;
+    title: string;
+    description: string | null;
+    audit: AuditEventWrite;
+  }>): Promise<boolean>;
   delete(input: Readonly<{
     id: string;
     expectedRevisionToken: string;
@@ -43,6 +58,12 @@ export interface GalleryStore {
     mutationToken: string;
     audit: AuditEventWrite;
   }>): Promise<number>;
+  setLike(input: Readonly<{
+    id: string;
+    userId: string;
+    liked: boolean;
+    audit: AuditEventWrite;
+  }>): Promise<GalleryLikeWriteResult>;
 }
 
 export class GalleryService {
@@ -53,7 +74,7 @@ export class GalleryService {
     private readonly deferred: DeferredTasks,
   ) {}
 
-  async list(_context: RequestContext, input: Readonly<{
+  async list(context: RequestContext, input: Readonly<{
     cursor?: string;
     limit: number;
     type?: "image" | "video";
@@ -73,6 +94,7 @@ export class GalleryService {
       dateTo: input.dateTo,
       search: input.search,
       order: input.order,
+      viewerUserId: context.authorization.actor?.userId ?? null,
     });
     const data = result.data.map(withoutRevision);
     const last = result.data.at(-1);
@@ -87,12 +109,12 @@ export class GalleryService {
   async uploadImages(
     context: RequestContext,
     uploads: readonly ImageUpload[],
-    captions: readonly (string | null)[],
+    metadata: readonly GalleryImageMetadata[],
     maxBytes: number,
     quota: number,
   ): Promise<Readonly<{ data: readonly GalleryItem[] }>> {
     const actor = context.authorization.require(PERMISSION_ID.GALLERY_UPLOAD);
-    if (uploads.length < 1 || uploads.length !== captions.length) throw validation("Gallery images and captions must be aligned");
+    if (uploads.length < 1 || uploads.length !== metadata.length) throw validation("Gallery images and metadata must be aligned");
     if (uploads.length > quota) throw validation(`Gallery image quota is ${quota}`);
     const mediaIds = await this.media.uploadImages(context, "gallery_image", uploads, maxBytes);
     const records = mediaIds.map<GalleryRecord>((mediaId, index) => ({
@@ -100,9 +122,12 @@ export class GalleryService {
       type: "image",
       media_id: mediaId,
       url: null,
-      caption: normalizeCaption(captions[index]),
+      title: normalizeTitle(metadata[index]?.title),
+      description: normalizeDescription(metadata[index]?.description),
       uploaded_by: actor.userId,
       uploaded_by_name: null,
+      like_count: 0,
+      liked_by_viewer: false,
       created_at: context.now,
       revisionToken: crypto.randomUUID(),
     }));
@@ -117,9 +142,9 @@ export class GalleryService {
           field: "item_ids",
           value: {
             type: "list",
-            value: records.map(({ id, caption }) => ({
+            value: records.map(({ id, title }) => ({
               type: "reference" as const,
-              value: { id, label: galleryLabel(caption, "image") },
+              value: { id, label: title },
             })),
           },
         },
@@ -132,7 +157,7 @@ export class GalleryService {
 
   async createVideo(
     context: RequestContext,
-    input: Readonly<{ url: string; caption?: string }>,
+    input: Readonly<{ url: string; title: string; description?: string | null }>,
   ): Promise<GalleryItem> {
     const actor = context.authorization.require(PERMISSION_ID.GALLERY_UPLOAD);
     const host = galleryVideoHost(input.url);
@@ -142,16 +167,19 @@ export class GalleryService {
       type: "video",
       media_id: null,
       url: input.url,
-      caption: normalizeCaption(input.caption),
+      title: normalizeTitle(input.title),
+      description: normalizeDescription(input.description),
       uploaded_by: actor.userId,
       uploaded_by_name: null,
+      like_count: 0,
+      liked_by_viewer: false,
       created_at: context.now,
       revisionToken: crypto.randomUUID(),
     };
     const audit = createAuditEvent(context, {
       subjectType: "gallery_item",
       subjectId: record.id,
-      subjectLabel: galleryLabel(record.caption, record.type),
+      subjectLabel: record.title,
       action: "create_video",
       // The URL itself never enters an audit record; the provider is what the log needs to explain the entry.
       context: [{ field: "video_host", value: { type: "text", value: host } }],
@@ -161,17 +189,88 @@ export class GalleryService {
     return withoutRevision(record);
   }
 
-  async delete(context: RequestContext, id: string): Promise<Readonly<{ ok: true }>> {
+  async update(
+    context: RequestContext,
+    id: string,
+    input: Readonly<{ title: string; description?: string | null }>,
+    expectedEtag: string,
+  ): Promise<GalleryItem> {
     const actor = context.authorization.requireAuthenticated();
-    const record = await this.store.get(id);
+    const record = await this.store.get(id, actor.userId);
+    if (!record) throw galleryNotFound();
+    if (record.uploaded_by !== actor.userId && !context.authorization.has(PERMISSION_ID.GALLERY_MANAGE)) {
+      throw new AppError({ code: "FORBIDDEN", status: 403, message: "Cannot edit this gallery item" });
+    }
+    if (expectedEtag !== galleryItemEtag({ id: record.id, revision_token: record.revisionToken })) {
+      throw galleryUpdateConflict();
+    }
+
+    const title = normalizeTitle(input.title);
+    const description = input.description === undefined
+      ? record.description
+      : normalizeDescription(input.description);
+    if (title === record.title && description === record.description) return withoutRevision(record);
+
+    const changes: AuditChange[] = [];
+    if (title !== record.title) {
+      changes.push({
+        field: "title",
+        before: { type: "text", value: record.title },
+        after: { type: "text", value: title },
+      });
+    }
+    if (description !== record.description) {
+      changes.push({
+        field: "description",
+        before: record.description === null
+          ? { type: "null", value: null }
+          : { type: "text", value: record.description },
+        after: description === null
+          ? { type: "null", value: null }
+          : { type: "text", value: description },
+      });
+    }
+
+    const newRevisionToken = crypto.randomUUID();
+    const audit = createAuditEvent(context, {
+      subjectType: "gallery_item",
+      subjectId: id,
+      subjectLabel: title,
+      action: "update",
+      changes,
+    });
+    if (!await this.store.updateMetadata({
+      id,
+      expectedRevisionToken: record.revisionToken,
+      newRevisionToken,
+      title,
+      description,
+      audit,
+    })) throw galleryUpdateConflict();
+
+    const updated = { ...record, title, description, revisionToken: newRevisionToken };
+    this.publish(id, "item_updated", context.now);
+    return withoutRevision(updated);
+  }
+
+  async delete(
+    context: RequestContext,
+    id: string,
+    expectedEtag: string,
+  ): Promise<Readonly<{ ok: true }>> {
+    const actor = context.authorization.requireAuthenticated();
+    const record = await this.store.get(id, actor.userId);
     if (!record) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Gallery item not found" });
     if (record.uploaded_by !== actor.userId && !context.authorization.has(PERMISSION_ID.GALLERY_DELETE)) {
       throw new AppError({ code: "FORBIDDEN", status: 403, message: "Cannot delete this gallery item" });
     }
+    if (expectedEtag !== galleryItemEtag({ id: record.id, revision_token: record.revisionToken })) {
+      throw new AppError({ code: "CONFLICT", status: 409, message: "Gallery item changed before deletion" });
+    }
     const audit = createAuditEvent(context, {
       subjectType: "gallery_item",
       subjectId: id,
-      subjectLabel: galleryLabel(record.caption, record.type),
+      subjectLabel: record.title,
       action: "delete",
       context: [{ field: "type", value: { type: "code", value: record.type } }],
     });
@@ -201,7 +300,40 @@ export class GalleryService {
     return { ok: true, deleted };
   }
 
-  private publish(id: string, hint: string, updatedAt: string): void {
+  like(context: RequestContext, id: string): Promise<Readonly<{ liked: boolean; like_count: number }>> {
+    return this.setLike(context, id, true);
+  }
+
+  unlike(context: RequestContext, id: string): Promise<Readonly<{ liked: boolean; like_count: number }>> {
+    return this.setLike(context, id, false);
+  }
+
+  private async setLike(
+    context: RequestContext,
+    id: string,
+    liked: boolean,
+  ): Promise<Readonly<{ liked: boolean; like_count: number }>> {
+    const actor = context.authorization.requireAuthenticated();
+    const record = await this.store.get(id, actor.userId);
+    if (!record) throw galleryNotFound();
+    const audit = createAuditEvent(context, {
+      subjectType: "gallery_item",
+      subjectId: id,
+      subjectLabel: record.title,
+      action: "update",
+      changes: [{
+        field: "liked",
+        before: { type: "boolean", value: !liked },
+        after: { type: "boolean", value: liked },
+      }],
+    });
+    const result = await this.store.setLike({ id, userId: actor.userId, liked, audit });
+    if (result.outcome === "not_found") throw galleryNotFound();
+    if (result.changed) this.publish(id, liked ? "item_liked" : "item_unliked", context.now);
+    return { liked, like_count: result.likeCount };
+  }
+
+  private publish(id: string, hint: PushHint, updatedAt: string): void {
     this.deferred.defer(() => this.notifications.publish({
       type: "entity_changed",
       entity_type: "gallery",
@@ -212,14 +344,16 @@ export class GalleryService {
   }
 }
 
-function galleryLabel(caption: string | null, fallback: GalleryRecord["type"]): string {
-  return caption?.trim() || fallback;
+function normalizeTitle(value: string | null | undefined): string {
+  const title = value?.trim() ?? "";
+  if (!title || title.length > 100) throw validation("Gallery title is invalid");
+  return title;
 }
 
-function normalizeCaption(value: string | null | undefined): string | null {
-  const caption = value?.trim() ?? "";
-  if (caption.length > 200) throw validation("Gallery caption is too long");
-  return caption || null;
+function normalizeDescription(value: string | null | undefined): string | null {
+  const description = value?.trim() ?? "";
+  if (description.length > 200) throw validation("Gallery description is too long");
+  return description || null;
 }
 
 function encodeCursor(cursor: GalleryCursor): string {
@@ -253,9 +387,17 @@ function base64UrlDecode(value: string): string {
 
 function withoutRevision(record: GalleryRecord): GalleryItem {
   const { revisionToken: _revisionToken, ...item } = record;
-  return item;
+  return { ...item, revision_token: record.revisionToken };
 }
 
 function validation(message: string): AppError {
   return new AppError({ code: "VALIDATION_ERROR", status: 400, message });
+}
+
+function galleryNotFound(): AppError {
+  return new AppError({ code: "NOT_FOUND", status: 404, message: "Gallery item not found" });
+}
+
+function galleryUpdateConflict(): AppError {
+  return new AppError({ code: "CONFLICT", status: 409, message: "Gallery item changed before update" });
 }

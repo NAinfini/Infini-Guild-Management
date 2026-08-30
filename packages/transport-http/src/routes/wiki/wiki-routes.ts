@@ -1,13 +1,17 @@
 import type { RequestContext } from "@guild/kernel";
-import { wikiArticleEtag, type WikiService } from "@guild/server/modules/wiki";
+import type { WikiService } from "@guild/server/modules/wiki";
 import {
   batchUpdateWikiCategoriesSchema,
   createWikiArticleSchema,
   createWikiCategorySchema,
+  deleteWikiCategorySchema,
   updateWikiArticleSchema,
   updateWikiCategorySchema,
+  wikiArticleEtag,
   wikiRevisionListQuerySchema,
 } from "@guild/shared";
+import { PERMISSION_ID } from "@guild/shared/constants/roles";
+import { MAX_OFFSET_PAGE } from "@guild/shared/config/limits";
 import { Hono } from "hono";
 import { z } from "zod";
 import { jsonWithEtag } from "../../core/etag.js";
@@ -17,6 +21,7 @@ import { parseFormData, parseIfMatch, parseImageUploads, parseJsonBody, parseQue
 import {
   presentWikiArticle,
   presentWikiArticlePage,
+  presentWikiArticleViewCount,
   presentWikiCategories,
   presentWikiCategory,
   presentWikiMediaIds,
@@ -27,7 +32,7 @@ import {
 
 const booleanQuery = z.enum(["true", "false"]).transform((value) => value === "true");
 const articleQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(MAX_OFFSET_PAGE).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   category_id: z.union([z.string(), z.array(z.string())]).optional(),
   archived: booleanQuery.optional(),
@@ -40,7 +45,7 @@ const revisionSchema = z.string().regex(/^[1-9]\d*$/).transform(Number)
 
 type WikiHttpService = Pick<WikiService,
   "listCategories" | "createCategory" | "updateCategory" | "batchUpdateCategories" | "deleteCategory"
-  | "listArticles" | "getArticleBySlug" | "createArticle" | "updateArticle" | "archiveArticle"
+  | "listArticles" | "getArticleBySlug" | "recordArticleView" | "createArticle" | "updateArticle" | "archiveArticle"
   | "deleteArticle" | "listRevisions" | "getRevision" | "restoreRevision" | "uploadArticleImages">;
 
 export type WikiImagePolicy = Readonly<{ maxBytes: number; quota: number }>;
@@ -68,7 +73,7 @@ export function createWikiRoutes(dependencies: WikiRouteDependencies): Hono<Http
   routes.patch("/categories/batch", async (context) => {
     const request = requestContext(context);
     const input = await parseJsonBody(context.req.raw, batchUpdateWikiCategoriesSchema, "Invalid wiki category batch payload");
-    return context.json(presentWikiCategories(await dependencies.service.batchUpdateCategories(request, input.updates)));
+    return context.json(presentWikiCategories(await dependencies.service.batchUpdateCategories(request, input)));
   });
 
   routes.patch("/categories/:id", async (context) => {
@@ -79,9 +84,13 @@ export function createWikiRoutes(dependencies: WikiRouteDependencies): Hono<Http
     ));
   });
 
-  routes.delete("/categories/:id", async (context) => context.json(presentWikiOk(
-    await dependencies.service.deleteCategory(requestContext(context), context.req.param("id")),
-  )));
+  routes.delete("/categories/:id", async (context) => {
+    const request = requestContext(context);
+    const input = await parseJsonBody(context.req.raw, deleteWikiCategorySchema, "Invalid wiki category delete payload");
+    return context.json(presentWikiOk(
+      await dependencies.service.deleteCategory(request, context.req.param("id"), input.expected_revision_token),
+    ));
+  });
 
   routes.get("/articles", async (context) => {
     const request = requestContext(context);
@@ -133,11 +142,13 @@ export function createWikiRoutes(dependencies: WikiRouteDependencies): Hono<Http
       requestContext(context),
       context.req.param("id"),
       parseRevision(context.req.param("revision")),
+      requiredIfMatch(context.req.header("If-Match")),
     ),
   )));
 
   routes.post("/articles/:id/images", async (context) => {
     const request = requestContext(context);
+    request.authorization.require(PERMISSION_ID.WIKI_ARTICLES_EDIT);
     const [uploads, policy] = await Promise.all([
       parseFormData(context.req.raw).then(parseImageUploads),
       dependencies.getImagePolicy(request),
@@ -159,16 +170,24 @@ export function createWikiRoutes(dependencies: WikiRouteDependencies): Hono<Http
       context.req.param("id"),
       input,
       publicOrigin,
-      parseIfMatch(context.req.header("If-Match")),
+      requiredIfMatch(context.req.header("If-Match")),
     )));
   });
 
   routes.delete("/articles/:id/permanent", async (context) => context.json(presentWikiOk(
-    await dependencies.service.deleteArticle(requestContext(context), context.req.param("id")),
+    await dependencies.service.deleteArticle(
+      requestContext(context),
+      context.req.param("id"),
+      requiredIfMatch(context.req.header("If-Match")),
+    ),
   )));
 
   routes.delete("/articles/:id", async (context) => context.json(presentWikiOk(
-    await dependencies.service.archiveArticle(requestContext(context), context.req.param("id")),
+    await dependencies.service.archiveArticle(
+      requestContext(context),
+      context.req.param("id"),
+      requiredIfMatch(context.req.header("If-Match")),
+    ),
   )));
 
   routes.get("/articles/:slug", async (context) => {
@@ -177,6 +196,10 @@ export function createWikiRoutes(dependencies: WikiRouteDependencies): Hono<Http
     );
     return jsonWithEtag(context.req.raw, article, wikiArticleEtag(article));
   });
+
+  routes.post("/articles/:slug/view", async (context) => context.json(presentWikiArticleViewCount(
+    await dependencies.service.recordArticleView(requestContext(context), context.req.param("slug")),
+  )));
 
   return routes;
 }
@@ -194,6 +217,12 @@ function parseRevision(value: string): number {
   const parsed = revisionSchema.safeParse(value);
   if (!parsed.success) throw validation("Invalid revision number", parsed.error.flatten());
   return parsed.data;
+}
+
+function requiredIfMatch(value: string | undefined): string {
+  const ifMatch = parseIfMatch(value);
+  if (!ifMatch) throw validation("Wiki article revision is required");
+  return ifMatch;
 }
 
 function defined<K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } {

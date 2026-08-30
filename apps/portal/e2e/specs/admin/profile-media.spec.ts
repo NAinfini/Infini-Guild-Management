@@ -1,7 +1,8 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
+import { profileMutationHeaders } from "../../support/api";
 import { expect, readJson, test, type Flow } from "../../support/test";
 import { imageVariantsUpload, wavUpload, webpUpload } from "../../support/files";
-import { confirmDialog, expectNoDialog, field } from "../../support/ui";
+import { confirmDialog, expectNoDialog, expectToast, field } from "../../support/ui";
 
 /*
  * 个人资料页「主页」屏的媒体卡：相册 / 视频 / 音乐 三组，收在一条内嵌切换里；
@@ -57,22 +58,30 @@ test.afterEach(async ({ api }) => {
      种子里两者都是 null，所以「当前有、原来没有」就一定是这条用例传上去的。 */
   const current = await readProfile(api);
   if (current.avatar_media_id && !original.avatar_media_id) {
-    const response = await api.delete(`/api/users/${userId}/media/avatar`);
+    const response = await api.delete(`/api/users/${userId}/media/avatar`, {
+      headers: await profileMutationHeaders(api, userId),
+    });
     expect(response.ok(), `清理头像返回 ${response.status()}: ${await response.text()}`).toBe(true);
   }
   if (current.audio_media_id && !original.audio_media_id) {
-    const response = await api.delete(`/api/users/${userId}/media/audio`);
+    const response = await api.delete(`/api/users/${userId}/media/audio`, {
+      headers: await profileMutationHeaders(api, userId),
+    });
     expect(response.ok(), `清理音乐返回 ${response.status()}: ${await response.text()}`).toBe(true);
   }
   /* 相册里多出来的媒体要先删掉再改顺序：只把 images 写回种子值的话，
      对象还在桶里，run 结束时的站点指纹就对不上了。 */
   const leftovers = current.images.filter((mediaId) => !original.images.includes(mediaId));
   if (leftovers.length > 0) {
-    const response = await api.delete(`/api/users/${userId}/media/images`, { data: { media_ids: leftovers } });
+    const response = await api.delete(`/api/users/${userId}/media/images`, {
+      headers: await profileMutationHeaders(api, userId),
+      data: { media_ids: leftovers },
+    });
     expect(response.ok(), `清理相册返回 ${response.status()}: ${await response.text()}`).toBe(true);
   }
 
   const restored = await api.patch(`/api/users/${userId}/profile`, {
+    headers: await profileMutationHeaders(api, userId),
     data: {
       power: original.power,
       classes: original.classes,
@@ -185,6 +194,7 @@ test("相册拖拽换序：拖完出现保存条，保存后服务端的顺序�
   for (let index = 0; index < needed; index += 1) {
     const uploaded = await readJson(
       await api.post(`/api/users/${userId}/media/images`, {
+        headers: await profileMutationHeaders(api, userId),
         multipart: imageVariantsUpload(`e2e-reorder-${Date.now()}-${index}.webp`),
       }),
       `补第 ${index + 1} 张图用于换序`,
@@ -241,10 +251,7 @@ test("视频：非白名单站点被挡下，回车能加，上移换序，删�
     mediaGroup(page, /^Videos/).getByRole("button", { name: "Add", exact: true }),
   );
   /* 非白名单链接必须显示当前可操作错误，不能静默失败。 */
-  await expect(
-    page.getByText("Use a supported video link", { exact: true }),
-    "站点不在白名单里就该说清楚，而不是静悄悄什么都不发生",
-  ).toBeVisible();
+  await expectToast(page, "Use a supported video link");
   await expect(videoRows(page), "被挡下的链接不该进列表").toHaveCount(original.video_urls.length);
   await expect(saveButton(page), "什么都没改，就不该出现保存条").toHaveCount(0);
 

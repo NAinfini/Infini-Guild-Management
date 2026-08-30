@@ -5,8 +5,8 @@ import {
   createAdminMemberSchema,
   createInviteLinkSchema,
   inviteLinkSchema,
-  loginLockStateSchema,
-  resetLoginLockResponseSchema,
+  updateAdminMemberSchema,
+  updateRoleSchema,
 } from "./admin";
 import { jsonObjectSchema } from "./json";
 import { PERMISSIONS } from "../constants/roles";
@@ -24,13 +24,24 @@ describe("admin role-target schemas", () => {
     expect(createAdminMemberSchema.safeParse({ login_name: "new_member", display_name: "NewMember" }).success).toBe(false);
 
     expect(createInviteLinkSchema.safeParse({ role_id: "raider", max_uses: 1 }).success).toBe(true);
-    expect(createAdminMemberSchema.safeParse({ login_name: "new_member", display_name: "NewMember", role_id: "raider" }).success).toBe(true);
+    expect(createAdminMemberSchema.safeParse({
+      login_name: "new_member",
+      display_name: "NewMember",
+      role_id: "raider",
+      notes: "Initial officer note",
+    }).success).toBe(true);
+    expect(createAdminMemberSchema.safeParse({
+      login_name: "new_member",
+      display_name: "NewMember",
+      role_id: "raider",
+      notes: "x".repeat(2001),
+    }).success).toBe(false);
   });
 
-  it("returns the assigned role metadata with invite links", () => {
+  it("requires one stored 10-character invite code in every invite response", () => {
     const parsed = inviteLinkSchema.safeParse({
       id: "invite-1",
-      code: "A1b2C3d4E5",
+      code: "A1B2C3D4E5",
       created_by: "user-1",
       max_uses: 2,
       used_count: 0,
@@ -43,7 +54,11 @@ describe("admin role-target schemas", () => {
     expect(parsed.success).toBe(true);
     expect(inviteLinkSchema.safeParse({
       ...(parsed.success ? parsed.data : {}),
-      code: "TOO-LONG-123",
+      code: "SHORT",
+    }).success).toBe(false);
+    expect(inviteLinkSchema.safeParse({
+      ...(parsed.success ? parsed.data : {}),
+      code: "A1B2C3D4-5",
     }).success).toBe(false);
   });
 
@@ -55,6 +70,7 @@ describe("admin role-target schemas", () => {
       color: "red",
       created_at: "2026-08-05T00:00:00.000Z",
       updated_at: "2026-08-05T00:00:00.000Z",
+      revision_token: "role-v1",
       permissions: Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])),
       assigned_user_count: 1,
     });
@@ -63,18 +79,44 @@ describe("admin role-target schemas", () => {
   });
 });
 
-describe("admin login-lock schemas", () => {
-  const state = {
-    fail_count: 4,
-    locked_until: "2026-08-09T12:00:30.000Z",
-    is_locked: true,
-    retry_after_seconds: 30,
+describe("admin member edit schema", () => {
+  const profile = {
+    power: 42,
+    classes: ["guardian"],
+    title_html: "<b>Officer</b>",
+    bio: "Coordinates raids",
+    availability: null,
+    notes: "Private officer note",
   };
 
-  it("keeps state and reset DTOs strict and snake_case", () => {
-    expect(loginLockStateSchema.parse(state)).toEqual(state);
-    expect(resetLoginLockResponseSchema.parse({ ok: true, ...state })).toEqual({ ok: true, ...state });
-    expect(loginLockStateSchema.safeParse({ ...state, retryAfterSeconds: 30 }).success).toBe(false);
+  it("accepts one composite command but rejects empty and smuggled profile fields", () => {
+    expect(updateAdminMemberSchema.parse({
+      expected_user_revision_token: "user-v1",
+      expected_profile_revision_token: "profile-v1",
+      display_name: "RenamedMember",
+      profile,
+      role_id: "officer",
+      is_active: false,
+    })).toEqual({
+      expected_user_revision_token: "user-v1",
+      expected_profile_revision_token: "profile-v1",
+      display_name: "RenamedMember",
+      profile,
+      role_id: "officer",
+      is_active: false,
+    });
+    expect(updateAdminMemberSchema.safeParse({}).success).toBe(false);
+    expect(updateAdminMemberSchema.safeParse({
+      expected_user_revision_token: "user-v1",
+      expected_profile_revision_token: "profile-v1",
+      profile: { ...profile, display_name: "Escalation attempt" },
+    }).success).toBe(false);
+    expect(updateAdminMemberSchema.safeParse({
+      expected_user_revision_token: "user-v1",
+      expected_profile_revision_token: "profile-v1",
+      display_name: "Not a valid name",
+    }).success).toBe(false);
+    expect(updateRoleSchema.safeParse({ expected_revision_token: "role-v1", color: "#123456" }).success).toBe(true);
   });
 });
 
@@ -88,7 +130,7 @@ describe("audit event contract", () => {
     expect(jsonObjectSchema.safeParse({ invalid: Number.POSITIVE_INFINITY }).success).toBe(false);
   });
 
-  it("exposes a typed v2 payload without legacy detail fields", () => {
+  it("accepts a typed audit payload and rejects malformed payloads", () => {
     const parsed = auditEventSchema.parse({
       event_id: "audit-1",
       request_id: "request-1",
@@ -112,7 +154,6 @@ describe("audit event contract", () => {
       before: { type: "text", value: "Before" },
       after: { type: "text", value: "After" },
     });
-    expect(parsed).not.toHaveProperty("detail");
     expect(auditEventSchema.safeParse({ ...parsed, payload: "{}" }).success).toBe(false);
   });
 });

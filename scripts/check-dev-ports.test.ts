@@ -60,11 +60,11 @@ describe("development port preflight", () => {
     expect(cloudflareDev.indexOf("pnpm db:seed:cloudflare:local"))
       .toBeLessThan(cloudflareDev.indexOf("concurrently"));
     expect(packageJson.scripts["dev:cloudflare:server"])
-      .toBe("node scripts/dev/cloudflare-local.mjs serve");
+      .toBe("tsx scripts/dev/cloudflare-local.mjs serve");
     expect(packageJson.scripts["db:migrate:cloudflare:local"])
-      .toBe("node scripts/dev/cloudflare-local.mjs migrate");
+      .toBe("tsx scripts/dev/cloudflare-local.mjs migrate");
     expect(packageJson.scripts["db:seed:cloudflare:local"])
-      .toBe("node scripts/dev/cloudflare-local.mjs seed");
+      .toBe("tsx scripts/dev/cloudflare-local.mjs seed");
     expect(packageJson.scripts["dev:vps"]).toContain("check-dev-ports.mjs --runtime vps");
     expect(packageJson.scripts["dev:vps"]).toContain("pnpm db:seed:vps");
   });

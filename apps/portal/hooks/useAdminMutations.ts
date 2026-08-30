@@ -5,8 +5,6 @@ import { useTranslation } from "react-i18next";
 import { notifySuccess, notifyWarning, notifyError } from "../utils/notifications";
 import type { MemberDetailFormState } from "../types/admin";
 import {
-  type AdminLoginLockState,
-  adminUpdateProfile,
   batchDeactivateAdminUsers,
   batchDeleteAdminUsers,
   batchReactivateAdminUsers,
@@ -16,9 +14,9 @@ import {
   deactivateAdminUser,
   deleteAdminInviteLink,
   reactivateAdminUser,
-  resetAdminUserLoginLock,
   resetAdminUserPassword,
   revokeAdminInviteLink,
+  updateAdminMember,
   updateAdminUserRole,
   downloadAdminAuditLogExport,
   createRole,
@@ -28,7 +26,7 @@ import {
 import { queryKeys } from "../api/query-keys";
 import { copyPlainText } from "../utils/copy";
 import { auditExportDatePart, downloadFileBlob } from "../utils/admin";
-import { fromDateTimeLocalValue } from "../utils/datetime";
+import { fromDateTimeLocalValue, localDayEndIso, localDayStartIso } from "../utils/datetime";
 import { useAdminPendingActions } from "./useAdminPendingActions";
 import { revalidateSessionSnapshot } from "../session-transition";
 
@@ -36,8 +34,7 @@ export type AdminUserPendingAction =
   | "change-role"
   | "activate"
   | "deactivate"
-  | "reset-password"
-  | "reset-login-lock";
+  | "reset-password";
 
 export type AdminInvitePendingAction = "revoke" | "delete";
 
@@ -139,15 +136,6 @@ export function useAdminMutations({
     onError: (error) => showError(error, t("message.passwordResetFailed")),
   });
 
-  const resetLoginLockMutation = useMutation({
-    mutationFn: (userId: string) => resetAdminUserLoginLock(userId),
-    onSuccess: async (payload, userId) => {
-      notifySuccess(t("message.loginLockCleared", { seconds: payload.retry_after_seconds }));
-      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.loginLock(userId) });
-    },
-    onError: (error) => showError(error, t("message.loginLockClearFailed")),
-  });
-
   const createMemberMutation = useMutation({
     mutationFn: async (data: {
       login_name: string;
@@ -159,12 +147,8 @@ export function useAdminMutations({
         login_name: data.login_name,
         display_name: data.display_name,
         role_id: data.roleId,
+        notes: data.notes || null,
       });
-      if (data.notes) {
-        await adminUpdateProfile(result.user_id, {
-          ...(data.notes ? { notes: data.notes } : {}),
-        });
-      }
       return result;
     },
     onSuccess: async (payload) => {
@@ -243,8 +227,8 @@ export function useAdminMutations({
       downloadAdminAuditLogExport({
         format,
         search: auditFilter.search.trim() || undefined,
-        start_at: auditFilter.dateFrom && auditFilter.dateTo ? `${auditFilter.dateFrom}T00:00:00.000Z` : undefined,
-        end_at: auditFilter.dateFrom && auditFilter.dateTo ? `${auditFilter.dateTo}T23:59:59.999Z` : undefined,
+        start_at: localDayStartIso(auditFilter.dateFrom),
+        end_at: localDayEndIso(auditFilter.dateTo),
         entity_type: auditFilter.entityType || undefined,
         entity_id: auditFilter.entityId || undefined,
         actor_id: auditFilter.actorId || undefined,
@@ -277,35 +261,39 @@ export function useAdminMutations({
   });
 
   const updateMemberProfileMutation = useMutation({
-    mutationFn: async ({
+    mutationFn: ({
       userId,
+      expectedUserRevisionToken,
+      expectedProfileRevisionToken,
+      displayName,
       profile,
       role,
       isActive,
     }: {
       userId: string;
-      profile?: Pick<MemberDetailFormState, "power" | "classes" | "titleHtml" | "bio" | "notes">;
+      expectedUserRevisionToken: string;
+      expectedProfileRevisionToken: string;
+      displayName?: string;
+      profile?: Pick<MemberDetailFormState, "power" | "classes" | "titleHtml" | "bio" | "availability" | "notes">;
       role?: string;
       isActive?: boolean;
-    }) => {
-      await Promise.all([
-        profile
-          ? adminUpdateProfile(userId, {
-              power: profile.power,
-              classes: profile.classes,
-              title_html: profile.titleHtml || null,
-              bio: profile.bio || null,
-              notes: profile.notes || null,
-            })
-          : Promise.resolve(),
-        role ? updateAdminUserRole(userId, role) : Promise.resolve(),
-        isActive === undefined
-          ? Promise.resolve()
-          : isActive
-            ? reactivateAdminUser(userId)
-            : deactivateAdminUser(userId),
-      ]);
-    },
+    }) => updateAdminMember(userId, {
+      expected_user_revision_token: expectedUserRevisionToken,
+      expected_profile_revision_token: expectedProfileRevisionToken,
+      ...(displayName === undefined ? {} : { display_name: displayName }),
+      ...(profile === undefined ? {} : {
+        profile: {
+          power: profile.power,
+          classes: profile.classes,
+          title_html: profile.titleHtml || null,
+          bio: profile.bio || null,
+          availability: profile.availability,
+          notes: profile.notes || null,
+        },
+      }),
+      ...(role === undefined ? {} : { role_id: role }),
+      ...(isActive === undefined ? {} : { is_active: isActive }),
+    }),
     onSuccess: async () => {
       notifySuccess(t("message.memberProfileSaved"));
       await invalidateRoleAuthority();
@@ -465,10 +453,9 @@ export function useAdminMutations({
 
   const updateRoleConfig = async (id: string, payload: Parameters<typeof updateRole>[1]) => {
     try {
-      await updateRoleConfigMutation.mutateAsync({ id, payload });
-      return true;
+      return await updateRoleConfigMutation.mutateAsync({ id, payload });
     } catch {
-      return false;
+      return null;
     }
   };
 
@@ -502,29 +489,6 @@ export function useAdminMutations({
       () => resetPasswordMutation.mutateAsync({ userId, currentPassword }),
     );
     return (pending ?? Promise.resolve()).then(() => undefined);
-  };
-
-  const resetUserLoginLock = async (userId: string, lockState: AdminLoginLockState) => {
-    if (isActionPending({ resource: "user", resourceId: userId, action: "reset-login-lock" })) {
-      return;
-    }
-    const confirmed = await confirm({
-      title: t("confirm.loginLockTitle"),
-      description: t("confirm.loginLockDescription", {
-        display_name: resolveUsername(userId) ?? userId,
-        seconds: lockState.retry_after_seconds,
-      }),
-      confirmLabel: t("member.resetLoginLock"),
-      cancelLabel: t("common:action.cancel"),
-      intent: "warning",
-    });
-    if (!confirmed) return;
-
-    const pending = runPendingAction(
-      { resource: "user", resourceId: userId, action: "reset-login-lock" },
-      () => resetLoginLockMutation.mutateAsync(userId),
-    );
-    if (pending) await pending.catch(() => undefined);
   };
 
   const revokeInvite = (inviteId: string) => {
@@ -588,7 +552,6 @@ export function useAdminMutations({
     deactivateMutation,
     reactivateMutation,
     resetPasswordMutation,
-    resetLoginLockMutation,
     createMemberMutation,
     batchRoleMutation,
     batchDeleteMutation,
@@ -614,7 +577,6 @@ export function useAdminMutations({
     activateUser,
     deactivateUser,
     resetUserPassword,
-    resetUserLoginLock,
     revokeInvite,
     deleteInvite,
     isUserActionPending,

@@ -4,6 +4,8 @@ import {
   absenceWindowQuerySchema,
   inclusiveIsoDateSpanDays,
   memberProfileSchema,
+  memberProfileMediaRevisionToken,
+  memberProfileRevisionEtag,
   permissionSetToRecord,
   updateProfileSchema,
   userSchema,
@@ -19,8 +21,10 @@ import type {
   AbsencePolicyReader,
   MemberMediaRecord,
   MemberProfileRecord,
+  MemberProfileUpdate,
   MemberProjection,
   MemberRecord,
+  MemberTarget,
   MembersStore,
   MemberView,
   MemberWireRecord,
@@ -88,6 +92,12 @@ export function buildMemberWire(view: MemberView): MemberWireRecord {
     user: buildUserWire(view.record.user),
     profile: buildProfileWire(view.record.profile, view.media, view.projection),
     badges: view.record.badges,
+    ...(view.projection === "admin" || view.includeEditRevisions ? {
+      edit_revisions: {
+        user_revision_token: view.record.user.revisionToken,
+        profile_revision_token: view.record.profile.revisionToken,
+      },
+    } : {}),
   };
 }
 
@@ -159,7 +169,14 @@ export class MemberService {
       throw new AppError({ code: "NOT_FOUND", status: 404, message: "User not found" });
     }
     const media = await this.options.media.listForMembers([userId]);
-    return { record, media: media.get(userId) ?? EMPTY_MEDIA, projection };
+    return {
+      record,
+      media: media.get(userId) ?? EMPTY_MEDIA,
+      projection,
+      includeEditRevisions: !externalView
+        && context.authorization.isAuthenticated()
+        && context.authorization.requireAuthenticated().userId === userId,
+    };
   }
 
   async readOwnProfile(userId: string): Promise<MemberProfile | null> {
@@ -174,8 +191,14 @@ export class MemberService {
     return { active_members: result.activeMembers, total_members: result.totalMembers };
   }
 
-  async updateProfile(context: RequestContext, userId: string, body: unknown): Promise<MemberProfile> {
+  async updateProfile(
+    context: RequestContext,
+    userId: string,
+    body: unknown,
+    ifMatch?: string,
+  ): Promise<MemberProfileUpdate> {
     const { target, isAdminEdit } = await this.requireEditableTarget(context, userId);
+    this.requireProfileRevision(target, ifMatch);
     const parsed = (isAdminEdit ? adminUpdateProfileSchema : updateProfileSchema).safeParse(body);
     if (!parsed.success) {
       throw new AppError({
@@ -271,7 +294,10 @@ export class MemberService {
       });
     }
     const nextMedia = input.images === undefined ? currentMedia : { ...currentMedia, images: input.images };
-    return buildProfileWire(profile, nextMedia, isAdminEdit ? "admin" : "member");
+    return {
+      profile: buildProfileWire(profile, nextMedia, isAdminEdit ? "admin" : "member"),
+      revisionToken: profile.revisionToken,
+    };
   }
 
   async listAbsenceWindow(context: RequestContext, from: string, to: string) {
@@ -367,80 +393,130 @@ export class MemberService {
     return { ok: true };
   }
 
-  async uploadImages(context: RequestContext, userId: string, uploads: readonly ImageUpload[]) {
+  async uploadImages(context: RequestContext, userId: string, uploads: readonly ImageUpload[], ifMatch?: string) {
     const target = await this.requireEditableTarget(context, userId);
-    return { media_ids: await this.options.media.uploadProfileImages(
-      context,
-      userId,
-      uploads,
-      createAuditEvent(context, {
-        subjectType: "member_profile",
-        subjectId: userId,
-        subjectLabel: target.target.display_name,
-        action: "upload_images",
-        context: [{ field: "upload_count", value: { type: "number", value: uploads.length } }],
-      }),
-    ) };
+    const expectedProfileRevisionToken = this.requireProfileRevision(target.target, ifMatch);
+    const audit = createAuditEvent(context, {
+      subjectType: "member_profile",
+      subjectId: userId,
+      subjectLabel: target.target.display_name,
+      action: "upload_images",
+      context: [{ field: "upload_count", value: { type: "number", value: uploads.length } }],
+    });
+    return {
+      media_ids: await this.options.media.uploadProfileImages(
+        context,
+        userId,
+        uploads,
+        audit,
+        expectedProfileRevisionToken,
+      ),
+      profileRevisionToken: memberProfileMediaRevisionToken(audit.eventId),
+    };
   }
 
-  async deleteImages(context: RequestContext, userId: string, mediaIds: readonly string[]) {
+  async deleteImages(context: RequestContext, userId: string, mediaIds: readonly string[], ifMatch?: string) {
     const target = await this.requireEditableTarget(context, userId);
-    const deleted = await this.options.media.deleteProfileImages(context, userId, mediaIds, createAuditEvent(context, {
+    const expectedProfileRevisionToken = this.requireProfileRevision(target.target, ifMatch);
+    const audit = createAuditEvent(context, {
       subjectType: "member_profile",
       subjectId: userId,
       subjectLabel: target.target.display_name,
       action: "delete_images",
       // The store appends the images it actually removed; a requested count here would contradict it.
-    }));
-    return { ok: true as const, deleted };
+    });
+    const deleted = await this.options.media.deleteProfileImages(
+      context,
+      userId,
+      mediaIds,
+      audit,
+      expectedProfileRevisionToken,
+    );
+    return {
+      ok: true as const,
+      deleted,
+      profileRevisionToken: deleted > 0
+        ? memberProfileMediaRevisionToken(audit.eventId)
+        : expectedProfileRevisionToken,
+    };
   }
 
-  async uploadAvatar(context: RequestContext, userId: string, upload: ImageUpload) {
+  async uploadAvatar(context: RequestContext, userId: string, upload: ImageUpload, ifMatch?: string) {
     const target = await this.requireEditableTarget(context, userId);
-    const mediaId = await this.options.media.uploadAvatar(context, userId, upload, createAuditEvent(context, {
+    const expectedProfileRevisionToken = this.requireProfileRevision(target.target, ifMatch);
+    const audit = createAuditEvent(context, {
       subjectType: "member_profile",
       subjectId: userId,
       subjectLabel: target.target.display_name,
       action: "upload_avatar",
       context: [],
-    }));
-    return { media_id: mediaId };
+    });
+    const mediaId = await this.options.media.uploadAvatar(
+      context,
+      userId,
+      upload,
+      audit,
+      expectedProfileRevisionToken,
+    );
+    return { media_id: mediaId, profileRevisionToken: memberProfileMediaRevisionToken(audit.eventId) };
   }
 
-  async deleteAvatar(context: RequestContext, userId: string) {
+  async deleteAvatar(context: RequestContext, userId: string, ifMatch?: string) {
     const target = await this.requireEditableTarget(context, userId);
-    await this.options.media.deleteAvatar(context, userId, createAuditEvent(context, {
+    const expectedProfileRevisionToken = this.requireProfileRevision(target.target, ifMatch);
+    const audit = createAuditEvent(context, {
       subjectType: "member_profile",
       subjectId: userId,
       subjectLabel: target.target.display_name,
       action: "delete_avatar",
       context: [],
-    }));
-    return { ok: true as const };
+    });
+    const deleted = await this.options.media.deleteAvatar(context, userId, audit, expectedProfileRevisionToken);
+    return {
+      ok: true as const,
+      profileRevisionToken: deleted
+        ? memberProfileMediaRevisionToken(audit.eventId)
+        : expectedProfileRevisionToken,
+    };
   }
 
-  async uploadAudio(context: RequestContext, userId: string, upload: AudioUpload) {
+  async uploadAudio(context: RequestContext, userId: string, upload: AudioUpload, ifMatch?: string) {
     const target = await this.requireEditableTarget(context, userId);
-    const mediaId = await this.options.media.uploadAudio(context, userId, upload, createAuditEvent(context, {
+    const expectedProfileRevisionToken = this.requireProfileRevision(target.target, ifMatch);
+    const audit = createAuditEvent(context, {
       subjectType: "member_profile",
       subjectId: userId,
       subjectLabel: target.target.display_name,
       action: "upload_audio",
       context: [],
-    }));
-    return { media_id: mediaId };
+    });
+    const mediaId = await this.options.media.uploadAudio(
+      context,
+      userId,
+      upload,
+      audit,
+      expectedProfileRevisionToken,
+    );
+    return { media_id: mediaId, profileRevisionToken: memberProfileMediaRevisionToken(audit.eventId) };
   }
 
-  async deleteAudio(context: RequestContext, userId: string) {
+  async deleteAudio(context: RequestContext, userId: string, ifMatch?: string) {
     const target = await this.requireEditableTarget(context, userId);
-    await this.options.media.deleteAudio(context, userId, createAuditEvent(context, {
+    const expectedProfileRevisionToken = this.requireProfileRevision(target.target, ifMatch);
+    const audit = createAuditEvent(context, {
       subjectType: "member_profile",
       subjectId: userId,
       subjectLabel: target.target.display_name,
       action: "delete_audio",
       context: [],
-    }));
-    return { ok: true as const };
+    });
+    const deleted = await this.options.media.deleteAudio(context, userId, audit, expectedProfileRevisionToken);
+    return {
+      ok: true as const,
+      profileRevisionToken: deleted
+        ? memberProfileMediaRevisionToken(audit.eventId)
+        : expectedProfileRevisionToken,
+    };
   }
 
   private async requireEditableTarget(context: RequestContext, userId: string) {
@@ -453,6 +529,13 @@ export class MemberService {
     context.authorization.require(PERMISSION_ID.ADMIN_USERS_EDIT);
     assertTargetBelowActor(actor, target, { allowSelf: false });
     return { target, isAdminEdit: true } as const;
+  }
+
+  private requireProfileRevision(target: MemberTarget, ifMatch: string | undefined): string {
+    if (ifMatch !== memberProfileRevisionEtag(target.profileRevisionToken)) {
+      throw new AppError({ code: "CONFLICT", status: 409, message: "Member profile changed" });
+    }
+    return target.profileRevisionToken;
   }
 }
 

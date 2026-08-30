@@ -200,7 +200,5 @@
   "account.exit.title": "退出登录",
   "account.exit.description": "仅退出当前设备，资料和记录将保留。",
   "account.validation.currentPasswordRequired": "请输入当前密码。",
-  "account.validation.passwordMinLength": "密码至少需要 8 个字符。",
-  "account.validation.passwordMismatch": "两次输入的新密码不一致。",
   "aria.selectClass": "选择职业"
 }

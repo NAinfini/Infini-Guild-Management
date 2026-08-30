@@ -28,6 +28,8 @@ function store(overrides: Partial<NotificationInboxStore> = {}): NotificationInb
   return {
     list: vi.fn(),
     markRead: vi.fn(),
+    getPreferences: vi.fn(),
+    updatePreferences: vi.fn(),
     ...overrides,
   };
 }
@@ -62,5 +64,35 @@ describe("NotificationInboxService", () => {
 
     await tasks[0]!();
     expect(publish).toHaveBeenCalledWith({ type: "inbox_changed", user_id: "user-1" });
+  });
+
+  it("reads and updates the authenticated member's notification preferences", async () => {
+    const preferences = {
+      member_joined: true,
+      announcement_published: true,
+      event_created: false,
+      wiki_article_created: true,
+      updated_at: NOW,
+    };
+    const updatedPreferences = { ...preferences, announcement_published: false };
+    const getPreferences = vi.fn()
+      .mockResolvedValueOnce(preferences)
+      .mockResolvedValueOnce(preferences);
+    const updatePreferences = vi.fn().mockResolvedValue(updatedPreferences);
+    const service = new NotificationInboxService(
+      store({ getPreferences, updatePreferences }),
+      { publish: vi.fn() },
+      { defer: vi.fn() },
+    );
+
+    await expect(service.getPreferences(context())).resolves.toEqual(preferences);
+    await expect(service.updatePreferences(context(), { announcement_published: false }))
+      .resolves.toEqual(updatedPreferences);
+    expect(updatePreferences).toHaveBeenCalledWith(expect.objectContaining({
+      userId: "user-1",
+      patch: { announcement_published: false },
+      now: NOW,
+      audit: expect.any(Object),
+    }));
   });
 });

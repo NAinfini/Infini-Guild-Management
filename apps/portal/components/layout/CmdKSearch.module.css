@@ -102,6 +102,16 @@
   margin-top: var(--space-xs);
 }
 
+.errorState {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  color: var(--status-danger);
+  font-size: var(--text-body);
+}
+
 .resultOption {
   min-height: var(--control-height-regular);
   padding: var(--space-sm);

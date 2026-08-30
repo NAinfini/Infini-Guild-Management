@@ -1,6 +1,11 @@
 import { create } from "zustand";
-import { type SiteMediaPolicy, type SiteConfig as SharedSiteConfig } from "@guild/shared";
+import {
+  type PublicSiteConfig,
+  type SiteMediaPolicy,
+  type SiteConfig as SharedSiteConfig,
+} from "@guild/shared";
 import { DEFAULT_FEATURE_FLAGS, type FeatureFlags } from "@guild/shared/config/features";
+import { resolveMediaUrl } from "../utils/media";
 
 type SiteConfig = {
   siteName: string;
@@ -44,3 +49,25 @@ export const useSiteConfigStore = create<SiteConfig>((set) => ({
   }),
   setFeatures: (features) => set((state) => ({ features: { ...state.features, ...features } })),
 }));
+
+export function applyPublicSiteConfig(config: PublicSiteConfig): void {
+  const siteLogoUrl = config.site_logo_media_id
+    ? resolveMediaUrl(config.site_logo_media_id)
+    : config.default_site_logo_url;
+  const store = useSiteConfigStore.getState();
+  store.setSiteConfig({
+    siteName: config.site_name,
+    siteDescription: config.site_description,
+    siteLogoUrl,
+    mediaPolicy: config.media_policy,
+    oauth: config.oauth,
+  });
+  store.setFeatures(config.features);
+
+  const splashTitle = document.getElementById("splash-title");
+  if (splashTitle) splashTitle.textContent = config.site_name;
+  const favicon = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+  if (favicon && favicon.href !== new URL(siteLogoUrl, document.baseURI).href) {
+    favicon.href = siteLogoUrl;
+  }
+}

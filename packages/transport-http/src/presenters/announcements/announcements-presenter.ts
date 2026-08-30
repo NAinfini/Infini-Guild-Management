@@ -3,7 +3,7 @@ import {
   announcementAttachmentUploadResponseSchema,
   announcementSchema,
   announcementSummarySchema,
-  mediaIdsResponseSchema,
+  announcementViewCountSchema,
   type Announcement,
   type AnnouncementSummary,
   type PaginatedResponse,
@@ -35,10 +35,10 @@ export function presentAnnouncementPendingAttachment(value: unknown) {
   return announcementAttachmentUploadResponseSchema.parse(value);
 }
 
-export function presentAnnouncementMediaIds(value: unknown): { media_ids: string[] } {
-  return mediaIdsResponseSchema.parse(value);
-}
-
 export function presentAnnouncementOk(value: unknown): { ok: true } {
   return okSchema.parse(value);
+}
+
+export function presentAnnouncementViewCount(value: unknown): { view_count: number } {
+  return announcementViewCountSchema.parse(value);
 }

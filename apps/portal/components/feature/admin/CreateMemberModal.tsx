@@ -19,7 +19,7 @@ import {
 } from "@portal/components/ui/select";
 import { Textarea } from "@portal/components/ui/textarea";
 import { copyPlainText } from "@portal/utils/copy";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
 import "./CreateMemberModal.css";
@@ -56,11 +56,12 @@ function CredentialField({
   copiedLabel: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const inputId = useId();
   return (
     <div className="create-member-modal__field">
-      <Label>{label}</Label>
+      <Label htmlFor={inputId}>{label}</Label>
       <div className="create-member-modal__credential-row">
-        <Input className="create-member-modal__credential" value={value} readOnly />
+        <Input id={inputId} className="create-member-modal__credential" value={value} readOnly />
         <Button
           type="button"
           size="sm"

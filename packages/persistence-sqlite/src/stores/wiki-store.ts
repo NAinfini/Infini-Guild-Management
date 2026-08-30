@@ -6,20 +6,21 @@ import type {
   WikiRevisionRecord,
   WikiStore,
 } from "@guild/server/modules/wiki";
+import type { ContentReadScope } from "@guild/server";
 import { LIMITS, type PaginatedResponse, type WikiArticle, type WikiRevisionListItem } from "@guild/shared";
-import { extractTipTapText } from "@guild/shared/utils/tiptap-text";
+import { createContentExcerpt, extractTipTapText } from "@guild/shared/utils/tiptap-text";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
 import { auditInsertStatement } from "./audit-statement.js";
 import { returnedRowCount } from "./sql-result.js";
 
 const MAX_WIKI_MEDIA = 50;
 const WIKI_CATEGORY_COLUMNS = [
-  "id", "name", "slug", "sort_order", "parent_id", "created_at", "updated_at", "revision_token",
+  "id", "name", "slug", "sort_order", "created_at", "updated_at", "revision_token",
 ] as const;
 const WIKI_ARTICLE_COLUMNS = [
-  "id", "title", "slug", "category_id", "body_json", "sort_order", "pinned", "archived_at", "deleted_at",
+  "id", "title", "slug", "category_id", "body_json", "sort_order", "pinned", "view_count", "archived_at", "deleted_at",
   "created_by", "updated_by", "editor_username", "created_at", "updated_at", "revision_token", "current_revision",
-  "media_ids_json",
+  "preview_media_id", "search_text", "media_ids_json",
 ] as const;
 
 export class SqliteWikiStore implements WikiStore {
@@ -61,8 +62,8 @@ export class SqliteWikiStore implements WikiStore {
           method: "all",
           columns: ["category_id"],
           sql: `INSERT INTO wiki_categories
-              (id, name, slug, sort_order, parent_id, revision_token, created_at, updated_at)
-            SELECT ?, ?, ?, ?, ?, ?, ?, ?
+              (id, name, slug, sort_order, revision_token, created_at, updated_at)
+            SELECT ?, ?, ?, ?, ?, ?, ?
             WHERE EXISTS (${expectedStateGuard.sql})
               AND (SELECT count(*) FROM wiki_categories) < ?
             RETURNING id AS category_id`,
@@ -71,7 +72,6 @@ export class SqliteWikiStore implements WikiStore {
             input.record.name,
             input.record.slug,
             input.record.sort_order,
-            input.record.parent_id,
             input.record.revisionToken,
             input.record.created_at,
             input.record.updated_at,
@@ -117,7 +117,6 @@ export class SqliteWikiStore implements WikiStore {
       name: record.name,
       slug: record.slug,
       sort_order: record.sort_order,
-      parent_id: record.parent_id,
       revision_token: record.revisionToken,
       updated_at: record.updated_at,
     })));
@@ -127,24 +126,15 @@ export class SqliteWikiStore implements WikiStore {
         updateCategoryState(input.expectedStateToken, input.stateToken, input.audit.occurredAt),
         {
           method: "run",
-          sql: `UPDATE wiki_categories
-            SET parent_id = NULL
-            WHERE id IN (SELECT json_extract(value, '$.id') FROM json_each(?))
-              AND EXISTS (${guard.sql})`,
-          params: [json, ...guard.params],
-        },
-        {
-          method: "run",
           sql: `UPDATE wiki_categories AS categories
             SET name = (SELECT json_extract(value, '$.name') FROM json_each(?) WHERE json_extract(value, '$.id') = categories.id),
                 slug = (SELECT json_extract(value, '$.slug') FROM json_each(?) WHERE json_extract(value, '$.id') = categories.id),
                 sort_order = (SELECT json_extract(value, '$.sort_order') FROM json_each(?) WHERE json_extract(value, '$.id') = categories.id),
-                parent_id = (SELECT json_extract(value, '$.parent_id') FROM json_each(?) WHERE json_extract(value, '$.id') = categories.id),
                 revision_token = (SELECT json_extract(value, '$.revision_token') FROM json_each(?) WHERE json_extract(value, '$.id') = categories.id),
                 updated_at = (SELECT json_extract(value, '$.updated_at') FROM json_each(?) WHERE json_extract(value, '$.id') = categories.id)
             WHERE id IN (SELECT json_extract(value, '$.id') FROM json_each(?))
               AND EXISTS (${guard.sql})`,
-          params: [json, json, json, json, json, json, json, ...guard.params],
+          params: [json, json, json, json, json, json, ...guard.params],
         },
         auditInsertStatement(input.audit, guard),
       ]);
@@ -200,13 +190,29 @@ export class SqliteWikiStore implements WikiStore {
     };
   }
 
-  async getArticleBySlug(slug: string, canReadArchived: boolean): Promise<WikiArticleRecord | null> {
+  async getArticleBySlug(slug: string, readScope: ContentReadScope): Promise<WikiArticleRecord | null> {
+    const visibility = articleVisibility(readScope, "articles");
     const row = oneRow(await this.sql.execute({
       method: "get",
-      sql: `${selectArticle(true)} WHERE articles.slug = ? AND articles.deleted_at IS NULL${canReadArchived ? "" : " AND articles.archived_at IS NULL"} LIMIT 1`,
-      params: [slug],
+      sql: `${selectArticle(true)} WHERE articles.slug = ? AND articles.deleted_at IS NULL AND ${visibility.sql} LIMIT 1`,
+      params: [slug, ...visibility.params],
     }));
     return row ? mapArticle(row) : null;
+  }
+
+  async incrementArticleView(slug: string, readScope: ContentReadScope): Promise<number | null> {
+    const visibility = articleVisibility(readScope, "wiki_articles");
+    const row = oneRow(await this.sql.execute({
+      method: "get",
+      columns: ["view_count"],
+      sql: `UPDATE wiki_articles SET view_count = view_count + 1
+        WHERE slug = ? AND deleted_at IS NULL AND ${visibility.sql}
+        RETURNING view_count`,
+      params: [slug, ...visibility.params],
+    }));
+    if (!row) return null;
+    if (typeof row[0] !== "number") throw corrupt("Invalid wiki view count");
+    return row[0];
   }
 
   async getArticleById(id: string, includeDeleted = false): Promise<WikiArticleRecord | null> {
@@ -356,16 +362,23 @@ function articleGuard(id: string, revisionToken: string) {
 
 function selectCategory(): string {
   return `SELECT categories.id, categories.name, categories.slug, categories.sort_order,
-    categories.parent_id, categories.created_at, categories.updated_at, categories.revision_token
+    categories.created_at, categories.updated_at, categories.revision_token
     FROM wiki_categories AS categories`;
 }
 
 function selectArticle(withBody: boolean): string {
   return `SELECT articles.id, articles.title, articles.slug, articles.category_id,
     ${withBody ? "articles.body_json" : "'' AS body_json"}, articles.sort_order, articles.pinned,
-    articles.archived_at, articles.deleted_at, articles.created_by, articles.updated_by,
+    articles.view_count, articles.archived_at, articles.deleted_at, articles.created_by, articles.updated_by,
     editor.display_name AS editor_username,
     articles.created_at, articles.updated_at, articles.revision_token, articles.current_revision,
+    (
+      SELECT preview.media_id FROM media_links AS preview
+      WHERE preview.entity_type = 'wiki_article' AND preview.entity_id = articles.id AND preview.slot = 'body'
+      ORDER BY preview.sort_order, preview.media_id
+      LIMIT 1
+    ) AS preview_media_id,
+    articles.search_text,
     COALESCE((
       SELECT json_group_array(media_id) FROM (
         SELECT media_id FROM media_links
@@ -397,13 +410,13 @@ function insertArticle(record: WikiArticleRecord): SqlBatchStatement {
     method: "run",
     sql: `INSERT INTO wiki_articles
       (id, title, slug, category_id, body_json, sort_order, pinned, archived_at, created_by,
-       deleted_at, updated_by, current_revision, revision_token, created_at, updated_at, search_text)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       deleted_at, updated_by, current_revision, revision_token, created_at, updated_at, search_text, view_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       record.id, record.title, record.slug, record.category_id, record.body_json, record.sort_order,
       record.pinned ? 1 : 0, record.archived_at, record.created_by, record.deletedAt, record.updated_by,
       record.currentRevision, record.revisionToken, record.created_at, record.updated_at,
-      extractTipTapText(record.body_json),
+      extractTipTapText(record.body_json), record.view_count,
     ],
   };
 }
@@ -481,7 +494,10 @@ function insertMediaLinks(
 function articleWhere(query: WikiArticleListQuery): Readonly<{ where: string; params: SqlValue[] }> {
   const clauses: string[] = ["articles.deleted_at IS NULL"];
   const params: SqlValue[] = [];
-  if (!query.canReadArchived || query.archived === false) clauses.push("articles.archived_at IS NULL");
+  const visibility = articleVisibility(query.readScope, "articles");
+  clauses.push(visibility.sql);
+  params.push(...visibility.params);
+  if (query.archived === false) clauses.push("articles.archived_at IS NULL");
   else if (query.archived === true) clauses.push("articles.archived_at IS NOT NULL");
   if (query.pinned !== undefined) { clauses.push("articles.pinned = ?"); params.push(query.pinned ? 1 : 0); }
   if (query.categoryIds.length) {
@@ -489,11 +505,25 @@ function articleWhere(query: WikiArticleListQuery): Readonly<{ where: string; pa
     params.push(JSON.stringify(query.categoryIds));
   }
   if (query.search) {
-    clauses.push("(lower(articles.title) LIKE ? ESCAPE '\\' OR lower(articles.slug) LIKE ? ESCAPE '\\')");
+    clauses.push("(lower(articles.title) LIKE ? ESCAPE '\\' OR lower(articles.slug) LIKE ? ESCAPE '\\' OR lower(articles.search_text) LIKE ? ESCAPE '\\')");
     const pattern = `%${escapeLike(query.search.toLowerCase())}%`;
-    params.push(pattern, pattern);
+    params.push(pattern, pattern, pattern);
   }
   return { where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
+}
+
+function articleVisibility(
+  readScope: ContentReadScope,
+  table: string,
+): Readonly<{ sql: string; params: SqlValue[] }> {
+  if (readScope.kind === "all") return { sql: "1", params: [] };
+  if (readScope.kind === "owned") {
+    return {
+      sql: `(${table}.archived_at IS NULL OR ${table}.created_by = ?)`,
+      params: [readScope.ownerUserId],
+    };
+  }
+  return { sql: `${table}.archived_at IS NULL`, params: [] };
 }
 
 function articleOrder(sort: WikiArticleListQuery["sort"]): string {
@@ -503,25 +533,29 @@ function articleOrder(sort: WikiArticleListQuery["sort"]): string {
 }
 
 function mapCategory(row: readonly SqlValue[]): WikiCategoryRecord {
-  const [id, name, slug, sortOrder, parentId, createdAt, updatedAt, revisionToken] = row;
+  const [id, name, slug, sortOrder, createdAt, updatedAt, revisionToken] = row;
   if (typeof id !== "string" || typeof name !== "string" || typeof slug !== "string" || typeof sortOrder !== "number"
-    || (parentId !== null && typeof parentId !== "string") || typeof createdAt !== "string"
+    || typeof createdAt !== "string"
     || typeof updatedAt !== "string" || typeof revisionToken !== "string") throw corrupt("Invalid wiki category row");
-  return { id, name, slug, sort_order: sortOrder, parent_id: parentId, created_at: createdAt, updated_at: updatedAt, revisionToken };
+  return { id, name, slug, sort_order: sortOrder, created_at: createdAt, updated_at: updatedAt, revisionToken };
 }
 
 function mapArticle(row: readonly SqlValue[]): WikiArticleRecord {
-  const [id, title, slug, categoryId, bodyJson, sortOrder, pinned, archivedAt, deletedAt, createdBy, updatedBy,
-    updatedByUsername, createdAt, updatedAt, revisionToken, currentRevision, mediaIdsJson] = row;
+  const [id, title, slug, categoryId, bodyJson, sortOrder, pinned, viewCount, archivedAt, deletedAt, createdBy, updatedBy,
+    updatedByUsername, createdAt, updatedAt, revisionToken, currentRevision, previewMediaId, searchText, mediaIdsJson] = row;
   if (typeof id !== "string" || typeof title !== "string" || typeof slug !== "string" || typeof categoryId !== "string"
     || typeof bodyJson !== "string" || typeof sortOrder !== "number" || (pinned !== 0 && pinned !== 1)
+    || typeof viewCount !== "number"
     || (archivedAt !== null && typeof archivedAt !== "string") || typeof createdBy !== "string"
     || (deletedAt !== null && typeof deletedAt !== "string")
     || (updatedBy !== null && typeof updatedBy !== "string") || (updatedByUsername !== null && typeof updatedByUsername !== "string")
     || typeof createdAt !== "string" || typeof updatedAt !== "string" || typeof revisionToken !== "string"
-    || typeof currentRevision !== "number" || typeof mediaIdsJson !== "string") throw corrupt("Invalid wiki article row");
+    || typeof currentRevision !== "number" || (previewMediaId !== null && typeof previewMediaId !== "string")
+    || typeof searchText !== "string"
+    || typeof mediaIdsJson !== "string") throw corrupt("Invalid wiki article row");
   return {
     id, title, slug, category_id: categoryId, body_json: bodyJson, sort_order: sortOrder, pinned: pinned === 1,
+    view_count: viewCount, preview_media_id: previewMediaId, excerpt: createContentExcerpt(searchText),
     archived_at: archivedAt, created_by: createdBy, updated_by: updatedBy, updated_by_display_name: updatedByUsername,
     created_at: createdAt, updated_at: updatedAt, revisionToken, currentRevision,
     deletedAt, mediaIds: parseStringArray(mediaIdsJson, "wiki article media"),

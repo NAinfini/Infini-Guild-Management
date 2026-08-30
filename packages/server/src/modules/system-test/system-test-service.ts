@@ -7,8 +7,9 @@ import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
 
 const RUN_TTL_MS = 24 * 60 * 60 * 1_000;
-const CLEANUP_PAGE = 50;
-const MAX_EXPIRED_RUNS = 50;
+const CLEANUP_PAGE = 5;
+const SCHEDULED_CLEANUP_PAGE = 1;
+const MAX_EXPIRED_RUNS = 1;
 
 export type SystemTestRunStatus = "running" | "cleaning" | "cleanup_failed" | "completed";
 
@@ -111,7 +112,7 @@ export class SystemTestService {
     attempts: number;
   }>> {
     const actor = context.authorization.require(PERMISSION_ID.ADMIN_STATUS_VIEW);
-    return this.cleanup(runId, actor.userId, context.now);
+    return this.cleanup(runId, actor.userId, context.now, CLEANUP_PAGE);
   }
 
   async finalizeRun(context: RequestContext, runId: string, summary?: SystemTestSummary): Promise<void> {
@@ -134,7 +135,7 @@ export class SystemTestService {
     }
   }
 
-  async cleanupExpired(before: string, limit = 25): Promise<Readonly<{
+  async cleanupExpired(before: string, limit = 1): Promise<Readonly<{
     processed: number;
     completed: number;
     failed: number;
@@ -146,10 +147,18 @@ export class SystemTestService {
     let completed = 0;
     let failed = 0;
     for (const runId of runIds) {
+      const run = await this.requiredRun(runId);
       await this.store.expireRequests(runId, before);
-      const result = await this.cleanup(runId, null, before);
-      if (result.status === "completed") completed += 1;
-      if (result.status === "cleanup_failed") failed += 1;
+      const result = await this.cleanup(runId, null, before, SCHEDULED_CLEANUP_PAGE);
+      if (result.status === "completed") {
+        if (await this.store.finalizeRun({ runId, actorUserId: run.actorUserId, audit: null })) {
+          completed += 1;
+        } else {
+          failed += 1;
+        }
+      } else if (result.status === "cleanup_failed") {
+        failed += 1;
+      }
     }
     return { processed: runIds.length, completed, failed };
   }
@@ -158,7 +167,7 @@ export class SystemTestService {
     return this.store.inspectExpiredBacklog(before);
   }
 
-  private async cleanup(runId: string, actorUserId: string | null, at: string) {
+  private async cleanup(runId: string, actorUserId: string | null, at: string, pageSize: number) {
     const run = actorUserId ? await this.requiredOwnedRun(runId, actorUserId) : await this.requiredRun(runId);
     if (run.status === "completed") return { ok: true, status: run.status, attempts: run.cleanupAttempts } as const;
     if (!await this.store.claimCleanup(runId, at)) {
@@ -167,7 +176,7 @@ export class SystemTestService {
     }
 
     try {
-      const artifacts = await this.store.listArtifacts(runId, CLEANUP_PAGE);
+      const artifacts = await this.store.listArtifacts(runId, pageSize);
       for (const artifact of artifacts) {
         if (artifact.type === "media_asset") {
           await this.blobs.delete(await this.artifacts.listMediaObjectKeys(artifact.key));
@@ -175,7 +184,7 @@ export class SystemTestService {
         await this.artifacts.deleteArtifact(runId, artifact);
       }
       if (artifacts.length === 0) {
-        const beforeImages = await this.artifacts.listBeforeImages(runId, CLEANUP_PAGE);
+        const beforeImages = await this.artifacts.listBeforeImages(runId, pageSize);
         for (const image of beforeImages) await this.artifacts.restoreBeforeImage(runId, image);
       }
       if (await this.store.completeCleanup(runId, at)) {

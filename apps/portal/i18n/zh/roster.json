@@ -26,7 +26,6 @@
   "empty.filteredDescription": "请尝试其他显示名、职业或排序方式。",
   "grid.aria": "成员列表网格",
   "action.resetFilters": "重置筛选",
-  "action.loadMore": "加载更多",
   "message.titleCopied": "称号已复制",
   "message.nothingToCopy": "没有可复制内容"
 }

@@ -6,7 +6,7 @@ import {
   uniqueTag,
 } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
-import { dialogTitled, expectNoDialog, field, topDialog } from "../../support/ui";
+import { dialogTitled, expectNoDialog, expectToast, field, topDialog } from "../../support/ui";
 
 /*
  * 后台「成员管理」页签里会写库的单人操作：新建成员弹窗、行操作菜单、成员详情弹窗。
@@ -23,7 +23,7 @@ const ROLE_CHANGE = { method: "PATCH", path: /^\/api\/admin\/users\/[^/]+\/role$
 const DEACTIVATE = { method: "PATCH", path: /^\/api\/admin\/users\/[^/]+\/deactivate$/ } as const;
 const REACTIVATE = { method: "PATCH", path: /^\/api\/admin\/users\/[^/]+\/reactivate$/ } as const;
 const CREATE_MEMBER = { method: "POST", path: /^\/api\/admin\/users$/ } as const;
-const SAVE_PROFILE = { method: "PATCH", path: /^\/api\/users\/[^/]+\/profile$/ } as const;
+const SAVE_PROFILE = { method: "PATCH", path: /^\/api\/admin\/users\/[^/]+$/ } as const;
 
 type ServerMember = {
   user: { id: string; display_name: string; role: string; role_name: string; is_active: boolean };
@@ -42,18 +42,6 @@ function actionMenu(page: Page): Locator {
 function menuItem(page: Page, name: string): Locator {
   return page.getByRole("menuitem", { name, exact: true });
 }
-/**
- * 断言弹出了这句通知。
- * 通知正文渲染在 Toast 的 description 槽中，而不是标题槽；
- * 一次操作可能同时弹好几条（例如业务提示 + 全局错误提示），所以按文案挑，不按顺序取。
- */
-async function expectNotified(page: Page, text: string): Promise<void> {
-  await expect(
-    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
-    `没有弹出通知「${text}」`,
-  ).toBeVisible();
-}
-
 async function serverMembers(api: APIRequestContext): Promise<ServerMember[]> {
   const list = await readJson(await api.get("/api/users?page=1&limit=500"), "读取成员列表") as {
     data: ServerMember[];
@@ -90,7 +78,7 @@ test.beforeEach(async ({ context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 });
 
-test("新建成员弹窗：用户名太短当场退回、一个请求都不发；填对之后建号、给临时密码、备注一起落库", async ({ page, api, flow }) => {
+test("新建成员弹窗：用户名含非法字符时当场退回、一个请求都不发；填对之后建号、给临时密码、备注一起落库", async ({ page, api, flow }) => {
   const tag = uniqueTag("new");
   const role = await readAssignableRole(api);
   await openMembers(page, tag);
@@ -104,22 +92,25 @@ test("新建成员弹窗：用户名太短当场退回、一个请求都不发�
   await expect(submit, "用户名为空时提交按钮就是禁用的").toBeDisabled();
   await field(dialog, "Role").click();
   await page.getByRole("option", { name: role.name, exact: true }).click();
+  await expect(page.locator('[data-slot="select-content"]')).toBeHidden();
+  const display_name = `e2e_${tag}_ui`;
+  await field(dialog, "Display name").fill(display_name);
 
   /* 前端自己拦下的非法用户名不该惊动服务端。 */
-  await field(dialog, "Username").fill("ab");
+  await field(dialog, "Login name").fill("a-");
   await expect(submit).toBeEnabled();
   await flow.clickWithoutApi(submit);
-  await expectNotified(page, "Username must be 3-50 characters: letters, numbers, and underscores only.");
+  await expectToast(page, "Login and display names must be 1-50 characters: letters, numbers, and underscores only.");
   await expect(dialog, "校验没过时弹窗必须留在原地").toBeVisible();
 
-  const display_name = `e2e_${tag}_ui`;
-  await field(dialog, "Username").fill(display_name);
+  const login_name = `e2e_${tag}_login`;
+  await field(dialog, "Login name").fill(login_name);
   await field(dialog, "Notes").fill("created by e2e");
   await flow.click(submit, CREATE_MEMBER);
 
   /* 临时密码是这个流程唯一的产出物，看不到就等于建了个没人能登的号。 */
   await expect(dialog.getByText(`Member "${display_name}" created successfully.`)).toBeVisible();
-  const temporaryPassword = await dialog.locator("input[readonly]").inputValue();
+  const temporaryPassword = await field(dialog, "Temporary Password").inputValue();
   expect(temporaryPassword.length, "临时密码不能是空的").toBeGreaterThan(0);
 
   await dialog.getByRole("button", { name: "Done", exact: true }).click();
@@ -147,6 +138,7 @@ test("行菜单改角色：表格里的角色胶囊和服务端的角色一起�
   await openRowMenu(page, member.display_name);
   await menuItem(page, "Change Role").click();
   await flow.click(menuItem(page, targetRole.name), ROLE_CHANGE);
+  await expect(page.locator('[data-slot="dropdown-menu-content"], [data-slot="dropdown-menu-sub-content"]')).toHaveCount(0);
 
   await expect(memberRow(page, member.display_name).locator(".admin-cell-role")).toHaveText(targetRole.name);
   expect((await serverMember(api, member.id)).user.role, "服务端的角色必须真的改了").toBe(targetRole.id);
@@ -194,7 +186,7 @@ test("行菜单复制这一行：剪贴板里拿到的是这一行的五个字�
   expect(copied).toBe(`${member.display_name}, , 0, ${member.role.name}, Enabled\n`);
 });
 
-test("成员详情弹窗：打开是只读屏，进编辑改战力保存后回到只读屏，且不重复提交未变化的角色和状态", async ({ page, api, flow }) => {
+test("成员详情弹窗：打开是只读屏，显示名和战力在同一次保存后回到只读屏", async ({ page, api, flow }) => {
   const tag = uniqueTag("detail");
   const member = await createThrowawayMember(api, tag);
   await openMembers(page, tag);
@@ -213,22 +205,43 @@ test("成员详情弹窗：打开是只读屏，进编辑改战力保存后回�
   ).toHaveCount(0);
 
   await dialog.getByRole("button", { name: "Edit", exact: true }).click();
+  const classTrigger = page.getByRole("button", { name: "Classes", exact: true });
+  const classPopup = page.locator('[data-slot="popover-content"]');
+  for (const reducedMotion of ["no-preference", "reduce"] as const) {
+    await page.emulateMedia({ reducedMotion });
+    for (const dismiss of ["trigger", "escape", "outside"] as const) {
+      await classTrigger.click();
+      await expect(classPopup).toBeVisible();
+      await classPopup.getByRole("textbox").fill("Blade");
+      if (dismiss === "trigger") await classTrigger.click();
+      else if (dismiss === "escape") await page.keyboard.press("Escape");
+      else await page.getByRole("textbox", { name: "Bio", exact: true }).click();
+      await expect(classPopup).toHaveCount(0);
+      await expect(classTrigger).toHaveAttribute("aria-expanded", "false");
+      if (dismiss === "escape") await expect(classTrigger).toBeFocused();
+      if (dismiss === "outside") await expect(page.getByRole("textbox", { name: "Bio", exact: true })).toBeFocused();
+    }
+  }
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const nextDisplayName = `${member.display_name}_edited`;
+  await field(dialog, "Display name").fill(nextDisplayName);
   await field(dialog, "Power").fill("12345");
   await flow.click(dialog.getByRole("button", { name: "Save Profile", exact: true }), SAVE_PROFILE);
-  await expectNotified(page, "Member profile saved");
+  await expectToast(page, "Member profile saved");
 
   /* 存完回到只读屏，直接看到结果——不必再想一次「刚才那下存上了吗」。 */
   await expect(dialog.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
   await expect(field(dialog, "Power")).toHaveCount(0);
 
   const saved = await serverMember(api, member.id);
+  expect(saved.user.display_name, "显示名必须和资料字段走同一次原子保存").toBe(nextDisplayName);
   expect(saved.profile.power, "第三步失败不该连累前两步：战力必须真的落库了").toBe(12345);
   expect(saved.user.is_active, "状态本来就没改，应当还是启用").toBe(true);
 
   await page.keyboard.press("Escape");
   await expectNoDialog(page);
   await expect(
-    memberRow(page, member.display_name).locator("td[data-column-id='power']"),
+    memberRow(page, nextDisplayName).locator("td[data-column-id='power']"),
     "列表要跟着刷新，不能还显示旧数字",
   ).toHaveText("12,345");
 });

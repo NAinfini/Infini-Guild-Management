@@ -7,6 +7,7 @@ import {
   createApplication,
   isMaintenanceModeEnabled,
   maintenanceResponse,
+  readMaintenanceDetails,
   resolveStaticSiteBranding,
   type ApplicationConfig,
 } from "@guild/application";
@@ -17,7 +18,7 @@ import { CloudflareAdminOperationsRuntime } from "../adapters/admin-operations-r
 import { D1SqlExecutor } from "../adapters/d1-sql-executor.js";
 import { CloudflareNotificationPublisher } from "../adapters/notification-publisher.js";
 import { R2BlobStore } from "../adapters/r2-blob-store.js";
-import { CloudflareRateLimiter } from "../adapters/rate-limiter.js";
+import { CloudflareConsistentAuthRateLimiter, CloudflareRateLimiter } from "../adapters/rate-limiter.js";
 import {
   forwardCloudflareNotificationWebSocket,
   type CloudflareNotificationTarget,
@@ -31,9 +32,11 @@ export interface CloudflareEnvironment {
   BLOBS: R2Bucket;
   ASSETS: Fetcher;
   NOTIFICATIONS: DurableObjectNamespace;
+  AUTH_LOGIN_RATE_LIMITER: DurableObjectNamespace;
   AUTH_RATE_LIMITER: RateLimit;
   AUTH_IP_RATE_LIMITER: RateLimit;
   READ_RATE_LIMITER: RateLimit;
+  CONTENT_VIEW_RATE_LIMITER: RateLimit;
   MUTATION_RATE_LIMITER: RateLimit;
   UPLOAD_RATE_LIMITER: RateLimit;
   WEBSOCKET_RATE_LIMITER: RateLimit;
@@ -42,8 +45,6 @@ export interface CloudflareEnvironment {
   IG_PUBLIC_URL: string;
   IG_ALLOWED_ORIGINS?: string;
   IG_SESSION_COOKIE_NAME?: string;
-  IG_INVITE_TOKEN_SECRET: string;
-  IG_AUDIT_DOWNLOAD_SECRET: string;
   IG_PBKDF2_ITERATIONS?: string;
   IG_OAUTH_GOOGLE_CLIENT_ID?: string;
   IG_OAUTH_GOOGLE_CLIENT_SECRET?: string;
@@ -55,6 +56,8 @@ export interface CloudflareEnvironment {
   IG_OAUTH_WECHAT_APP_SECRET?: string;
   IG_EMAIL_FROM?: string;
   IG_MAINTENANCE_MODE?: string;
+  IG_MAINTENANCE_REASON?: string;
+  IG_MAINTENANCE_UNTIL?: string;
 }
 
 type CloudflareApplication = ReturnType<typeof createApplication>;
@@ -74,10 +77,6 @@ export type CloudflareCompositionFactory = (
   environment: CloudflareEnvironment,
   currentExecution: () => ExecutionContext,
 ) => CloudflareComposition;
-
-type CloudflareResponseCache = Pick<Cache, "match" | "put">;
-type CloudflareResponseCacheFactory = () => CloudflareResponseCache;
-type CloudflareCacheStorage = CacheStorage & Readonly<{ default: Cache }>;
 
 const seconds = (milliseconds: number) => milliseconds / 1_000;
 
@@ -103,8 +102,6 @@ export function createCloudflareComposition(
     IG_PUBLIC_URL: environment.IG_PUBLIC_URL,
     IG_ALLOWED_ORIGINS: environment.IG_ALLOWED_ORIGINS,
     IG_SESSION_COOKIE_NAME: environment.IG_SESSION_COOKIE_NAME,
-    IG_INVITE_TOKEN_SECRET: environment.IG_INVITE_TOKEN_SECRET,
-    IG_AUDIT_DOWNLOAD_SECRET: environment.IG_AUDIT_DOWNLOAD_SECRET,
     IG_PBKDF2_ITERATIONS: environment.IG_PBKDF2_ITERATIONS,
     IG_OAUTH_GOOGLE_CLIENT_ID: environment.IG_OAUTH_GOOGLE_CLIENT_ID,
     IG_OAUTH_GOOGLE_CLIENT_SECRET: environment.IG_OAUTH_GOOGLE_CLIENT_SECRET,
@@ -115,6 +112,8 @@ export function createCloudflareComposition(
     IG_OAUTH_WECHAT_APP_ID: environment.IG_OAUTH_WECHAT_APP_ID,
     IG_OAUTH_WECHAT_APP_SECRET: environment.IG_OAUTH_WECHAT_APP_SECRET,
     IG_EMAIL_FROM: environment.IG_EMAIL_FROM,
+    IG_MAINTENANCE_REASON: environment.IG_MAINTENANCE_REASON,
+    IG_MAINTENANCE_UNTIL: environment.IG_MAINTENANCE_UNTIL,
   });
   const config = runtimeConfig.application;
   if (Boolean(config.emailFrom) !== Boolean(environment.EMAIL)) {
@@ -137,18 +136,30 @@ export function createCloudflareComposition(
       scheduler: () => "configured (Cron Triggers)",
     }),
     adminOperationsRuntime: new CloudflareAdminOperationsRuntime(notifications),
-    authRateLimiter: new CloudflareRateLimiter(
-      environment.AUTH_RATE_LIMITER,
-      seconds(LIMITS.rateLimit.auth.windowMs),
+    authRateLimiter: new CloudflareConsistentAuthRateLimiter(
+      new CloudflareRateLimiter(
+        environment.AUTH_RATE_LIMITER,
+        seconds(LIMITS.rateLimit.auth.windowMs),
+      ),
+      environment.AUTH_LOGIN_RATE_LIMITER,
+      "login_pair",
     ),
-    authIpRateLimiter: new CloudflareRateLimiter(
-      environment.AUTH_IP_RATE_LIMITER,
-      seconds(LIMITS.rateLimit.authIp.windowMs),
+    authIpRateLimiter: new CloudflareConsistentAuthRateLimiter(
+      new CloudflareRateLimiter(
+        environment.AUTH_IP_RATE_LIMITER,
+        seconds(LIMITS.rateLimit.authIp.windowMs),
+      ),
+      environment.AUTH_LOGIN_RATE_LIMITER,
+      "ip",
     ),
     emailSender: environment.EMAIL ? new CloudflareEmailSender(environment.EMAIL) : null,
     readRateLimiter: new CloudflareRateLimiter(
       environment.READ_RATE_LIMITER,
       seconds(LIMITS.rateLimit.reads.windowMs),
+    ),
+    contentViewRateLimiter: new CloudflareRateLimiter(
+      environment.CONTENT_VIEW_RATE_LIMITER,
+      seconds(LIMITS.rateLimit.contentViews.windowMs),
     ),
     mutationRateLimiter: new CloudflareRateLimiter(
       environment.MUTATION_RATE_LIMITER,
@@ -170,7 +181,6 @@ export function createCloudflareComposition(
 
 export function createCloudflareHandler(
   compose: CloudflareCompositionFactory = createCloudflareComposition,
-  responseCache: CloudflareResponseCacheFactory = () => (caches as CloudflareCacheStorage).default,
 ) {
   const schemaChecks = new WeakMap<D1Database, Promise<void>>();
   /*
@@ -235,8 +245,9 @@ export function createCloudflareHandler(
       return executionScope.run(execution, async () => {
         const requestUrl = new URL(request.url);
         if (shouldRedirectToHttps(requestUrl)) return redirectToHttps(requestUrl);
+        const maintenance = readMaintenanceDetails(environment);
         if (isMaintenanceModeEnabled(environment.IG_MAINTENANCE_MODE)) {
-          return withTransportSecurity(maintenanceResponse(request), requestUrl);
+          return withTransportSecurity(maintenanceResponse(request, maintenance), requestUrl);
         }
         try {
           const runtime = composition(environment);
@@ -247,7 +258,7 @@ export function createCloudflareHandler(
           if (pathname === "/ws") return handleWebSocket(request, environment, runtime);
           if (isApiPath(pathname)) {
             return withTransportSecurity(
-              await handleApiRequest(request, runtime, execution, responseCache),
+              await runtime.application.api.fetch(request),
               requestUrl,
             );
           }
@@ -283,45 +294,6 @@ export function createCloudflareHandler(
       });
     },
   } satisfies ExportedHandler<CloudflareEnvironment>;
-}
-
-async function handleApiRequest(
-  request: Request,
-  runtime: CloudflareComposition,
-  execution: ExecutionContext,
-  responseCache: CloudflareResponseCacheFactory,
-): Promise<Response> {
-  if (!isCacheableMediaRequest(request)) return runtime.application.api.fetch(request);
-  const cache = responseCache();
-  const cacheKey = mediaCacheKey(request);
-  const cached = await cache.match(cacheKey);
-  if (cached) return cached;
-
-  const response = await runtime.application.api.fetch(request);
-  if (isPublicCacheableResponse(response)) {
-    execution.waitUntil(cache.put(cacheKey, response.clone()));
-  }
-  return response;
-}
-
-function isCacheableMediaRequest(request: Request): boolean {
-  return request.method === "GET"
-    && new URL(request.url).pathname.startsWith("/api/media/")
-    && !request.headers.has("Range");
-}
-
-function mediaCacheKey(request: Request): Request {
-  const url = new URL(request.url);
-  url.search = "";
-  return new Request(url, { method: "GET" });
-}
-
-function isPublicCacheableResponse(response: Response): boolean {
-  if (!response.ok) return false;
-  const directives = new Set((response.headers.get("Cache-Control") ?? "")
-    .split(",")
-    .map((directive) => directive.trim().toLowerCase()));
-  return directives.has("public") && !directives.has("private") && !directives.has("no-store");
 }
 
 async function handleWebSocket(

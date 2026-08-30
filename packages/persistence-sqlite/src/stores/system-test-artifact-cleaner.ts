@@ -163,9 +163,6 @@ function cleanupStatements(
     case "member_absence": return deleteById("member_absences");
     case "user": return [
       deleteInbox("member", "member_joined"),
-      run(`DELETE FROM login_failures
-        WHERE login_name = lower((SELECT login_name FROM user_credentials WHERE user_id = ?))
-          AND EXISTS (${guard})`, [artifact.key, ...guardParams]),
       ...deleteById("users"),
     ];
     case "role": return deleteById("roles");

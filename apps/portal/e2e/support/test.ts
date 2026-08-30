@@ -24,7 +24,7 @@ import {
 
 export { expect };
 
-export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** 一次控件操作应该在网络上留下的痕迹。 */
 export type ApiExpectation = {

@@ -11,7 +11,7 @@ import {
   watchPageDefects,
   type Flow,
 } from "../../support/test";
-import { field } from "../../support/ui";
+import { expectToast, field } from "../../support/ui";
 
 /*
  * 个人资料页「账号」屏：改密码、登录用户名和登出；公开显示名归「个人资料」屏保存。
@@ -45,7 +45,7 @@ let assertPageClean: () => void;
 /*
  * 每条用例自己开的旁路通道都必须挂运行头。
  * 登录是中间件放行的匿名路径，挂上没问题；而且必须挂——登录成功和失败都会写
- * user_auth 审计行（AuthService 的 login / login_failed），不挂运行头这些行就没登记，
+ * user_auth 审计行不挂运行头就不会登记，
  * 收尾时 deleteRegisteredUsers 撞见它们会直接抛错，报成「清理失败」。
  */
 let sideChannelHeaders: Record<string, string>;
@@ -79,7 +79,7 @@ test.beforeEach(async ({ api, browser, clientAddress, trackArtifacts }) => {
   sideChannelHeaders = { ...MUTATION_HEADERS, ...identityHeaders(clientAddress, trackArtifacts) };
   const created = await createThrowawayMember(api, uniqueTag("acct"));
   const permanentLoginName = `${created.login_name}_p`;
-  const permanentPassword = "e2e-profile-password-1";
+  const permanentPassword = "E2e-profile-password-1";
   const session = await signIn(created.login_name, created.password);
   const completion = await session.post("/api/auth/complete-password-reset", {
     data: {
@@ -103,7 +103,6 @@ test.beforeEach(async ({ api, browser, clientAddress, trackArtifacts }) => {
   flow = createFlow(page);
 
   await page.goto("/profile?tab=account");
-  await expect(page.getByRole("heading", { name: "Security confirmation", exact: true })).toBeVisible();
   await expect(passwordSecurityCard().getByRole("heading", { name: "Password and security", exact: true })).toBeVisible();
 });
 
@@ -120,9 +119,20 @@ function cardTitled(title: string): Locator {
 }
 function loginCard(): Locator { return cardTitled("Login username"); }
 function passwordSecurityCard(): Locator { return cardTitled("Password and security"); }
-function currentPasswordField(): Locator { return field(page, "Current password"); }
+function confirmationDialog(): Locator {
+  return page.getByRole("dialog", { name: "Confirm this change", exact: true });
+}
+function currentPasswordField(): Locator { return field(confirmationDialog(), "Current password"); }
+function confirmationSubmitButton(): Locator {
+  return confirmationDialog().getByRole("button", { name: "Confirm and continue", exact: true });
+}
 function submitButton(card: Locator, name: string): Locator {
   return card.getByRole("button", { name, exact: true });
+}
+
+async function openSensitiveAction(control: Locator): Promise<void> {
+  await flow.clickWithoutApi(control);
+  await expect(confirmationDialog()).toBeVisible();
 }
 
 /** 在一段操作里盯着 /api/，用来证明纯客户端校验真的没碰网络。 */
@@ -144,16 +154,15 @@ async function expectNoApiCalls(action: () => Promise<void>): Promise<void> {
 
 test("改密码卡：当前密码填错时保留会话并显示表单错误，密码没变", async () => {
   const card = passwordSecurityCard();
+  await field(card, "New password").fill("E2e-new-password-1");
+  await field(card, "Confirm new password").fill("E2e-new-password-1");
+  await openSensitiveAction(submitButton(card, "Change password"));
   await currentPasswordField().fill("definitely-not-the-password");
-  await field(card, "New password").fill("e2e-new-password-1");
-  await field(card, "Confirm new password").fill("e2e-new-password-1");
 
-  await flow.click(submitButton(card, "Change password"), { ...CHANGE_PASSWORD, status: 401 });
+  await flow.click(confirmationSubmitButton(), { ...CHANGE_PASSWORD, status: 401 });
 
   await expect(page).toHaveURL(/\/profile\?tab=account/);
-  await expect(page.locator('[data-slot="toast-description"]').filter({
-    hasText: "Current password is incorrect",
-  })).toBeVisible();
+  await expectToast(page, "Current password is incorrect");
 
   expect(
     await loginStatus(account.login_name, account.password),
@@ -161,14 +170,43 @@ test("改密码卡：当前密码填错时保留会话并显示表单错误，�
   ).toBe(200);
 });
 
-test("改密码卡：填对当前密码后旧密码立即失效、新密码可登录", async () => {
-  const newPassword = "e2e-new-password-1";
+test("改密码卡：填对当前密码后旧密码立即失效、新密码可登录", async ({}, testInfo) => {
+  const newPassword = "Violet7!";
   const card = passwordSecurityCard();
-  await currentPasswordField().fill(account.password);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(field(card, "New password")).toHaveAccessibleDescription(/8–128 characters/);
+  await expect(card.locator('[data-password-rule]')).toHaveCount(6);
+  await expect(card.locator('[data-met="true"]')).toHaveCount(0);
+  await field(card, "New password").fill("short12");
+  await field(card, "Confirm new password").fill("short12");
+  await expect(field(card, "New password")).toHaveAttribute("aria-invalid", "true");
+  await expect(submitButton(card, "Change password")).toBeDisabled();
   await field(card, "New password").fill(newPassword);
+  await expect(card.locator('[data-password-rule="uppercase"]')).toHaveAttribute("data-met", "true");
+  await expect(card.locator('[data-password-rule="lowercase"]')).toHaveAttribute("data-met", "true");
+  await expect(card.locator('[data-password-rule="special"]')).toHaveAttribute("data-met", "true");
+  await expect(field(card, "Confirm new password")).toHaveAccessibleDescription("Passwords do not match.");
   await field(card, "Confirm new password").fill(newPassword);
+  await expect(field(card, "New password")).toHaveAttribute("aria-invalid", "false");
+  await expect(submitButton(card, "Change password")).toBeEnabled();
+  await expect(card.locator('[data-met="true"]')).toHaveCount(6);
+  const fields = card.locator(".password-setup__fields");
+  const requirements = card.locator(".password-requirements");
+  const desktopFields = await fields.boundingBox();
+  const desktopRules = await requirements.boundingBox();
+  expect(desktopRules!.x).toBeGreaterThanOrEqual(desktopFields!.x + desktopFields!.width);
+  await card.screenshot({ path: testInfo.outputPath("password-requirements-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileFields = await fields.boundingBox();
+  const mobileRules = await requirements.boundingBox();
+  expect(mobileRules!.y).toBeGreaterThanOrEqual(mobileFields!.y + mobileFields!.height);
+  expect(mobileRules!.x + mobileRules!.width).toBeLessThanOrEqual(390);
+  await card.screenshot({ path: testInfo.outputPath("password-requirements-mobile.png") });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openSensitiveAction(submitButton(card, "Change password"));
+  await currentPasswordField().fill(account.password);
 
-  await flow.click(submitButton(card, "Change password"), CHANGE_PASSWORD);
+  await flow.click(confirmationSubmitButton(), CHANGE_PASSWORD);
   await expect(page).toHaveURL(/\/login\?.*reason=expired/);
 
   expect(
@@ -187,7 +225,6 @@ test("改登录名：非法值不发请求，合法改名后仅新登录名可�
   await expect(submit, "什么都没填时不该能提交").toBeDisabled();
 
   await expectNoApiCalls(async () => {
-    await currentPasswordField().fill(account.password);
     await field(card, "Login username").fill("bad name!");
     await expect(submit, "有校验错误时不该能提交").toBeDisabled();
   });
@@ -195,7 +232,9 @@ test("改登录名：非法值不发请求，合法改名后仅新登录名可�
   const renamed = `${account.login_name}_r`;
   await field(card, "Login username").fill(renamed);
   await expect(submit).toBeEnabled();
-  await flow.click(submit, CHANGE_LOGIN_NAME);
+  await openSensitiveAction(submit);
+  await currentPasswordField().fill(account.password);
+  await flow.click(confirmationSubmitButton(), CHANGE_LOGIN_NAME);
   await expect(page).toHaveURL(/\/login(\?|$)/);
 
   const detail = await readJson(await api.get(`/api/users/${account.id}`), "回读账号") as {

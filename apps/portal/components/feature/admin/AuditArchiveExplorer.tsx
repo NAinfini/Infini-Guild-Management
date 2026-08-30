@@ -1,5 +1,5 @@
 import {
-  requestAdminAuditArchiveDownload,
+  fetchAdminAuditArchiveFiles,
   downloadAdminAuditArchiveFile,
 } from "../../../services/AdminService";
 import { downloadFileBlob } from "../../../utils/admin";
@@ -17,7 +17,8 @@ import { Skeleton } from "@portal/components/ui/skeleton";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArchiveIcon } from "@portal/components/icons";
-import { notifySuccess, notifyError } from "../../../utils/notifications";
+import { notifySuccess } from "../../../utils/notifications";
+import { presentAppError } from "../../../hooks/useAppError";
 import { EmptyState } from "../../shared/EmptyState";
 import { AdminLoadError } from "./AdminLoadError";
 
@@ -45,15 +46,14 @@ export function AuditArchiveExplorer({
     if (!selectedMonth) return;
     setDownloading(true);
     try {
-      const response = await requestAdminAuditArchiveDownload(selectedMonth);
+      const response = await fetchAdminAuditArchiveFiles(selectedMonth);
       for (const file of response.files) {
-        const blob = await downloadAdminAuditArchiveFile(file.url);
-        const segments = file.key.split("/").filter(Boolean);
-        downloadFileBlob(segments[segments.length - 1] ?? `guild-audit-${selectedMonth}.ndjson.gz`, blob);
+        const blob = await downloadAdminAuditArchiveFile(file.id);
+        downloadFileBlob(file.filename, blob);
       }
       notifySuccess(t("message.archiveRawDownloaded"));
-    } catch {
-      notifyError(t("message.archiveRawDownloadFailed"));
+    } catch (error) {
+      presentAppError(error, t("message.archiveRawDownloadFailed"));
     } finally {
       setDownloading(false);
     }

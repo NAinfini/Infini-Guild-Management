@@ -1,4 +1,4 @@
-import { Alert } from "@portal/components/ui/alert";
+import { Alert, AlertDescription } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
 import { Input } from "@portal/components/ui/input";
 import { Label } from "@portal/components/ui/label";
@@ -31,7 +31,6 @@ import {
 import {
   DEFAULT_GAME_RULES,
   GUILD_WAR_KDA_KEY,
-  GUILD_WAR_RESULT_DEFINITIONS,
   type SiteAnalyticsSettings,
 } from "@guild/shared";
 import { BarChart, LineChart, RadarChart } from "echarts/charts";
@@ -55,10 +54,11 @@ import type {
 import type { GuildWarAnalyticsController } from "@portal/hooks/guild-war/useGuildWarAnalytics";
 import type { EChartsThemeConfig } from "@portal/theme/echarts";
 import { ANALYTICS_SELECTION_HARD_CAP } from "@portal/services/GuildWarService";
-import { getGuildWarMemberStatLabel, getGuildWarResultLabel } from "@portal/utils/game-rules";
+import { getGuildWarMemberStatLabel } from "@portal/utils/game-rules";
 import { getTeamObjectiveLabelKey } from "@portal/utils/guild-war-analytics";
 import { GuildWarAnalyticsChartPanel } from "./GuildWarAnalyticsChartPanel";
 import { GuildWarAnalyticsListBox, UserListBoxItem } from "./GuildWarAnalyticsListBox";
+import { EmptyState } from "../../shared/EmptyState";
 
 echarts.use([
   BarChart,
@@ -76,6 +76,7 @@ type GuildWarAnalyticsTabProps = {
   chartThemeName: string;
   chartThemeConfig: EChartsThemeConfig;
   loadErrorMessage: string;
+  onRetry: () => void;
   canManageWeights: boolean;
 };
 
@@ -171,6 +172,7 @@ export function GuildWarAnalyticsTab({
   chartThemeName,
   chartThemeConfig,
   loadErrorMessage,
+  onRetry,
   canManageWeights,
 }: GuildWarAnalyticsTabProps) {
   const { t } = useTranslation("guild-war");
@@ -225,6 +227,14 @@ export function GuildWarAnalyticsTab({
       Icon: TrophyIcon,
     },
   ];
+  const handleModeChange = (mode: AnalyticsMode) => {
+    if (mode === "radar" && analytics.analyticsSelectedMetrics.length < 3) {
+      analytics.setAnalyticsSelectedMetrics(
+        metricOptions.slice(0, 5).map((option) => option.value as AnalyticsMetricKey),
+      );
+    }
+    analytics.setAnalyticsMode(mode);
+  };
 
   const warStatLabel = warStatOptions.find(
     (option) => option.value === analytics.analyticsWarStat,
@@ -236,7 +246,10 @@ export function GuildWarAnalyticsTab({
         })
       : analytics.analyticsMode === "teams"
         ? t("analytics.chart.subject.teams", {
-            count: analytics.analyticsSelectedTeams.length,
+            count:
+              analytics.analyticsSelectedTeams.length > 0
+                ? analytics.analyticsSelectedTeams.length
+                : analytics.analyticsTeamOptions.length,
           })
         : analytics.analyticsMode === "rankings"
           ? t("analytics.chart.subject.rankings", { count: analytics.analyticsTopN })
@@ -269,6 +282,10 @@ export function GuildWarAnalyticsTab({
     analytics.analyticsQuery.isFetching || analytics.analyticsDetailsQuery.isFetching;
   const isError =
     analytics.analyticsQuery.isError || analytics.analyticsDetailsQuery.isError;
+  const hasCachedAnalytics = analytics.analyticsQuery.data !== undefined
+    && analytics.analyticsDetailsQuery.data !== undefined;
+  const isBlockingError = isError && !hasCachedAnalytics;
+  const isRefreshError = isError && hasCachedAnalytics;
   const analyticsEmptyReason =
     analytics.analyticsWarIds.length === 0
       ? "war"
@@ -304,36 +321,40 @@ export function GuildWarAnalyticsTab({
                 : undefined,
       }
     : undefined;
+  const warOutcomes = analytics.analyticsMode === "wars"
+    ? (analytics.analyticsTableRows as Array<Record<string, unknown>>).map((row) => ({
+        id: String(row.key),
+        label: String(row.war_name ?? row.key),
+        result: typeof row.result_id === "string" ? row.result_id : null,
+        resultLabel: String(row.result ?? "—"),
+      }))
+    : [];
 
   return (
     <div className="gwa-layout">
       <div className="gwa-toolbar">
-        <div className="gwa-toolbar__item">
+        <div className="gwa-toolbar__item gwa-toolbar__item--mode">
           <div className="gwa-toolbar__label">{t("analytics.toolbar.mode")}</div>
-          <div className="gwa-toolbar__control-scroll">
-            <ChoiceGroup
-              label={t("analytics.toolbar.mode")}
-              value={analytics.analyticsMode}
-              options={modeOptions}
-              onValueChange={analytics.setAnalyticsMode}
-            />
-          </div>
+          <ChoiceGroup
+            label={t("analytics.toolbar.mode")}
+            value={analytics.analyticsMode}
+            options={modeOptions}
+            onValueChange={handleModeChange}
+          />
         </div>
 
-        <div className="gwa-toolbar__item">
+        <div className="gwa-toolbar__item gwa-toolbar__item--range">
           <div className="gwa-toolbar__label">{t("analytics.toolbar.datePreset")}</div>
-          <div className="gwa-toolbar__control-scroll">
-            <ChoiceGroup
-              label={t("analytics.toolbar.datePreset")}
-              value={analytics.analyticsDatePreset}
-              options={datePresetOptions}
-              onValueChange={analytics.handleAnalyticsDatePresetChange}
-            />
-          </div>
+          <ChoiceGroup
+            label={t("analytics.toolbar.datePreset")}
+            value={analytics.analyticsDatePreset}
+            options={datePresetOptions}
+            onValueChange={analytics.handleAnalyticsDatePresetChange}
+          />
         </div>
       </div>
 
-      {isLoading ? (
+      {isLoading && !hasCachedAnalytics ? (
         <div className="gwa-loading" aria-busy="true">
           <Skeleton className="gwa-loading__chart" />
           {Array.from({ length: 3 }).map((_, index) => (
@@ -342,25 +363,24 @@ export function GuildWarAnalyticsTab({
         </div>
       ) : null}
 
-      {isError ? <Alert variant="destructive">{loadErrorMessage}</Alert> : null}
-
-      {!isLoading && !isError && analytics.analyticsMode === "wars" ? (
-        <div className="gwa-war-summary" aria-live="polite">
-          {GUILD_WAR_RESULT_DEFINITIONS.map((result) => (
-            <span key={result.id} className="gwa-war-summary__result" data-result={result.id}>
-              <strong>{getGuildWarResultLabel(result.id)}</strong>{" "}
-              {analytics.analyticsWarSummary.counts.get(result.id) ?? 0}
-            </span>
-          ))}
-          {analytics.analyticsWarSummary.winRate !== null ? (
-            <strong className="gwa-war-summary__rate">
-              {t("analytics.wars.winRate", { rate: analytics.analyticsWarSummary.winRate })}
-            </strong>
-          ) : null}
-        </div>
+      {isBlockingError ? (
+        <EmptyState
+          status="error"
+          title={loadErrorMessage}
+          actions={<Button type="button" loading={isFetching} onClick={onRetry}>{t("common:action.retry")}</Button>}
+        />
       ) : null}
 
-      {!isLoading && !isError ? (
+      {isRefreshError ? (
+        <Alert variant="destructive">
+          <AlertDescription>{loadErrorMessage}</AlertDescription>
+          <Button type="button" size="sm" variant="outline" loading={isFetching} onClick={onRetry}>
+            {t("common:action.retry")}
+          </Button>
+        </Alert>
+      ) : null}
+
+      {!isLoading && !isBlockingError ? (
         <div
           className={`gwa-content${isFetching ? " gwa-content--fetching" : ""}${chartExpanded ? " gwa-content--expanded" : ""}`}
           aria-busy={isFetching || undefined}
@@ -398,6 +418,7 @@ export function GuildWarAnalyticsTab({
                     items={analytics.analyticsSelectableUserIds.map((userId) => ({
                       value: userId,
                       label: analytics.analyticsUserIdToUsername.get(userId) ?? userId,
+                      avatarMediaId: analytics.analyticsUserIdToAvatarMediaId.get(userId) ?? null,
                     }))}
                     selected={analytics.analyticsSelectedUsers}
                     onChange={analytics.applyAnalyticsSelection}
@@ -664,6 +685,28 @@ export function GuildWarAnalyticsTab({
                           ).toFixed(0)}%`,
                         })}
                       </p>
+                      {canManageWeights ? (
+                        <div className="gwa-norm-panel__actions">
+                          {!analytics.modifierWeightsValid ? (
+                            <p className="gwa-norm-panel__validation" role="alert">
+                              {t("analytics.normalization.weightsRequired")}
+                            </p>
+                          ) : null}
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={analytics.saveModifierWeights}
+                            disabled={
+                              !analytics.modifierWeightsDirty
+                              || !analytics.modifierWeightsValid
+                              || analytics.saveModifierWeightsPending
+                            }
+                            aria-busy={analytics.saveModifierWeightsPending}
+                          >
+                            {t("analytics.normalization.save")}
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -684,6 +727,7 @@ export function GuildWarAnalyticsTab({
               expanded={chartExpanded}
               onToggleExpanded={() => setChartExpanded((current) => !current)}
               heading={chartHeading}
+              warOutcomes={warOutcomes}
               t={t}
               emptyState={emptyState}
             />
@@ -770,7 +814,11 @@ export function GuildWarAnalyticsTab({
                               }
                               return (
                                 <td key={column.key} style={cellStyle}>
-                                  {value === null || value === undefined ? "-" : String(value)}
+                                  {columnKey === "result" && typeof row.result_id === "string" ? (
+                                    <span className="gwa-result" data-result={row.result_id}>
+                                      {value === null || value === undefined ? "-" : String(value)}
+                                    </span>
+                                  ) : value === null || value === undefined ? "-" : String(value)}
                                 </td>
                               );
                             })}

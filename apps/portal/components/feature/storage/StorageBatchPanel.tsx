@@ -25,6 +25,7 @@ import {
   SheetTitle,
 } from "@portal/components/ui/sheet";
 import { Textarea } from "@portal/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useMediaQuery } from "@portal/hooks/useMediaQuery";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -156,8 +157,7 @@ export function StorageBatchPanel({
           <strong id="storage-batch-selection-heading">{t("batch.itemsToApply")}</strong>
           <Button
             size="sm"
-            variant="ghost"
-            className="storage-button--danger"
+            variant="destructive"
             onClick={onClear}
             disabled={selectedEntries.length === 0 || isSaving}
           >
@@ -167,15 +167,17 @@ export function StorageBatchPanel({
         <div className="storage-batch-review__items">
           {selectedEntries.map(({ itemId, item, quantity }) => (
             <div key={itemId} className="storage-batch-review__item">
-              <span className="storage-batch-review__item-name" title={item?.name ?? itemId}>
-                {item?.name ?? itemId}
-              </span>
+              <Tooltip>
+                <TooltipTrigger render={<span className="storage-batch-review__item-name" tabIndex={0} />}>
+                  {item?.name ?? itemId}
+                </TooltipTrigger>
+                <TooltipContent>{item?.name ?? itemId}</TooltipContent>
+              </Tooltip>
               <div className="storage-batch-review__item-actions">
                 <Badge variant="secondary">×{quantity}</Badge>
                 <Button
                   size="icon-sm"
-                  variant="ghost"
-                  className="storage-button--danger"
+                  variant="destructive"
                   aria-label={t("action.removeBatchItem", { item: item?.name ?? itemId })}
                   onClick={() => onQuantityChange(itemId, 0)}
                   disabled={isSaving}

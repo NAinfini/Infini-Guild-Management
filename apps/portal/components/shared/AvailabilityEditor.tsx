@@ -185,7 +185,7 @@ export function AvailabilityEditor({ value, onChange }: AvailabilityEditorProps)
                     {block.start}–{block.end}
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="destructive"
                       size="icon-xs"
                       aria-label={t("availability.editor.removeBlock", {
                         day: t(DAY_LABEL_KEYS[day]),
@@ -218,7 +218,7 @@ export function AvailabilityEditor({ value, onChange }: AvailabilityEditorProps)
                     />
                   )}
                 >
-                  <PlusIcon aria-hidden="true" />
+                  <PlusIcon size={14} aria-hidden="true" />
                 </PopoverTrigger>
                 <PopoverContent align="start" className="availability-editor__picker">
                   <div className="availability-editor__picker-row">

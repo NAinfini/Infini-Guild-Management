@@ -117,6 +117,7 @@ describe("SiteConfigService", () => {
 
     await expect(value.update(context(["admin.siteConfig.manage"]), {
       oauth: { google: true },
+      expected_revision_token: record.revisionToken,
     })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
 
     expect(update).not.toHaveBeenCalled();
@@ -164,6 +165,7 @@ describe("SiteConfigService", () => {
     await service(store({ update })).update(context(["admin.siteConfig.manage"]), {
       features: { wiki: false },
       media_policy: { quotas: { wiki: 7 } },
+      expected_revision_token: record.revisionToken,
     });
 
     expect(update).toHaveBeenCalledOnce();
@@ -181,6 +183,7 @@ describe("SiteConfigService", () => {
     expect((await value.getPublic()).site_description).toBe(DEFAULT_SITE_DESCRIPTION);
     await value.update(context(["admin.siteConfig.manage"]), {
       site_description: "A focused home for our guild.",
+      expected_revision_token: record.revisionToken,
     });
 
     expect(update.mock.calls[0]![0]).toMatchObject({
@@ -213,6 +216,7 @@ describe("SiteConfigService", () => {
     const result = await service(store({ setLogo }), { uploadImages }).uploadLogo(
       context(["admin.siteConfig.manage"]),
       { full: new Uint8Array([1]), view: new Uint8Array([2]) },
+      record.revisionToken,
     );
 
     expect(result.site.site_logo_media_id).toBe("123456789012345678901");
@@ -221,5 +225,38 @@ describe("SiteConfigService", () => {
       ownerUserId: "user-1",
       expectedRevisionToken: record.revisionToken,
     });
+  });
+
+  it("rejects an A/B stale full-config save before writing B's latest record", async () => {
+    const update = vi.fn();
+    const value = service(store({
+      get: vi.fn().mockResolvedValue({ ...record, revisionToken: "site-config-revision-b" }),
+      update,
+    }));
+
+    await expect(value.update(context(["admin.siteConfig.manage"]), {
+      site_description: "A's stale draft",
+      expected_revision_token: record.revisionToken,
+    })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects an A/B stale logo mutation before staging a replacement logo", async () => {
+    const setLogo = vi.fn();
+    const uploadImages = vi.fn();
+    const value = service(store({
+      get: vi.fn().mockResolvedValue({ ...record, revisionToken: "site-config-revision-b" }),
+      setLogo,
+    }), { uploadImages });
+
+    await expect(value.uploadLogo(
+      context(["admin.siteConfig.manage"]),
+      { full: new Uint8Array([1]), view: new Uint8Array([2]) },
+      record.revisionToken,
+    )).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(uploadImages).not.toHaveBeenCalled();
+    expect(setLogo).not.toHaveBeenCalled();
   });
 });

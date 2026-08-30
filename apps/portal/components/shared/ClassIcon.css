@@ -15,7 +15,8 @@
 }
 
 .class-icon__vector {
-  display: inline-flex;
+  display: block;
+  filter: drop-shadow(0 1px 0 color-mix(in srgb, var(--surface-base) 30%, transparent));
 }
 
 .class-icon__image {

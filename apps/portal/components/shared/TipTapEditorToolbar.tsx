@@ -33,12 +33,15 @@ import {
   SeparatorHorizontalIcon,
   PlayerPlayIcon,
   LayoutListIcon,
+  PlusIcon,
   SearchIcon,
+  TextSizeIcon,
 } from "@portal/components/icons";
 import { Button } from "@portal/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -99,9 +102,10 @@ function ToolbarAction({ label, children, onClick, actionRef }: ToolbarActionPro
 type ToolbarMenuTriggerProps = {
   label: string;
   children: ReactNode;
+  actionRef?: Ref<HTMLButtonElement>;
 };
 
-function ToolbarMenuTrigger({ label, children }: ToolbarMenuTriggerProps) {
+function ToolbarMenuTrigger({ label, children, actionRef }: ToolbarMenuTriggerProps) {
   return (
     <Tooltip>
       <DropdownMenuTrigger
@@ -109,6 +113,7 @@ function ToolbarMenuTrigger({ label, children }: ToolbarMenuTriggerProps) {
           <TooltipTrigger
             render={(
               <Button
+                ref={actionRef}
                 type="button"
                 variant="outline"
                 size="icon-sm"
@@ -172,6 +177,101 @@ function ColorMenu({ label, customLabel, clearLabel, colors, icon, onSelect, onC
   );
 }
 
+type FormattingMenuProps = {
+  editor: Editor;
+  labels: TipTapEditorLabels;
+  onInsertLink: () => void;
+  triggerRef?: Ref<HTMLButtonElement>;
+};
+
+function FormattingMenu({ editor, labels, onInsertLink, triggerRef }: FormattingMenuProps) {
+  return (
+    <DropdownMenu>
+      <ToolbarMenuTrigger label={labels.moreFormatting} actionRef={triggerRef}>
+        <TextSizeIcon size={ICON_SIZE} />
+      </ToolbarMenuTrigger>
+      <DropdownMenuContent align="start" className="infini-tiptap-format-menu">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{labels.moreFormatting}</DropdownMenuLabel>
+          <div className="infini-tiptap-format-menu__grid">
+            <DropdownMenuItem onClick={() => editor.chain().focus().toggleStrike().run()}>
+              <StrikethroughIcon size={14} /> {labels.strike}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>
+              <EraserIcon size={14} /> {labels.clearFormatting}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onInsertLink}>
+              <LinkIcon size={14} /> {labels.link}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().unsetLink().run()}>
+              <LinkOffIcon size={14} /> {labels.unlink}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+              <H1Icon size={14} /> {labels.h1}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+              <H2Icon size={14} /> {labels.h2}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
+              <H3Icon size={14} /> {labels.h3}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().setTextAlign("left").run()}>
+              <AlignLeftIcon size={14} /> {labels.alignLeft}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().setTextAlign("center").run()}>
+              <AlignCenterIcon size={14} /> {labels.alignCenter}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().setTextAlign("right").run()}>
+              <AlignRightIcon size={14} /> {labels.alignRight}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().toggleBlockquote().run()}>
+              <BlockquoteIcon size={14} /> {labels.quote}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
+              <CodeIcon size={14} /> {labels.code}
+            </DropdownMenuItem>
+          </div>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+type InsertMenuProps = {
+  editor: Editor;
+  labels: TipTapEditorLabels;
+  onInsertImage: () => void;
+  onInsertVideo: () => void;
+  triggerRef?: Ref<HTMLButtonElement>;
+};
+
+function InsertMenu({ editor, labels, onInsertImage, onInsertVideo, triggerRef }: InsertMenuProps) {
+  return (
+    <DropdownMenu>
+      <ToolbarMenuTrigger label={labels.moreInsert} actionRef={triggerRef}>
+        <PlusIcon size={ICON_SIZE} />
+      </ToolbarMenuTrigger>
+      <DropdownMenuContent align="start" className="infini-tiptap-insert-menu">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{labels.moreInsert}</DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+            <SeparatorHorizontalIcon size={14} /> {labels.divider}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onInsertImage}>
+            <PhotoIcon size={14} /> {labels.image}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onInsertVideo}>
+            <PlayerPlayIcon size={14} /> {labels.embedVideo}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => (editor.commands as unknown as { setDetails: () => void }).setDetails()}>
+            <LayoutListIcon size={14} /> {labels.details}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function TipTapEditorToolbar({
   editor,
   labels,
@@ -208,12 +308,6 @@ export function TipTapEditorToolbar({
         <ToolbarAction label={labels.underline} onClick={() => editor.chain().focus().toggleUnderline().run()}>
           <UnderlineIcon size={ICON_SIZE} />
         </ToolbarAction>
-        <ToolbarAction label={labels.strike} onClick={() => editor.chain().focus().toggleStrike().run()}>
-          <StrikethroughIcon size={ICON_SIZE} />
-        </ToolbarAction>
-        <ToolbarAction label={labels.clearFormatting} onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>
-          <EraserIcon size={ICON_SIZE} />
-        </ToolbarAction>
       </div>
       <div className="infini-tiptap-toolbar__group">
         <ColorMenu
@@ -236,34 +330,6 @@ export function TipTapEditorToolbar({
         />
       </div>
       <div className="infini-tiptap-toolbar__group">
-        <ToolbarAction label={labels.alignLeft} onClick={() => editor.chain().focus().setTextAlign("left").run()}>
-          <AlignLeftIcon size={ICON_SIZE} />
-        </ToolbarAction>
-        <ToolbarAction label={labels.alignCenter} onClick={() => editor.chain().focus().setTextAlign("center").run()}>
-          <AlignCenterIcon size={ICON_SIZE} />
-        </ToolbarAction>
-        <ToolbarAction label={labels.alignRight} onClick={() => editor.chain().focus().setTextAlign("right").run()}>
-          <AlignRightIcon size={ICON_SIZE} />
-        </ToolbarAction>
-      </div>
-      <div className="infini-tiptap-toolbar__group">
-        <ToolbarAction label={labels.link} actionRef={linkTriggerRef} onClick={onInsertLink}>
-          <LinkIcon size={ICON_SIZE} />
-        </ToolbarAction>
-        <ToolbarAction label={labels.unlink} onClick={() => editor.chain().focus().unsetLink().run()}>
-          <LinkOffIcon size={ICON_SIZE} />
-        </ToolbarAction>
-        <ToolbarAction label={labels.h1} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
-          <H1Icon size={ICON_SIZE} />
-        </ToolbarAction>
-        <ToolbarAction label={labels.h2} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
-          <H2Icon size={ICON_SIZE} />
-        </ToolbarAction>
-        <ToolbarAction label={labels.h3} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
-          <H3Icon size={ICON_SIZE} />
-        </ToolbarAction>
-      </div>
-      <div className="infini-tiptap-toolbar__group">
         <ToolbarAction label={labels.bullet} onClick={() => editor.chain().focus().toggleBulletList().run()}>
           <ListIcon size={ICON_SIZE} />
         </ToolbarAction>
@@ -273,61 +339,56 @@ export function TipTapEditorToolbar({
         <ToolbarAction label={labels.taskList} onClick={() => editor.chain().focus().toggleTaskList().run()}>
           <CheckboxIcon size={ICON_SIZE} />
         </ToolbarAction>
-        <ToolbarAction label={labels.quote} onClick={() => editor.chain().focus().toggleBlockquote().run()}>
-          <BlockquoteIcon size={ICON_SIZE} />
-        </ToolbarAction>
-        <ToolbarAction label={labels.code} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
-          <CodeIcon size={ICON_SIZE} />
-        </ToolbarAction>
       </div>
       <div className="infini-tiptap-toolbar__group">
-        <ToolbarAction label={labels.divider} onClick={() => editor.chain().focus().setHorizontalRule().run()}>
-          <SeparatorHorizontalIcon size={ICON_SIZE} />
-        </ToolbarAction>
-        <ToolbarAction label={labels.image} onClick={onInsertImage}>
-          <PhotoIcon size={ICON_SIZE} />
-        </ToolbarAction>
-        <ToolbarAction label={labels.embedVideo} actionRef={videoTriggerRef} onClick={onInsertVideo}>
-          <PlayerPlayIcon size={ICON_SIZE} />
-        </ToolbarAction>
-        <ToolbarAction label={labels.details} onClick={() => (editor.commands as unknown as { setDetails: () => void }).setDetails()}>
-          <LayoutListIcon size={ICON_SIZE} />
-        </ToolbarAction>
+        <FormattingMenu
+          editor={editor}
+          labels={labels}
+          onInsertLink={onInsertLink}
+          triggerRef={linkTriggerRef}
+        />
+        <InsertMenu
+          editor={editor}
+          labels={labels}
+          onInsertImage={onInsertImage}
+          onInsertVideo={onInsertVideo}
+          triggerRef={videoTriggerRef}
+        />
         <DropdownMenu>
           <ToolbarMenuTrigger label={labels.table}>
             <TableIcon size={ICON_SIZE} />
           </ToolbarMenuTrigger>
           <DropdownMenuContent align="end" className="infini-tiptap-toolbar-menu !w-[200px]">
-            <DropdownMenuLabel>{labels.table}</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}>
-              <TableIcon size={14} />
-              {labels.table}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().addColumnAfter().run()}>
-              <ColumnInsertRightIcon size={14} />
-              {labels.addCol}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().addRowAfter().run()}>
-              <RowInsertBottomIcon size={14} />
-              {labels.addRow}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => editor.chain().focus().deleteColumn().run()}>
-              <ColumnRemoveIcon size={14} />
-              {labels.delCol}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().deleteRow().run()}>
-              <RowRemoveIcon size={14} />
-              {labels.delRow}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().deleteTable().run()}>
-              <TableOffIcon size={14} />
-              {labels.delTable}
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{labels.table}</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}>
+                <TableIcon size={14} />
+                {labels.table}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().addColumnAfter().run()}>
+                <ColumnInsertRightIcon size={14} />
+                {labels.addCol}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().addRowAfter().run()}>
+                <RowInsertBottomIcon size={14} />
+                {labels.addRow}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => editor.chain().focus().deleteColumn().run()}>
+                <ColumnRemoveIcon size={14} />
+                {labels.delCol}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().deleteRow().run()}>
+                <RowRemoveIcon size={14} />
+                {labels.delRow}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().deleteTable().run()}>
+                <TableOffIcon size={14} />
+                {labels.delTable}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-      <div className="infini-tiptap-toolbar__group">
         <ToolbarAction label={labels.findReplace} onClick={onToggleFindReplace}>
           <SearchIcon size={ICON_SIZE} />
         </ToolbarAction>

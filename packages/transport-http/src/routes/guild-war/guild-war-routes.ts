@@ -14,7 +14,7 @@ import {
 } from "@guild/shared";
 import { Hono } from "hono";
 import { z } from "zod";
-import { parseJsonBody, parseQuery } from "../../core/parsing.js";
+import { parseIfMatch, parseJsonBody, parseQuery } from "../../core/parsing.js";
 import {
   presentAnalytics,
   presentConcludeResult,
@@ -36,6 +36,19 @@ type GuildWarHttpEnv = {
 };
 
 export type GuildWarRouteDependencies = Readonly<{ service: GuildWarService }>;
+
+const exportTimestampSchema = z.string().datetime().transform((value) => new Date(value).toISOString());
+const guildWarExportQuerySchema = z.object({
+  format: z.enum(["csv", "json"]).default("csv"),
+  history_id: z.string().trim().min(1).max(128).optional(),
+  event_id: z.string().trim().min(1).max(128).optional(),
+  date_from: exportTimestampSchema.optional(),
+  date_to: exportTimestampSchema.optional(),
+}).strict().superRefine((query, context) => {
+  if (query.date_from && query.date_to && query.date_from > query.date_to) {
+    context.addIssue({ code: "custom", path: ["date_to"], message: "Invalid export date range" });
+  }
+});
 
 export function createGuildWarRoutes(dependencies: GuildWarRouteDependencies): Hono<GuildWarHttpEnv> {
   const routes = new Hono<GuildWarHttpEnv>();
@@ -100,12 +113,12 @@ export function createGuildWarRoutes(dependencies: GuildWarRouteDependencies): H
 
   routes.get("/export", async (context) => {
     const request = requestContext(context);
-    const format = (context.req.query("format") ?? "csv").trim().toLowerCase();
-    if (format !== "csv" && format !== "json") throw invalidPayload("format must be csv or json");
-    const result = await dependencies.service.export(request, format, {
-      ...(context.req.query("event_id") ? { eventId: context.req.query("event_id")! } : {}),
-      ...(context.req.query("date_from") ? { dateFrom: context.req.query("date_from")! } : {}),
-      ...(context.req.query("date_to") ? { dateTo: context.req.query("date_to")! } : {}),
+    const query = parseQuery(context.req.raw, guildWarExportQuerySchema, "Invalid export query");
+    const result = await dependencies.service.export(request, query.format, {
+      ...(query.history_id ? { historyId: query.history_id } : {}),
+      ...(query.event_id ? { eventId: query.event_id } : {}),
+      ...(query.date_from ? { dateFrom: query.date_from } : {}),
+      ...(query.date_to ? { dateTo: query.date_to } : {}),
     });
     return new Response(result.content, {
       status: 200,
@@ -182,6 +195,7 @@ export function createGuildWarRoutes(dependencies: GuildWarRouteDependencies): H
       request,
       context.req.param("id"),
       parsed.data.updates.map((update) => ({ user_id: update.user_id, data: update.stats })),
+      requiredHistoryEtag(context.req.header("If-Match")),
     );
     return context.json(presentMemberStats(members));
   });
@@ -190,10 +204,15 @@ export function createGuildWarRoutes(dependencies: GuildWarRouteDependencies): H
     const request = requestContext(context);
     const parsed = updateMemberStatsSchema.safeParse(await jsonBody(context.req.raw));
     if (!parsed.success) throw invalidPayload("Invalid member stats payload", parsed.error.flatten());
-    const member = (await dependencies.service.updateMemberStats(request, context.req.param("id"), [{
-      user_id: context.req.param("userId"),
-      data: parsed.data,
-    }]))[0];
+    const member = (await dependencies.service.updateMemberStats(
+      request,
+      context.req.param("id"),
+      [{
+        user_id: context.req.param("userId"),
+        data: parsed.data,
+      }],
+      requiredHistoryEtag(context.req.header("If-Match")),
+    ))[0];
     if (!member) throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Failed to load updated member stats" });
     return context.json(presentMember(member, true));
   });
@@ -211,6 +230,12 @@ export function createGuildWarRoutes(dependencies: GuildWarRouteDependencies): H
 
 function conditionalEtag(value: string | undefined): string | undefined {
   return value && value !== "*" ? value : undefined;
+}
+
+function requiredHistoryEtag(value: string | undefined): string {
+  const etag = parseIfMatch(value);
+  if (!etag) throw invalidPayload("Guild war history revision is required");
+  return etag;
 }
 
 function queryIds(values: readonly string[] | undefined): string[] {

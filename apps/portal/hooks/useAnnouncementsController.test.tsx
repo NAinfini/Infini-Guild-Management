@@ -3,9 +3,9 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAnnouncementsController } from "./useAnnouncementsController";
-import { userScopedStorageKey } from "../session-storage";
-import { DEFAULT_SITE_MEDIA_POLICY } from "@guild/shared";
+import { DEFAULT_SITE_MEDIA_POLICY, type Announcement } from "@guild/shared";
 import { useSiteConfigStore } from "../stores/site-config";
+import { queryKeys } from "../api/query-keys";
 
 const serviceMocks = vi.hoisted(() => ({
   archiveAnnouncement: vi.fn(),
@@ -13,25 +13,36 @@ const serviceMocks = vi.hoisted(() => ({
   deleteAnnouncement: vi.fn(),
   fetchAnnouncement: vi.fn(),
   fetchAnnouncements: vi.fn(),
+  recordAnnouncementView: vi.fn(),
   uploadAnnouncementAttachment: vi.fn(),
   uploadPendingAnnouncementImages: vi.fn(),
   updateAnnouncement: vi.fn(),
-  uploadAnnouncementImages: vi.fn(),
 }));
 const navigateMock = vi.hoisted(() => vi.fn());
-const routeSearchMock = vi.hoisted(() => ({
+const confirmMock = vi.hoisted(() => vi.fn());
+const routeMock = vi.hoisted(() => ({
   announcementId: undefined as string | undefined,
-  selection: undefined as "none" | undefined,
+  pathname: "/announcements",
+  entryKey: "announcements-list-entry",
 }));
-const authState = vi.hoisted(() => ({ user: { id: "user-1" } as { id: string } | null }));
-
-vi.mock("../stores/auth", () => ({
-  useAuthStore: (selector: (state: typeof authState) => unknown) => selector(authState),
+const accessState = vi.hoisted(() => ({
+  permissions: new Set<string>(),
+  external: false,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => navigateMock,
-  useSearch: () => routeSearchMock,
+  useParams: () => ({ announcementId: routeMock.announcementId }),
+  useLocation: <T,>({ select }: { select: (location: {
+    pathname: string;
+    href: string;
+    state: { __TSR_key: string; __TSR_index: number };
+  }) => T }) =>
+    select({
+      pathname: routeMock.pathname,
+      href: routeMock.pathname,
+      state: { __TSR_key: routeMock.entryKey, __TSR_index: 0 },
+    }),
 }));
 
 vi.mock("../services/AnnouncementService", () => ({
@@ -40,26 +51,32 @@ vi.mock("../services/AnnouncementService", () => ({
   deleteAnnouncement: serviceMocks.deleteAnnouncement,
   fetchAnnouncement: serviceMocks.fetchAnnouncement,
   fetchAnnouncements: serviceMocks.fetchAnnouncements,
+  recordAnnouncementView: serviceMocks.recordAnnouncementView,
   uploadAnnouncementAttachment: serviceMocks.uploadAnnouncementAttachment,
   uploadPendingAnnouncementImages: serviceMocks.uploadPendingAnnouncementImages,
   updateAnnouncement: serviceMocks.updateAnnouncement,
-  uploadAnnouncementImages: serviceMocks.uploadAnnouncementImages,
 }));
 
 vi.mock("./useEffectivePermissions", () => ({
   useEffectivePermissions: () => ({
-    canManage: () => true,
+    canManage: (permissions: string[]) => permissions.some((permission) => (
+      accessState.permissions.has(permission)
+    )),
   }),
 }));
 
 vi.mock("./useExternalView", () => ({
-  useExternalView: () => false,
+  useExternalView: () => accessState.external,
 }));
 
 vi.mock("./useAppError", () => ({
   useAppError: () => ({
     showError: vi.fn(),
   }),
+}));
+
+vi.mock("@portal/hooks/useConfirmDialog", () => ({
+  useConfirmDialog: () => confirmMock,
 }));
 
 vi.mock("./useBeforeUnloadPrompt", () => ({
@@ -72,16 +89,42 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
-  const queryClient = new QueryClient({
+function createQueryClient(): QueryClient {
+  return new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false },
     },
   });
+}
 
+function createWrapper(queryClient = createQueryClient()): ({ children }: { children: ReactNode }) => ReactNode {
   return function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  };
+}
+
+function announcementDetail(overrides: Partial<Announcement> = {}): Announcement {
+  return {
+    id: "announcement-edit",
+    title: "Original announcement",
+    body_json: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Original body"}]}]}',
+    category: "announcement",
+    excerpt: "Original body",
+    pinned: false,
+    view_count: 0,
+    preview_media_id: null,
+    status: "published",
+    publish_at: "2026-08-01T00:00:00.000Z",
+    expires_at: null,
+    archived_at: null,
+    created_by: "user-1",
+    updated_by: null,
+    created_at: "2026-08-01T00:00:00.000Z",
+    updated_at: "2026-08-01T00:00:00.000Z",
+    author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
+    attachments: [],
+    ...overrides,
   };
 }
 
@@ -103,10 +146,19 @@ describe("useAnnouncementsController", () => {
   beforeEach(() => {
     localStorage.clear();
     useSiteConfigStore.setState({ mediaPolicy: DEFAULT_SITE_MEDIA_POLICY });
-    authState.user = { id: "user-1" };
+    accessState.permissions = new Set([
+      "announcements.create",
+      "announcements.edit",
+      "announcements.archive",
+      "announcements.delete",
+    ]);
+    accessState.external = false;
     navigateMock.mockReset();
-    routeSearchMock.announcementId = undefined;
-    routeSearchMock.selection = undefined;
+    confirmMock.mockReset();
+    confirmMock.mockResolvedValue(true);
+    routeMock.announcementId = undefined;
+    routeMock.pathname = "/announcements";
+    routeMock.entryKey = "announcements-list-entry";
     for (const mock of Object.values(serviceMocks)) {
       mock.mockReset();
     }
@@ -118,12 +170,46 @@ describe("useAnnouncementsController", () => {
       total_pages: 0,
     });
     serviceMocks.fetchAnnouncement.mockResolvedValue(null);
+    serviceMocks.recordAnnouncementView.mockResolvedValue({ view_count: 1 });
     serviceMocks.createAnnouncement.mockResolvedValue({ id: "announcement-1" });
     serviceMocks.uploadPendingAnnouncementImages.mockResolvedValue(pendingUploadResponse);
     serviceMocks.uploadAnnouncementAttachment.mockResolvedValue(attachmentUploadResponse);
-    serviceMocks.uploadAnnouncementImages.mockResolvedValue({
-      media_ids: ["image1234567890abcdef"],
-    });
+  });
+
+  it("requests and exposes at most three pinned announcements", async () => {
+    const pinnedAnnouncements = Array.from({ length: 4 }, (_, index) => announcementDetail({
+      id: `pinned-${index + 1}`,
+      title: `Pinned ${index + 1}`,
+      pinned: true,
+    }));
+    serviceMocks.fetchAnnouncements.mockImplementation(async ({ pinned, page, limit }) => ({
+      data: pinned ? pinnedAnnouncements : [],
+      total: pinned ? pinnedAnnouncements.length : 0,
+      page,
+      limit,
+      total_pages: pinned ? 2 : 0,
+    }));
+
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.pinnedRows).toHaveLength(3));
+    expect(result.current.pinnedRows.map(({ id }) => id)).toEqual(["pinned-1", "pinned-2", "pinned-3"]);
+    expect(serviceMocks.fetchAnnouncements).toHaveBeenCalledWith(expect.objectContaining({
+      page: 1,
+      limit: 3,
+      pinned: true,
+    }));
+  });
+
+  it("does not load the hidden catalog or pinned rows on a detail route", async () => {
+    routeMock.pathname = "/announcements/announcement-detail";
+    routeMock.announcementId = "announcement-detail";
+    serviceMocks.fetchAnnouncement.mockResolvedValue(announcementDetail({ id: "announcement-detail" }));
+
+    renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(serviceMocks.fetchAnnouncement).toHaveBeenCalledOnce());
+    expect(serviceMocks.fetchAnnouncements).not.toHaveBeenCalled();
   });
 
   it("does not include unsupported expires_at in create payloads", async () => {
@@ -174,30 +260,6 @@ describe("useAnnouncementsController", () => {
     await waitFor(() => expect(result.current.savePending).toBe(false));
   });
 
-  it("reloads announcement last-seen state from the active user's scoped storage", async () => {
-    const firstSeenAt = "2026-01-01T00:00:00.000Z";
-    const secondSeenAt = "2026-02-01T00:00:00.000Z";
-    localStorage.setItem(
-      userScopedStorageKey("portal:last_seen", "user-1"),
-      JSON.stringify({ announcements: { lastSeenAt: firstSeenAt } }),
-    );
-    localStorage.setItem(
-      userScopedStorageKey("portal:last_seen", "user-2"),
-      JSON.stringify({ announcements: { lastSeenAt: secondSeenAt } }),
-    );
-    localStorage.setItem(
-      "portal:last_seen",
-      JSON.stringify({ announcements: { lastSeenAt: "2099-01-01T00:00:00.000Z" } }),
-    );
-    const { result, rerender } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
-
-    await waitFor(() => expect(result.current.announcementsLastSeenAt).toBe(firstSeenAt));
-    authState.user = { id: "user-2" };
-    rerender();
-
-    await waitFor(() => expect(result.current.announcementsLastSeenAt).toBe(secondSeenAt));
-  });
-
   it("exits create mode when browser history restores a selected announcement", async () => {
     const selected = {
       id: "announcement-history",
@@ -223,8 +285,8 @@ describe("useAnnouncementsController", () => {
     });
     await waitFor(() => expect(result.current.isCreating).toBe(true));
 
-    routeSearchMock.selection = undefined;
-    routeSearchMock.announcementId = selected.id;
+    routeMock.pathname = `/announcements/${selected.id}`;
+    routeMock.announcementId = selected.id;
     rerender();
 
     await waitFor(() => expect(result.current.isCreating).toBe(false));
@@ -248,13 +310,14 @@ describe("useAnnouncementsController", () => {
       author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
       attachments: [],
     };
-    routeSearchMock.announcementId = selected.id;
+    routeMock.pathname = `/announcements/${selected.id}`;
+    routeMock.announcementId = selected.id;
     serviceMocks.fetchAnnouncement.mockResolvedValue(selected);
     serviceMocks.updateAnnouncement.mockResolvedValue(selected);
 
     const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
 
-    await waitFor(() => expect(result.current.selected).toEqual(selected));
+    await waitFor(() => expect(result.current.selected).toEqual(expect.objectContaining(selected)));
     await waitFor(() => expect(result.current.isPublishReady).toBe(true));
     await waitFor(() => expect(result.current.publishAt).not.toBe(""));
     act(() => {
@@ -294,6 +357,118 @@ describe("useAnnouncementsController", () => {
     expect(serviceMocks.uploadPendingAnnouncementImages).toHaveBeenLastCalledWith([file]);
   });
 
+  it("does not enter direct create mode with edit permission alone", async () => {
+    accessState.permissions = new Set(["announcements.edit"]);
+    routeMock.pathname = "/announcements/new";
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.canCreate).toBe(false));
+    expect(result.current.isCreating).toBe(false);
+    expect(await result.current.handleFinish("draft")).toBe(false);
+    expect(serviceMocks.createAnnouncement).not.toHaveBeenCalled();
+  });
+
+  it("does not enter direct create mode from external preview", async () => {
+    accessState.external = true;
+    routeMock.pathname = "/announcements/new";
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.canCreate).toBe(false));
+    expect(result.current.isCreating).toBe(false);
+    expect(serviceMocks.uploadAnnouncementAttachment).not.toHaveBeenCalled();
+  });
+
+  it("stages editor images for an existing announcement without mutating its aggregate", async () => {
+    const selected = announcementDetail();
+    routeMock.pathname = `/announcements/${selected.id}`;
+    routeMock.announcementId = selected.id;
+    serviceMocks.fetchAnnouncement.mockResolvedValue(selected);
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+    const file = new File(["image"], "image.webp", { type: "image/webp" });
+
+    await waitFor(() => expect(result.current.selected?.id).toBe(selected.id));
+    act(() => result.current.handleStartEditing());
+    await act(async () => {
+      await result.current.handleUploadAnnouncementImages(file);
+    });
+
+    expect(serviceMocks.uploadPendingAnnouncementImages).toHaveBeenCalledWith([file]);
+    expect(serviceMocks.updateAnnouncement).not.toHaveBeenCalled();
+  });
+
+  it("freezes the editor snapshot across a background refresh and saves with its original ETag", async () => {
+    const original = announcementDetail();
+    const remote = announcementDetail({
+      title: "Remote announcement",
+      updated_at: "2026-08-02T00:00:00.000Z",
+    });
+    const saved = announcementDetail({
+      title: "Local announcement",
+      status: "draft",
+      updated_at: "2026-08-03T00:00:00.000Z",
+    });
+    routeMock.pathname = `/announcements/${original.id}`;
+    routeMock.announcementId = original.id;
+    serviceMocks.fetchAnnouncement.mockResolvedValue(original);
+    serviceMocks.updateAnnouncement.mockResolvedValue(saved);
+    const queryClient = createQueryClient();
+    const { result } = renderHook(() => useAnnouncementsController(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.title).toBe(original.title));
+    act(() => {
+      result.current.handleStartEditing();
+      result.current.setTitle("Local announcement");
+    });
+    act(() => {
+      queryClient.setQueryData(queryKeys.announcements.detail(original.id), remote);
+    });
+
+    await waitFor(() => expect(result.current.selected?.title).toBe(remote.title));
+    expect(result.current.title).toBe("Local announcement");
+
+    let succeeded = false;
+    await act(async () => {
+      succeeded = await result.current.handleFinish("draft");
+    });
+
+    expect(succeeded).toBe(true);
+    expect(serviceMocks.updateAnnouncement).toHaveBeenCalledWith(
+      original.id,
+      expect.objectContaining({ title: "Local announcement", status: "draft" }),
+      `"announcement-${original.id}-${original.updated_at}"`,
+    );
+  });
+
+  it("keeps a failed edit retryable with the same frozen ETag", async () => {
+    const original = announcementDetail();
+    routeMock.pathname = `/announcements/${original.id}`;
+    routeMock.announcementId = original.id;
+    serviceMocks.fetchAnnouncement.mockResolvedValue(original);
+    serviceMocks.updateAnnouncement.mockRejectedValueOnce(new Error("conflict"));
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.title).toBe(original.title));
+    act(() => {
+      result.current.handleStartEditing();
+      result.current.setTitle("Retryable local edit");
+    });
+
+    let succeeded = true;
+    await act(async () => {
+      succeeded = await result.current.handleFinish("draft");
+    });
+
+    expect(succeeded).toBe(false);
+    expect(result.current.title).toBe("Retryable local edit");
+    expect(serviceMocks.updateAnnouncement).toHaveBeenCalledWith(
+      original.id,
+      expect.any(Object),
+      `"announcement-${original.id}-${original.updated_at}"`,
+    );
+  });
+
   it("saves announcement content without exposing pending media IDs", async () => {
     const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
     const file = new File(["image"], "image.webp", { type: "image/webp" });
@@ -314,7 +489,11 @@ describe("useAnnouncementsController", () => {
 
     await waitFor(() => expect(serviceMocks.createAnnouncement).toHaveBeenCalled());
     const payload = serviceMocks.createAnnouncement.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(payload).toEqual(expect.objectContaining({ title: "Maintenance", status: "draft" }));
+    expect(payload).toEqual(expect.objectContaining({
+      title: "Maintenance",
+      category: "announcement",
+      status: "draft",
+    }));
     expect(payload).not.toHaveProperty("media_ids");
   });
 
@@ -345,6 +524,108 @@ describe("useAnnouncementsController", () => {
     expect(serviceMocks.createAnnouncement.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       attachment_media_ids: [attachmentUploadResponse.attachment.media_id],
     }));
+  });
+
+  it("waits for a create-mode attachment upload before allowing save", async () => {
+    let resolveUpload!: (value: typeof attachmentUploadResponse) => void;
+    serviceMocks.uploadAnnouncementAttachment.mockImplementation(() => new Promise((resolve) => {
+      resolveUpload = resolve;
+    }));
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+    const file = new File(["%PDF-1.7"], "guild-guide.pdf", { type: "application/pdf" });
+
+    act(() => result.current.handleCreateByStatus());
+    await waitFor(() => expect(result.current.isCreating).toBe(true));
+    act(() => {
+      result.current.setTitle("Maintenance");
+      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Planned work"}]}]}');
+    });
+    let uploadPromise!: Promise<void>;
+    act(() => {
+      uploadPromise = result.current.handleUploadAnnouncementAttachment(file);
+    });
+    await waitFor(() => expect(result.current.attachmentUploading).toBe(true));
+
+    let saved = true;
+    await act(async () => {
+      saved = await result.current.handleFinish("draft");
+    });
+    expect(saved).toBe(false);
+    expect(serviceMocks.createAnnouncement).not.toHaveBeenCalled();
+
+    resolveUpload(attachmentUploadResponse);
+    await act(async () => uploadPromise);
+    await act(async () => {
+      saved = await result.current.handleFinish("draft");
+    });
+    expect(saved).toBe(true);
+    expect(serviceMocks.createAnnouncement.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      attachment_media_ids: [attachmentUploadResponse.attachment.media_id],
+    }));
+  });
+
+  it("waits for an edit-mode attachment upload before allowing save", async () => {
+    let resolveUpload!: (value: typeof attachmentUploadResponse) => void;
+    serviceMocks.uploadAnnouncementAttachment.mockImplementation(() => new Promise((resolve) => {
+      resolveUpload = resolve;
+    }));
+    const selected = announcementDetail();
+    routeMock.pathname = `/announcements/${selected.id}`;
+    routeMock.announcementId = selected.id;
+    serviceMocks.fetchAnnouncement.mockResolvedValue(selected);
+    serviceMocks.updateAnnouncement.mockResolvedValue({
+      ...selected,
+      attachments: [attachmentUploadResponse.attachment],
+    });
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+    const file = new File(["%PDF-1.7"], "guild-guide.pdf", { type: "application/pdf" });
+
+    await waitFor(() => expect(result.current.selected?.id).toBe(selected.id));
+    act(() => result.current.handleStartEditing());
+    let uploadPromise!: Promise<void>;
+    act(() => {
+      uploadPromise = result.current.handleUploadAnnouncementAttachment(file);
+    });
+    await waitFor(() => expect(result.current.attachmentUploading).toBe(true));
+
+    expect(await result.current.handleFinish("draft")).toBe(false);
+    expect(serviceMocks.updateAnnouncement).not.toHaveBeenCalled();
+
+    resolveUpload(attachmentUploadResponse);
+    await act(async () => uploadPromise);
+    await act(async () => {
+      expect(await result.current.handleFinish("draft")).toBe(true);
+    });
+    expect(serviceMocks.updateAnnouncement).toHaveBeenCalledWith(
+      selected.id,
+      expect.objectContaining({
+        attachment_media_ids: [attachmentUploadResponse.attachment.media_id],
+      }),
+      expect.any(String),
+    );
+  });
+
+  it("ignores an attachment upload that finishes after the editor is discarded", async () => {
+    let resolveUpload!: (value: typeof attachmentUploadResponse) => void;
+    serviceMocks.uploadAnnouncementAttachment.mockImplementation(() => new Promise((resolve) => {
+      resolveUpload = resolve;
+    }));
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    act(() => result.current.handleCreateByStatus());
+    let uploadPromise!: Promise<void>;
+    act(() => {
+      uploadPromise = result.current.handleUploadAnnouncementAttachment(
+        new File(["%PDF-1.7"], "guild-guide.pdf", { type: "application/pdf" }),
+      );
+    });
+    await waitFor(() => expect(result.current.attachmentUploading).toBe(true));
+    act(() => result.current.handleCloseEditor());
+
+    resolveUpload(attachmentUploadResponse);
+    await act(async () => uploadPromise);
+    expect(result.current.isCreating).toBe(false);
+    expect(result.current.attachments).toEqual([]);
   });
 
   it("rejects an attachment above the current Site Config limit before uploading", async () => {
@@ -387,6 +668,33 @@ describe("useAnnouncementsController", () => {
     expect(serviceMocks.archiveAnnouncement).not.toHaveBeenCalled();
   });
 
+  it("clears a discarded edit before navigating so the route blocker cannot ask twice", async () => {
+    const selected = announcementDetail();
+    routeMock.pathname = `/announcements/${selected.id}`;
+    routeMock.announcementId = selected.id;
+    serviceMocks.fetchAnnouncement.mockResolvedValue(selected);
+
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.selected?.id).toBe(selected.id));
+
+    act(() => {
+      result.current.handleStartEditing();
+      result.current.setTitle("Unsaved title");
+    });
+    await waitFor(() => expect(result.current.isDirty).toBe(true));
+
+    await act(async () => {
+      expect(await result.current.setSelectedId(null)).toBe(true);
+    });
+
+    expect(confirmMock).toHaveBeenCalledOnce();
+    expect(result.current.isDirty).toBe(false);
+    expect(result.current.title).toBe(selected.title);
+    expect(navigateMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      to: "/announcements",
+    }));
+  });
+
   it("does not publish a new announcement until required content is present", async () => {
     const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
 
@@ -409,6 +717,8 @@ describe("useAnnouncementsController", () => {
   });
 
   it("keeps the announcement detail empty after deleting the selected announcement", async () => {
+    routeMock.pathname = "/announcements/announcement-1";
+    routeMock.announcementId = "announcement-1";
     const announcements = [
       {
         id: "announcement-1",
@@ -468,26 +778,22 @@ describe("useAnnouncementsController", () => {
 
     await waitFor(() => expect(serviceMocks.deleteAnnouncement).toHaveBeenCalled());
     expect(serviceMocks.deleteAnnouncement.mock.calls[0]?.[0]).toBe("announcement-1");
+    expect(serviceMocks.deleteAnnouncement.mock.calls[0]?.[1]).toBe(
+      '"announcement-announcement-1-2026-01-01T00:00:00.000Z"',
+    );
     await waitFor(() => expect(result.current.selectedId).toBeNull());
     expect(navigateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "/announcements",
         replace: true,
+        viewTransition: false,
       }),
     );
-    const deleteNavigation = navigateMock.mock.calls.at(-1)?.[0];
-    expect(deleteNavigation.search({
-      announcementId: "announcement-1",
-      view: "external",
-    })).toEqual({
-      announcementId: undefined,
-      selection: "none",
-      view: "external",
-    });
   });
 
   it("restores a deep-linked announcement selection", async () => {
-    routeSearchMock.announcementId = "announcement-deep-link";
+    routeMock.pathname = "/announcements/announcement-deep-link";
+    routeMock.announcementId = "announcement-deep-link";
     serviceMocks.fetchAnnouncements.mockResolvedValue({
       data: [],
       total: 0,
@@ -520,13 +826,227 @@ describe("useAnnouncementsController", () => {
     );
   });
 
+  it("records one read when an independent detail route is entered", async () => {
+    routeMock.pathname = "/announcements/announcement-read";
+    routeMock.announcementId = "announcement-read";
+
+    const { rerender } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() =>
+      expect(serviceMocks.recordAnnouncementView.mock.calls[0]?.[0]).toBe("announcement-read"),
+    );
+    rerender();
+    expect(serviceMocks.recordAnnouncementView).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a failed announcement view request", async () => {
+    routeMock.pathname = "/announcements/announcement-read";
+    routeMock.announcementId = "announcement-read";
+    routeMock.entryKey = "announcement-read-entry";
+    serviceMocks.recordAnnouncementView.mockRejectedValue(new Error("network interrupted"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+      await waitFor(() => expect(serviceMocks.recordAnnouncementView).toHaveBeenCalledTimes(1));
+      await new Promise<void>((resolve) => setTimeout(resolve, 1_300));
+
+      expect(serviceMocks.recordAnnouncementView).toHaveBeenCalledTimes(1);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("does not count a cached detail until its route has been entered", async () => {
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(queryKeys.announcements.detail("announcement-cached"), {
+      id: "announcement-cached",
+      title: "Cached announcement",
+      body_json: "{}",
+      category: "announcement",
+      excerpt: "",
+      pinned: false,
+      view_count: 3,
+      preview_media_id: null,
+      status: "published",
+      publish_at: null,
+      expires_at: null,
+      archived_at: null,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
+      attachments: [],
+    });
+    const { result } = renderHook(() => useAnnouncementsController(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.setSelectedId("announcement-cached");
+    });
+
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({
+      to: "/announcements/$announcementId",
+      params: { announcementId: "announcement-cached" },
+    }));
+    expect(serviceMocks.recordAnnouncementView).not.toHaveBeenCalled();
+  });
+
+  it("counts each cached detail route entry exactly once", async () => {
+    const queryClient = createQueryClient();
+    const detail = {
+      id: "announcement-cached",
+      title: "Cached announcement",
+      body_json: "{}",
+      category: "announcement" as const,
+      excerpt: "",
+      pinned: false,
+      view_count: 3,
+      preview_media_id: null,
+      status: "published" as const,
+      publish_at: null,
+      expires_at: null,
+      archived_at: null,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
+      attachments: [],
+    };
+    queryClient.setQueryData(queryKeys.announcements.detail(detail.id), detail);
+    const { result, rerender } = renderHook(() => useAnnouncementsController(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.setSelectedId(detail.id);
+    });
+    expect(serviceMocks.recordAnnouncementView).not.toHaveBeenCalled();
+
+    routeMock.pathname = `/announcements/${detail.id}`;
+    routeMock.announcementId = detail.id;
+    routeMock.entryKey = "announcement-detail-entry-1";
+    rerender();
+
+    await waitFor(() => expect(serviceMocks.recordAnnouncementView).toHaveBeenCalledTimes(1));
+    expect(serviceMocks.recordAnnouncementView.mock.calls[0]?.[0]).toBe(detail.id);
+
+    routeMock.pathname = "/announcements";
+    routeMock.entryKey = "announcements-list-entry-2";
+    rerender();
+    expect(serviceMocks.recordAnnouncementView).toHaveBeenCalledTimes(1);
+
+    routeMock.announcementId = undefined;
+    rerender();
+
+    routeMock.pathname = `/announcements/${detail.id}`;
+    routeMock.announcementId = detail.id;
+    routeMock.entryKey = "announcement-detail-entry-2";
+    rerender();
+
+    await waitFor(() => expect(serviceMocks.recordAnnouncementView).toHaveBeenCalledTimes(2));
+    expect(serviceMocks.recordAnnouncementView.mock.calls.map(([id]) => id)).toEqual([
+      detail.id,
+      detail.id,
+    ]);
+  });
+
+  it("waits for the detail read before recording its view", async () => {
+    routeMock.pathname = "/announcements/announcement-read";
+    routeMock.announcementId = "announcement-read";
+    const detail = {
+      id: "announcement-read",
+      title: "Read after load",
+      body_json: "{}",
+      category: "announcement" as const,
+      excerpt: "",
+      pinned: false,
+      view_count: 0,
+      preview_media_id: null,
+      status: "published" as const,
+      publish_at: null,
+      expires_at: null,
+      archived_at: null,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
+      attachments: [],
+    };
+    let resolveDetail!: (value: typeof detail) => void;
+    serviceMocks.fetchAnnouncement.mockImplementation(() => new Promise((resolve) => {
+      resolveDetail = resolve;
+    }));
+
+    renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(serviceMocks.fetchAnnouncement).toHaveBeenCalledWith("announcement-read"));
+    expect(serviceMocks.recordAnnouncementView).not.toHaveBeenCalled();
+
+    resolveDetail(detail);
+    await waitFor(() =>
+      expect(serviceMocks.recordAnnouncementView.mock.calls[0]?.[0]).toBe("announcement-read"),
+    );
+  });
+
+  it("waits for a stale cached detail to finish refetching before recording its view", async () => {
+    routeMock.pathname = "/announcements/announcement-read";
+    routeMock.announcementId = "announcement-read";
+    const detail = {
+      id: "announcement-read",
+      title: "Refetched detail",
+      body_json: "{}",
+      category: "announcement" as const,
+      excerpt: "",
+      pinned: false,
+      view_count: 4,
+      preview_media_id: null,
+      status: "published" as const,
+      publish_at: null,
+      expires_at: null,
+      archived_at: null,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
+      attachments: [],
+    };
+    let resolveDetail!: (value: typeof detail) => void;
+    serviceMocks.fetchAnnouncement.mockImplementation(() => new Promise((resolve) => {
+      resolveDetail = resolve;
+    }));
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(
+      queryKeys.announcements.detail("announcement-read"),
+      { ...detail, view_count: 3 },
+      { updatedAt: 0 },
+    );
+
+    renderHook(() => useAnnouncementsController(), { wrapper: createWrapper(queryClient) });
+
+    await waitFor(() => expect(serviceMocks.fetchAnnouncement).toHaveBeenCalledWith("announcement-read"));
+    expect(serviceMocks.recordAnnouncementView).not.toHaveBeenCalled();
+
+    resolveDetail(detail);
+    await waitFor(() =>
+      expect(serviceMocks.recordAnnouncementView.mock.calls[0]?.[0]).toBe("announcement-read"),
+    );
+  });
+
   it("loads additional pages without mixing results after a filter change", async () => {
-    const announcement = (id: string, pinned: boolean) => ({
+    const announcement = (id: string, status: "published" | "archived") => ({
       id,
       title: id,
       body_json: "{}",
-      pinned,
-      status: "published" as const,
+      category: "announcement" as const,
+      pinned: false,
+      status,
       publish_at: null,
       expires_at: null,
       archived_at: null,
@@ -536,15 +1056,24 @@ describe("useAnnouncementsController", () => {
       updated_at: `2026-01-0${id.endsWith("2") ? "2" : "1"}T00:00:00.000Z`,
       author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
     });
-    const first = announcement("announcement-1", false);
-    const second = announcement("announcement-2", false);
-    const pinned = announcement("announcement-pinned", true);
+    const first = announcement("announcement-1", "published");
+    const second = announcement("announcement-2", "published");
+    const archived = announcement("announcement-archived", "archived");
 
     serviceMocks.fetchAnnouncements.mockImplementation(
-      async ({ page, pinned: pinnedFilter }: { page: number; pinned?: boolean }) => {
-        if (pinnedFilter) {
+      async ({ page, pinned, status }: { page: number; pinned?: boolean; status?: string }) => {
+        if (pinned) {
           return {
-            data: [pinned],
+            data: [],
+            total: 0,
+            page: 1,
+            limit: 50,
+            total_pages: 1,
+          };
+        }
+        if (status === "archived") {
+          return {
+            data: [archived],
             total: 1,
             page: 1,
             limit: 50,
@@ -577,11 +1106,11 @@ describe("useAnnouncementsController", () => {
     );
 
     act(() => {
-      result.current.setPinnedFilter(true);
+      result.current.setStatusFilter("archived");
     });
 
     await waitFor(() =>
-      expect(result.current.rows.map((item) => item.id)).toEqual(["announcement-pinned"]),
+      expect(result.current.rows.map((item) => item.id)).toEqual(["announcement-archived"]),
     );
     expect(result.current.listHasMore).toBe(false);
   });
@@ -616,17 +1145,17 @@ describe("useAnnouncementsController", () => {
     const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
 
     await waitFor(() => expect(serviceMocks.fetchAnnouncements).toHaveBeenCalledWith(
-      expect.objectContaining({ status: undefined, archived: undefined }),
+      expect.objectContaining({ status: undefined }),
     ));
 
     act(() => result.current.setStatusFilter("draft"));
     await waitFor(() => expect(serviceMocks.fetchAnnouncements).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "draft", archived: false }),
+      expect.objectContaining({ status: "draft" }),
     ));
 
     act(() => result.current.setStatusFilter("archived"));
     await waitFor(() => expect(serviceMocks.fetchAnnouncements).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "archived", archived: true }),
+      expect.objectContaining({ status: "archived" }),
     ));
   });
 });

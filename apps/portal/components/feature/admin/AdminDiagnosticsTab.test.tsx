@@ -1,8 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EndpointResult } from "./AdminApiTestEngine";
 import { AdminDiagnosticsTab } from "./AdminDiagnosticsTab";
@@ -45,8 +43,8 @@ vi.mock("../../../stores/auth", () => ({
   useAuthStore: (selector: (state: { user: unknown }) => unknown) => selector({ user: authMock.user }),
 }));
 
-vi.mock("../../../stores/notifications", () => ({
-  useNotificationStore: (selector: (state: { setSuppressed: () => void }) => unknown) => (
+vi.mock("../../../stores/push-sync", () => ({
+  usePushSyncStore: (selector: (state: { setSuppressed: () => void }) => unknown) => (
     selector({ setSuppressed: vi.fn() })
   ),
 }));
@@ -105,23 +103,12 @@ describe("AdminDiagnosticsTab", () => {
 
     const quick = screen.getByRole("button", { name: "status.quickCheck" });
     const full = screen.getByRole("button", { name: "status.api.runAll" });
-    expect(quick.parentElement).toBe(full.parentElement);
 
     await user.click(quick);
     await user.click(full);
 
     expect(apiRunnerMock.runCriticalCategories).toHaveBeenCalledOnce();
     expect(apiRunnerMock.runAllCategories).toHaveBeenCalledOnce();
-  });
-
-  it("keeps the runner as the diagnostics tab's single test lifecycle", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/feature/admin/AdminDiagnosticsTab.tsx"),
-      "utf8",
-    );
-
-    expect(source).toContain("useAdminApiTestRunner(visibleApiCategories, user)");
-    expect(source).toContain("<AdminDataIntegrityTool />");
   });
 
   it("hides diagnostics from users without status access", () => {

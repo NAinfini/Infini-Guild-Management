@@ -42,6 +42,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const [editorTouched, setEditorTouched] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [editingExpectedUpdatedAt, setEditingExpectedUpdatedAt] = useState<string | null>(null);
   const [editorType, setEditorType] = useState<EventType | "">("");
   const [editorTitle, setEditorTitle] = useState("");
   const [editorDescription, setEditorDescription] = useState("");
@@ -168,6 +169,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorTouched(false);
     setEditorMode("create");
     setEditingEventId(null);
+    setEditingExpectedUpdatedAt(null);
     setEditorType("");
     setEditorTitle("");
     setEditorDescription("");
@@ -215,6 +217,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorTouched(false);
     setEditorMode("edit");
     setEditingEventId(event.id);
+    setEditingExpectedUpdatedAt(event.updated_at);
     setEditorType(event.type);
     setEditorTitle(event.title);
     setEditorDescription(event.description ?? "");
@@ -266,6 +269,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     editorOpen,
     editorMode,
     editingEventId,
+    editingExpectedUpdatedAt,
     editorType,
     editorTitle,
     editorDescription,

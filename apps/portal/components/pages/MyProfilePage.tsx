@@ -81,6 +81,7 @@ export function MyProfilePage() {
   const form = useProfileFormState({
     profile: profileQuery.data?.profile,
     displayName: profileQuery.data?.user.display_name,
+    profileRevisionToken: profileQuery.data?.edit_revisions?.profile_revision_token,
   });
   useBeforeUnloadPrompt(form.isDirty, { allowSamePathNavigation: true });
 
@@ -89,7 +90,10 @@ export function MyProfilePage() {
       if (!user) {
         throw new Error(t("message.sessionMissing"));
       }
-      return uploadProfileImages(user.id, files);
+      if (!form.profileRevisionToken) {
+        throw new Error("Missing profile revision token");
+      }
+      return uploadProfileImages(user.id, files, form.profileRevisionToken);
     },
     {
       maxFiles: profileImageQuota,
@@ -106,7 +110,10 @@ export function MyProfilePage() {
       if (!file) {
         throw new Error(t("message.audioFileRequired"));
       }
-      return uploadProfileAudio(user.id, file);
+      if (!form.profileRevisionToken) {
+        throw new Error("Missing profile revision token");
+      }
+      return uploadProfileAudio(user.id, file, form.profileRevisionToken);
     },
     {
       maxFiles: 1,
@@ -123,7 +130,9 @@ export function MyProfilePage() {
   const { showError } = useAppError();
   const { avatarUploadMutation, avatarDeleteMutation } = useProfileAvatarMutations({
     userId: user?.id,
+    profileRevisionToken: form.profileRevisionToken,
     showError,
+    onProfileRevision: form.acceptOwnMediaRevision,
   });
 
   const profile = profileQuery.data?.profile;

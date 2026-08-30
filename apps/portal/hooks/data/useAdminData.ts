@@ -15,6 +15,9 @@ import { getAdminCapabilities } from "../../utils/permissions";
 import { fetchAdminSiteConfig } from "../../services/SiteConfigService";
 import type { AdminCapabilities } from "../../utils/permissions";
 import type { InviteVisibility } from "../../services/AdminService";
+import { localDayEndIso, localDayStartIso } from "../../utils/datetime";
+import { useAuthStore } from "../../stores/auth";
+import { viewerIdentity } from "../../session-storage";
 
 type UseAdminDataOptions = {
   isModerator: boolean;
@@ -33,6 +36,7 @@ type UseAdminDataOptions = {
 };
 
 export function useAdminData(options: UseAdminDataOptions) {
+  const viewerKey = useAuthStore((state) => viewerIdentity(state.user?.id));
   const {
     isModerator,
     userRole,
@@ -61,10 +65,9 @@ export function useAdminData(options: UseAdminDataOptions) {
   const permissions = effectivePermissions ?? rolePermissions;
   const needsUsers = activeTab === "member" || activeTab === "badges";
   const normalizedAuditSearch = auditSearch.trim();
-  const hasAuditDateRange = Boolean(auditDateFrom && auditDateTo);
 
   const usersQuery = useQuery({
-    queryKey: queryKeys.users.all,
+    queryKey: queryKeys.users.directory(viewerKey, "internal"),
     queryFn: () => fetchAllUsersListWithOptions(),
     enabled: permissions.canViewUsers && needsUsers,
     staleTime: 10 * 60_000,
@@ -99,8 +102,8 @@ export function useAdminData(options: UseAdminDataOptions) {
         cursor: pageParam,
         limit: 50,
         search: normalizedAuditSearch || undefined,
-        start_at: hasAuditDateRange ? `${auditDateFrom}T00:00:00.000Z` : undefined,
-        end_at: hasAuditDateRange ? `${auditDateTo}T23:59:59.999Z` : undefined,
+        start_at: localDayStartIso(auditDateFrom),
+        end_at: localDayEndIso(auditDateTo),
         entity_type: auditEntityType || undefined,
         entity_id: auditEntityId || undefined,
         actor_id: auditActorId || undefined,

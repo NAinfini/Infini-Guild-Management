@@ -1,5 +1,4 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -16,22 +15,6 @@ async function writeIfMissing(path, content) {
   }
 }
 
-function generatedSecret() {
-  return randomBytes(32).toString("base64url");
-}
-
-function injectSecrets(template, secrets) {
-  const invitePlaceholder = "replace-with-at-least-32-random-bytes";
-  const inviteIndex = template.indexOf(invitePlaceholder);
-  const auditIndex = template.indexOf(invitePlaceholder, inviteIndex + invitePlaceholder.length);
-  if (inviteIndex < 0 || auditIndex < 0) {
-    throw new Error("The runtime template must contain both secret placeholders.");
-  }
-  return template
-    .replace(invitePlaceholder, secrets.inviteToken)
-    .replace(invitePlaceholder, secrets.auditDownload);
-}
-
 export function parseSetupArguments(args) {
   if (args.length !== 2 || args[0] !== "--runtime") {
     throw new TypeError("Usage: pnpm setup:local --runtime cloudflare|vps");
@@ -45,7 +28,6 @@ export function parseSetupArguments(args) {
 export async function setupLocal({
   runtime,
   root = defaultRoot,
-  secrets = { inviteToken: generatedSecret(), auditDownload: generatedSecret() },
 }) {
   if (runtime !== "cloudflare" && runtime !== "vps") {
     throw new TypeError("runtime must be cloudflare or vps");
@@ -67,7 +49,7 @@ export async function setupLocal({
 
     const variablesPath = resolve(directory, ".dev.vars");
     const variablesTemplate = await readFile(resolve(directory, ".dev.vars.example"), "utf8");
-    if (await writeIfMissing(variablesPath, injectSecrets(variablesTemplate, secrets))) {
+    if (await writeIfMissing(variablesPath, variablesTemplate)) {
       created.push("apps/cloudflare/.dev.vars");
     } else {
       kept.push("apps/cloudflare/.dev.vars");
@@ -75,7 +57,7 @@ export async function setupLocal({
   } else {
     const variablesPath = resolve(root, "apps/vps/.env");
     const template = await readFile(resolve(root, "scripts/templates/vps.env.example"), "utf8");
-    if (await writeIfMissing(variablesPath, injectSecrets(template, secrets))) {
+    if (await writeIfMissing(variablesPath, template)) {
       created.push("apps/vps/.env");
     } else {
       kept.push("apps/vps/.env");

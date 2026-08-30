@@ -6,6 +6,7 @@ import {
   NotificationConnectionPolicy,
   restoreNotificationConnectionState,
   type NotificationConnectionState,
+  type NotificationSweepDecision,
 } from "@guild/server";
 import { D1SqlExecutor } from "../adapters/d1-sql-executor.js";
 
@@ -37,6 +38,49 @@ function safeClose(socket: WebSocket, code: number, reason: string): void {
   }
 }
 
+function sameAuthorizationVersion(
+  current: NotificationConnectionState,
+  captured: NotificationConnectionState,
+): boolean {
+  const left = current.session;
+  const right = captured.session;
+  return current.lastSessionCheckedAt === captured.lastSessionCheckedAt
+    && left.sessionId === right.sessionId
+    && left.userId === right.userId
+    && left.roleId === right.roleId
+    && left.roleLevel === right.roleLevel
+    && left.permissions.length === right.permissions.length
+    && left.permissions.every((permission, index) => permission === right.permissions[index]);
+}
+
+function applyAuthorizationDecision(
+  socket: WebSocket,
+  captured: NotificationConnectionState,
+  decision: NotificationSweepDecision,
+): "closed" | "updated" | "skipped" {
+  const current = restoreNotificationConnectionState(socket.deserializeAttachment());
+  if (!current) {
+    safeClose(socket, NOTIFICATION_CONNECTION_POLICY.closeCodes.unauthorized, "session identity missing");
+    return "closed";
+  }
+  if (!sameAuthorizationVersion(current, captured)) return "skipped";
+  if ("close" in decision) {
+    if (
+      decision.close.code === NOTIFICATION_CONNECTION_POLICY.closeCodes.heartbeatTimeout
+      && current.lastHeartbeatAt !== captured.lastHeartbeatAt
+    ) return "skipped";
+    safeClose(socket, decision.close.code, decision.close.reason);
+    return "closed";
+  }
+  if (decision.state === captured) return "skipped";
+  socket.serializeAttachment(Object.freeze({
+    ...current,
+    session: decision.state.session,
+    lastSessionCheckedAt: decision.state.lastSessionCheckedAt,
+  }));
+  return "updated";
+}
+
 /**
  * Root-route leaf: call only after the HTTP layer has validated the WebSocket
  * origin and resolved the cookie into this authorization context.
@@ -57,6 +101,7 @@ export function forwardCloudflareNotificationWebSocket(
 
 export class CloudflareNotificationDurableObject {
   private readonly policy: NotificationConnectionPolicy;
+  private authorizationTail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly state: DurableObjectState,
@@ -147,6 +192,10 @@ export class CloudflareNotificationDurableObject {
   }
 
   async alarm(): Promise<void> {
+    await this.runAuthorizationOperation(() => this.sweepAuthorization());
+  }
+
+  private async sweepAuthorization(): Promise<void> {
     const entries = this.state.getWebSockets().map((socket) => ({
       socket,
       connection: restoreNotificationConnectionState(socket.deserializeAttachment()),
@@ -162,13 +211,8 @@ export class CloudflareNotificationDurableObject {
 
     const decisions = await this.policy.sweep(valid.map(({ connection }) => connection));
     decisions.forEach((decision, index) => {
-      const socket = valid[index]?.socket;
-      if (!socket) return;
-      if ("close" in decision) {
-        safeClose(socket, decision.close.code, decision.close.reason);
-      } else {
-        socket.serializeAttachment(decision.state);
-      }
+      const entry = valid[index];
+      if (entry) applyAuthorizationDecision(entry.socket, entry.connection, decision);
     });
 
     if (this.state.getWebSockets().length > 0) {
@@ -181,9 +225,42 @@ export class CloudflareNotificationDurableObject {
     if (encoder.encode(body).byteLength > MAX_PUBLISH_BYTES) {
       return new Response("Notification payload too large", { status: 413 });
     }
+    let input: unknown;
+    try {
+      input = JSON.parse(body) as unknown;
+    } catch {
+      return new Response("Invalid notification payload", { status: 400 });
+    }
+    try {
+      const refresh = this.policy.parseAuthorizationRefresh(input);
+      if (refresh) {
+        return await this.runAuthorizationOperation(async () => {
+          const entries = this.state.getWebSockets().flatMap((socket) => {
+            const connection = restoreNotificationConnectionState(socket.deserializeAttachment());
+            if (!connection) {
+              safeClose(socket, NOTIFICATION_CONNECTION_POLICY.closeCodes.unauthorized, "session identity missing");
+              return [];
+            }
+            return this.policy.matchesAuthorizationRefresh(connection, refresh) ? [{ socket, connection }] : [];
+          });
+          const decisions = await this.policy.refreshAuthorization(entries.map(({ connection }) => connection));
+          let closed = 0;
+          decisions.forEach((decision, index) => {
+            const entry = entries[index];
+            if (entry && applyAuthorizationDecision(entry.socket, entry.connection, decision) === "closed") {
+              closed += 1;
+            }
+          });
+          return Response.json({ ok: true, refreshed: entries.length, closed });
+        });
+      }
+    } catch {
+      return new Response("Invalid notification payload", { status: 400 });
+    }
+
     let message;
     try {
-      message = this.policy.parseOutbound(JSON.parse(body) as unknown);
+      message = this.policy.parseOutbound(input);
     } catch {
       return new Response("Invalid notification payload", { status: 400 });
     }
@@ -205,5 +282,11 @@ export class CloudflareNotificationDurableObject {
       }
     }
     return Response.json({ ok: true, delivered });
+  }
+
+  private runAuthorizationOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.authorizationTail.then(operation, operation);
+    this.authorizationTail = result.then(() => undefined, () => undefined);
+    return result;
   }
 }

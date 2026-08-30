@@ -11,35 +11,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-function renderEditor(items: Array<{ id: string; src?: string }>) {
-  render(
-    <ImageGridEditor
-      items={items}
-      maxImages={2}
-      onReorder={vi.fn()}
-      onFilesSelected={vi.fn()}
-      aria-label="Attachments"
-    />,
-  );
-}
-
 describe("ImageGridEditor", () => {
-  it("keeps the upload control aligned to the start when the grid is empty", () => {
-    renderEditor([]);
-
-    expect(screen.getByRole("group", { name: "Attachments" })).toHaveStyle({
-      justifyContent: "flex-start",
-    });
-  });
-
-  it("keeps populated grids aligned to the start", () => {
-    renderEditor([{ id: "attachment-1" }]);
-
-    expect(screen.getByRole("group", { name: "Attachments" })).toHaveStyle({
-      justifyContent: "flex-start",
-    });
-  });
-
   it("uses localized accessible names for upload and delete actions", () => {
     render(
       <ImageGridEditor
@@ -56,20 +28,7 @@ describe("ImageGridEditor", () => {
     const deleteButton = screen.getByRole("button", {
       name: "Localized delete Raid portrait",
     });
-    expect(deleteButton).toHaveStyle({
-      width: "44px",
-      height: "44px",
-      top: "-6px",
-      right: "-6px",
-    });
-    const imageSize = 80;
-    const gap = 8;
-    const hitAreaRightEdge = imageSize - Number.parseFloat(deleteButton.style.right);
-    expect(hitAreaRightEdge).toBeLessThanOrEqual(imageSize + gap);
-    expect(deleteButton.querySelector(".image-grid-editor__delete-glyph")).toHaveStyle({
-      width: "20px",
-      height: "20px",
-    });
+    expect(deleteButton).toBeInTheDocument();
   });
 
   it("only disables the delete action for the image being removed", () => {

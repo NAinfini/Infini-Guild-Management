@@ -6,11 +6,20 @@ export {
   deleteProfileImage,
   deleteProfileImages,
   updateMyProfile,
+  updateOwnProfile,
   uploadAvatar,
   uploadProfileAudio,
   uploadProfileImages,
 } from "../api/mutations/users";
-export type { UpdateMyProfilePayload } from "../api/mutations/users";
+export type {
+  ProfileAudioUploadResult,
+  ProfileAvatarUploadResult,
+  ProfileImageUploadResult,
+  ProfileImagesDeleteResult,
+  ProfileMediaDeleteResult,
+  UpdateMyProfilePayload,
+  UpdateOwnProfileResult,
+} from "../api/mutations/users";
 export {
   fetchAbsencesWindow,
   fetchUserAbsences,

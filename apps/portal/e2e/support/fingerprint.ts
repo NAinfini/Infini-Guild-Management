@@ -8,6 +8,7 @@ type SqliteRow = Record<string, unknown>;
 
 const CLEANUP_VOLATILE_COLUMNS: Readonly<Record<string, ReadonlySet<string>>> = {
   member_profiles: new Set(["revision_token", "updated_at"]),
+  site_config: new Set(["revision_token", "updated_at"]),
   wiki_category_state: new Set(["revision_token", "updated_at"]),
 };
 

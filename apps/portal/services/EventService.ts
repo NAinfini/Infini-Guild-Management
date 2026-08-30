@@ -22,7 +22,6 @@ import {
   resumeTemplate,
   updateEvent as updateEventMutation,
   updateTemplate,
-  uploadEventImages as uploadEventImagesMutation,
   votePoll,
 } from "../api/mutations/events";
 import { queryKeys } from "../api/query-keys";
@@ -59,7 +58,6 @@ export {
   resumeTemplate,
   updateEventMutation as updateEvent,
   updateTemplate,
-  uploadEventImagesMutation as uploadEventImages,
   votePoll,
 };
 export type {
@@ -77,7 +75,8 @@ type EventValidationReason =
   | "missing_poll_end"
   | "missing_raffle_end"
   | "missing_winner_count"
-  | "missing_event_id";
+  | "missing_event_id"
+  | "missing_event_revision";
 
 export class EventValidationError extends Error {
   readonly reason: EventValidationReason;
@@ -92,6 +91,7 @@ export class EventValidationError extends Error {
 export type EventSaveInput = {
   mode: "create" | "edit";
   editingEventId: string | null;
+  expectedUpdatedAt: string | null;
   eventType: CreateEventPayload["type"];
   title: string;
   description: string;
@@ -116,7 +116,6 @@ type EventServiceDeps = {
   queryClient?: QueryClient;
   createEvent?: typeof createEventMutation;
   updateEvent?: typeof updateEventMutation;
-  uploadEventImages?: typeof uploadEventImagesMutation;
 };
 
 export class EventService {
@@ -124,14 +123,12 @@ export class EventService {
   private readonly queryClient?: QueryClient;
   private readonly createEventFn: typeof createEventMutation;
   private readonly updateEventFn: typeof updateEventMutation;
-  private readonly uploadEventImagesFn: typeof uploadEventImagesMutation;
 
   constructor(deps: EventServiceDeps) {
     this.attachmentService = deps.attachmentService;
     this.queryClient = deps.queryClient;
     this.createEventFn = deps.createEvent ?? createEventMutation;
     this.updateEventFn = deps.updateEvent ?? updateEventMutation;
-    this.uploadEventImagesFn = deps.uploadEventImages ?? uploadEventImagesMutation;
   }
 
   detectConflicts(input: Pick<EventSaveInput, "editingEventId" | "startIso" | "endIso">, events: Event[]): Event[] {
@@ -168,12 +165,11 @@ export class EventService {
     if (!input.editingEventId) {
       throw new EventValidationError("missing_event_id", "Missing event id");
     }
+    if (!input.expectedUpdatedAt) {
+      throw new EventValidationError("missing_event_revision", "Missing event revision");
+    }
 
     const existingAttachments = this.attachmentService.extractExistingMediaIds(input.attachmentItems);
-    const uploadedMediaIds = filesToUpload.length > 0
-      ? (await this.uploadEventImagesFn(input.editingEventId, filesToUpload)).media_ids
-      : [];
-    const nextAttachments = [...existingAttachments, ...uploadedMediaIds];
 
     const updatePayload: UpdateEventPayload = {
       ...payload,
@@ -183,9 +179,10 @@ export class EventService {
       pinned: input.pinned,
       signup_locked: input.signupLocked,
       auto_archive: input.autoArchive,
-      attachments: nextAttachments,
+      attachments: existingAttachments,
+      expected_updated_at: input.expectedUpdatedAt,
     };
-    const response = await this.updateEventFn(input.editingEventId, updatePayload);
+    const response = await this.updateEventFn(input.editingEventId, updatePayload, filesToUpload);
     await this.invalidateEvents();
     return response;
   }

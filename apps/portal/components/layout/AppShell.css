@@ -32,7 +32,7 @@
 }
 
 [data-theme="light"] .app-shell__scene::after {
-  background: color-mix(in srgb, var(--surface-base) 28%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 14%, transparent);
 }
 
 .app-skip-link {
@@ -84,13 +84,10 @@
   flex-direction: column;
   border-right: 1px solid var(--border-subtle);
   /*
-   * 侧栏不参与环境光，退到表面阶梯低一档的 sunken。
-   *
-   * 让它透出根部那张图试过，问题是环境光的色相跟着路由变，导航条会随着当前页
-   * 一起换底色——一条常驻的导航不该有这种变化。退到 sunken 之后它成了一块下沉的
-   * 固定框：sunken（导航）< base + 光（工作区）< raised（卡片），三档从暗到亮，
-   * 「哪里是框、哪里是台面、哪里是内容」一眼分得开，而不再是「两块同色的面为什么
-   * 不一样」。
+   * The permanent rail keeps one route-neutral scene over the sunken surface.
+   * Its upper field is deliberately quiet for navigation; the scenic emphasis
+   * sits at the bottom, where the graduated semantic scrim can reveal it without
+   * weakening label or focus contrast above.
    */
   background: var(--surface-sunken);
 }
@@ -112,7 +109,12 @@
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: color-mix(in srgb, var(--surface-sunken) 74%, transparent);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--surface-sunken) 82%, transparent) 0%,
+    color-mix(in srgb, var(--surface-sunken) 66%, transparent) 62%,
+    color-mix(in srgb, var(--surface-sunken) 48%, transparent) 100%
+  );
   pointer-events: none;
 }
 
@@ -390,16 +392,6 @@
   place-items: center;
 }
 
-.app-nav-new-dot {
-  position: absolute;
-  inset: -2px -3px auto auto;
-  width: 7px;
-  height: 7px;
-  border: 1px solid var(--surface-sunken);
-  border-radius: var(--shape-pill);
-  background: var(--accent-fill);
-}
-
 .app-sider--collapsed .app-brand {
   justify-content: center;
 }
@@ -495,7 +487,7 @@
 }
 
 [data-theme="light"] .app-header--with-scene::before {
-  opacity: 0.18;
+  opacity: 0.12;
 }
 
 /*
@@ -726,43 +718,6 @@
   background: transparent;
 }
 
-.app-content,
-.app-public-layout {
-  --app-grain-image: url("/textures/forged-grain.png");
-}
-
-.app-content::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image: var(--app-grain-image);
-  background-repeat: repeat;
-  background-size: 128px 128px;
-  opacity: 0.05;
-}
-
-[data-theme="light"] .app-content::before {
-  opacity: 0.035;
-}
-
-.app-public-layout::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image: var(--app-grain-image);
-  background-repeat: repeat;
-  background-size: 128px 128px;
-  opacity: 0.05;
-}
-
-[data-theme="light"] .app-public-layout::before {
-  opacity: 0.035;
-}
-
 .app-main {
   position: relative;
   z-index: 1;
@@ -820,19 +775,6 @@
   display: flex;
   flex-direction: column;
   min-block-size: 0;
-  animation: app-route-arrive var(--motion-panel) both;
-}
-
-@keyframes app-route-arrive {
-  from {
-    opacity: 0.88;
-    transform: translateY(4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .app-content-mobile {
@@ -1019,16 +961,6 @@
   place-items: center;
 }
 
-.bottom-nav-new-dot {
-  position: absolute;
-  inset: -2px -4px auto auto;
-  width: 7px;
-  height: 7px;
-  border: 1px solid var(--surface-overlay);
-  border-radius: var(--shape-pill);
-  background: var(--accent-fill);
-}
-
 .bottom-nav-drawer__link:hover,
 .bottom-nav-drawer__link:focus-visible,
 .bottom-nav-drawer__link--active {
@@ -1116,10 +1048,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-route-container {
-    animation: none;
-  }
-
   .app-shell-root *,
   .app-shell-root *::before,
   .app-shell-root *::after {

@@ -1,4 +1,4 @@
-import { IMAGE_FILE_ACCEPT } from "@guild/shared";
+import { canonicalizeRichTextLinkAttributes, IMAGE_FILE_ACCEPT } from "@guild/shared";
 import { forwardRef } from "react";
 import {
   TIPTAP_DEFAULT_JSON,
@@ -60,6 +60,7 @@ type LightboxImage = {
 const LIGHTBOX_ZOOM_MIN = 1;
 const LIGHTBOX_ZOOM_MAX = 2.6;
 const LIGHTBOX_ZOOM_STEP = 0.2;
+const RICH_TEXT_MEDIA_VIEW_PATH = /^\/api\/media\/[A-Za-z0-9_-]{21}\/view$/;
 
 export type TipTapEditorProps = {
   value: string;
@@ -94,7 +95,7 @@ function parseContent(value: string, mode: EditorMode): Content {
     try {
       const parsed = JSON.parse(value) as Record<string, unknown>;
       if (parsed && typeof parsed === "object" && parsed.type === "doc") {
-        return parsed as Content;
+        return (sanitizeDocJson(parsed) ?? JSON.parse(DEFAULT_DOC_JSON)) as Content;
       }
       return JSON.parse(DEFAULT_DOC_JSON) as Content;
     } catch {
@@ -105,19 +106,68 @@ function parseContent(value: string, mode: EditorMode): Content {
   return value;
 }
 
-function sanitizeDocJson(doc: Record<string, unknown>): Record<string, unknown> {
-  if (!doc || typeof doc !== "object") return doc;
-  const node = doc as { type?: string; attrs?: { src?: string }; content?: unknown[] };
-  if (node.type === "image" && node.attrs?.src) {
-    const src = node.attrs.src;
-    if (!/^https?:\/\//i.test(src)) {
-      node.attrs.src = "";
-    }
+function richTextOrigin(): string {
+  return typeof window === "undefined" ? "http://portal.invalid" : window.location.origin;
+}
+
+function canonicalRichTextImageSource(source: string, origin: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(source, origin);
+  } catch {
+    return null;
   }
-  if (Array.isArray(node.content)) {
-    node.content.forEach((child) => sanitizeDocJson(child as Record<string, unknown>));
+  return url.origin === origin
+    && RICH_TEXT_MEDIA_VIEW_PATH.test(url.pathname)
+    && !url.search
+    && !url.hash
+    ? url.pathname
+    : null;
+}
+
+function sanitizeRichTextMarks(marks: unknown, origin: string): unknown[] | undefined {
+  if (!Array.isArray(marks)) return undefined;
+  return marks.flatMap((mark) => {
+    if (!mark || typeof mark !== "object" || Array.isArray(mark)
+      || (mark as { type?: unknown }).type !== "link") return [mark];
+    const attrs = (mark as { attrs?: unknown }).attrs;
+    const canonical = canonicalizeRichTextLinkAttributes(
+      attrs && typeof attrs === "object" && !Array.isArray(attrs)
+        ? attrs as Record<string, unknown>
+        : {},
+      origin,
+    );
+    return canonical ? [{ ...mark, attrs: canonical }] : [];
+  });
+}
+
+function sanitizeDocJson(
+  doc: Record<string, unknown>,
+  origin = richTextOrigin(),
+): Record<string, unknown> | null {
+  const node = doc as {
+    type?: string;
+    attrs?: Record<string, unknown>;
+    marks?: unknown;
+    content?: unknown[];
+  };
+  const marks = sanitizeRichTextMarks(node.marks, origin);
+  const sanitized = marks === undefined ? { ...doc } : { ...doc, marks };
+  if (node.type === "image") {
+    const source = typeof node.attrs?.src === "string"
+      ? canonicalRichTextImageSource(node.attrs.src, origin)
+      : null;
+    return source ? { ...sanitized, attrs: { ...node.attrs, src: source } } : null;
   }
-  return doc;
+  if (!Array.isArray(node.content)) return sanitized;
+  return {
+    ...sanitized,
+    content: node.content.flatMap((child) => {
+      if (!child || typeof child !== "object" || Array.isArray(child)) return [];
+      const childSanitized = sanitizeDocJson(child as Record<string, unknown>, origin);
+      return childSanitized ? [childSanitized] : [];
+    }),
+  };
 }
 
 export function sanitizeTipTapHtml(html: string): string {
@@ -138,7 +188,7 @@ export function sanitizeTipTapHtml(html: string): string {
 function serializeValue(editor: Editor, mode: EditorMode): string {
   if (mode === "json") {
     const doc = editor.getJSON() as Record<string, unknown>;
-    return JSON.stringify(sanitizeDocJson(doc));
+    return JSON.stringify(sanitizeDocJson(doc) ?? JSON.parse(DEFAULT_DOC_JSON));
   }
 
   return sanitizeTipTapHtml(editor.getHTML());

@@ -1,12 +1,14 @@
 import {
-  importantNoticeAcknowledgementsResponseSchema,
   importantNoticeActiveResponseSchema,
+  importantNoticeAudienceRolesResponseSchema,
   importantNoticeSchema,
   inboxNotificationListResponseSchema,
+  notificationPreferencesSchema,
   type InboxNotificationListResponse,
-  type ImportantNoticeAcknowledgement,
   type ImportantNoticeActive,
+  type ImportantNoticeAudienceRole,
   type ImportantNotice,
+  type NotificationPreferences,
 } from "@guild/shared";
 import { apiRequest } from "../client";
 
@@ -22,19 +24,24 @@ export function fetchInboxNotifications(params: {
     .then((response) => inboxNotificationListResponseSchema.parse(response));
 }
 
+export function fetchNotificationPreferences(): Promise<NotificationPreferences> {
+  return apiRequest<unknown>("/api/notifications/preferences")
+    .then((response) => notificationPreferencesSchema.parse(response));
+}
+
 export function fetchActiveImportantNotices(): Promise<ImportantNoticeActive[]> {
   return apiRequest<unknown>("/api/important-notices/active")
     .then((response) => importantNoticeActiveResponseSchema.parse(response).data);
 }
 
-export function fetchImportantNoticeAcknowledgements(): Promise<ImportantNoticeAcknowledgement[]> {
-  return apiRequest<unknown>("/api/important-notices/acknowledgements")
-    .then((response) => importantNoticeAcknowledgementsResponseSchema.parse(response).data);
-}
-
 export function fetchAdminImportantNotices(): Promise<ImportantNotice[]> {
   return apiRequest<unknown>("/api/admin/important-notices")
     .then((response) => importantNoticeSchema.array().parse(response));
+}
+
+export function fetchImportantNoticeAudienceRoles(): Promise<ImportantNoticeAudienceRole[]> {
+  return apiRequest<unknown>("/api/admin/important-notices/audience-roles")
+    .then((response) => importantNoticeAudienceRolesResponseSchema.parse(response).data);
 }
 
 export function fetchAdminImportantNotice(id: string): Promise<ImportantNotice> {

@@ -116,22 +116,25 @@ export function StorageManagePage() {
                 mutations.createStorageMutation.mutateAsync(payload).then(
                   (storage) => {
                     selectStructure(storage.id, null);
-                    return true;
+                    return storage;
                   },
-                  () => false,
+                  () => null,
                 )}
               onUpdateStorage={(id, payload) =>
                 mutations.updateStorageMutation.mutateAsync({ id, payload }).then(
-                  () => true,
-                  () => false,
+                  (storage) => storage,
+                  () => null,
                 )}
-              onDeleteStorage={async (id) => {
+              onDeleteStorage={async (id, expectedStructureRevision) => {
                 if (!await confirmDelete(t("confirm.deleteStorage"))) return false;
-                return mutations.deleteStorageMutation.mutateAsync(id).then(
+                return mutations.deleteStorageMutation.mutateAsync({
+                  id,
+                  payload: { expected_structure_revision: expectedStructureRevision },
+                }).then(
                   () => {
-                      selectStructure(null, null);
-                      return true;
-                    },
+                    selectStructure(null, null);
+                    return true;
+                  },
                   () => false,
                 );
               }}
@@ -139,28 +142,32 @@ export function StorageManagePage() {
                 mutations.createCategoryMutation.mutateAsync(
                   { storageId, payload },
                 ).then(
-                  (category) => {
-                      selectStructure(storageId, category.id);
-                      return true;
-                    },
-                  () => false,
+                  (response) => {
+                    selectStructure(storageId, response.category.id);
+                    return response;
+                  },
+                  () => null,
                 )}
               onUpdateCategory={(storageId, categoryId, payload) =>
                 mutations.updateCategoryMutation.mutateAsync({ storageId, categoryId, payload }).then(
-                  () => true,
-                  () => false,
+                  (response) => response,
+                  () => null,
                 )}
-              onDeleteCategory={async (storageId, categoryId) => {
+              onDeleteCategory={async (storageId, categoryId, expectedStructureRevision) => {
                 if (!await confirmDelete(t("confirm.deleteCategory"))) return false;
                 return mutations.deleteCategoryMutation.mutateAsync(
-                    { storageId, categoryId },
-                  ).then(
-                    () => {
-                        selectStructure(storageId, null);
-                        return true;
-                      },
-                    () => false,
-                  );
+                  {
+                    storageId,
+                    categoryId,
+                    payload: { expected_structure_revision: expectedStructureRevision },
+                  },
+                ).then(
+                  () => {
+                    selectStructure(storageId, null);
+                    return true;
+                  },
+                  () => false,
+                );
               }}
             />
           </>
