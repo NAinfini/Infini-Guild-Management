@@ -23,7 +23,6 @@ export function PasswordRequirements({ id, password, confirmation }: { id: strin
           );
         })}
       </ul>
-      <p className="password-requirements__note">{t("passwordRules.note")}</p>
     </div>
   );
 }

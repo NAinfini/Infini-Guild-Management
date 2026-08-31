@@ -1,6 +1,5 @@
 import { wikiArticleEtag, type WikiArticle } from "@guild/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { diffChars, diffLines, type Change } from "diff";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../api/query-keys";
@@ -11,43 +10,11 @@ import {
 } from "../services/WikiService";
 import { useAppError } from "./useAppError";
 import { notifySuccess } from "../utils/notifications";
-import { extractTipTapText } from "@guild/shared/utils/tiptap-text";
+import { areWikiHistoryBodiesEqual, compareWikiHistory } from "../utils/wiki-history-diff";
+
+export type { WikiHistoryDiffBlock } from "../utils/wiki-history-diff";
 
 export type WikiHistoryCompareMode = "current" | "previous";
-
-export type WikiHistoryDiffBlock =
-  | { kind: "context" | "added" | "removed"; text: string }
-  | { kind: "modified"; parts: Change[] };
-
-/*
- * diffChars 是 O(len(old)×len(new)) 的 LCS：整篇重写会把全文配成一对
- * removed/added 块，字符级细化在主线程上二次方爆炸。超过阈值的配对降为
- * 行级整块展示，字符高亮只留给人眼真正能对比的小段修改。
- */
-const MAX_CHAR_DIFF_SOURCE = 2000;
-
-function buildDiffBlocks(oldText: string, newText: string): WikiHistoryDiffBlock[] {
-  const changes = diffLines(oldText, newText);
-  const blocks: WikiHistoryDiffBlock[] = [];
-  for (let i = 0; i < changes.length; i++) {
-    const change = changes[i]!;
-    const paired = change.removed ? changes[i + 1] : undefined;
-    if (paired?.added) {
-      if (change.value.length <= MAX_CHAR_DIFF_SOURCE && paired.value.length <= MAX_CHAR_DIFF_SOURCE) {
-        blocks.push({ kind: "modified", parts: diffChars(change.value, paired.value) });
-      } else {
-        blocks.push({ kind: "removed", text: change.value });
-        blocks.push({ kind: "added", text: paired.value });
-      }
-      i++;
-      continue;
-    }
-    if (change.added) blocks.push({ kind: "added", text: change.value });
-    else if (change.removed) blocks.push({ kind: "removed", text: change.value });
-    else blocks.push({ kind: "context", text: change.value });
-  }
-  return blocks;
-}
 
 type UseWikiHistoryParams = {
   article: WikiArticle;
@@ -124,33 +91,34 @@ export function useWikiHistory({ article, opened, onClose }: UseWikiHistoryParam
   const selected = detailQuery.data ?? null;
   const isIdenticalToCurrent = selected !== null
     && selected.title === currentArticle.title
-    && selected.body_json === currentArticle.body_json;
+    && areWikiHistoryBodiesEqual(selected.body_json, currentArticle.body_json);
 
   const diff = useMemo(() => {
     if (!selected) return null;
     if (compareMode === "current") {
-      return {
-        titleChanged: selected.title !== currentArticle.title,
-        oldTitle: selected.title,
-        newTitle: currentArticle.title,
-        blocks: buildDiffBlocks(extractTipTapText(selected.body_json), extractTipTapText(currentArticle.body_json)),
-      };
+      return compareWikiHistory(
+        { title: selected.title, bodyJson: selected.body_json },
+        { title: currentArticle.title, bodyJson: currentArticle.body_json },
+      );
     }
     if (previousRevisionNumber === null || !previousQuery.data) return null;
-    return {
-      titleChanged: previousQuery.data.title !== selected.title,
-      oldTitle: previousQuery.data.title,
-      newTitle: selected.title,
-      blocks: buildDiffBlocks(extractTipTapText(previousQuery.data.body_json), extractTipTapText(selected.body_json)),
-    };
+    return compareWikiHistory(
+      { title: previousQuery.data.title, bodyJson: previousQuery.data.body_json },
+      { title: selected.title, bodyJson: selected.body_json },
+    );
   }, [selected, compareMode, currentArticle.title, currentArticle.body_json, previousRevisionNumber, previousQuery.data]);
 
-  const hasChanges = diff !== null && (diff.titleChanged || diff.blocks.some((block) => block.kind !== "context"));
+  const hasChanges = diff !== null && (diff.titleChanged || diff.formatChanged
+    || diff.blocks.some((block) => block.kind !== "context"));
   const isDiffLoading = detailQuery.isLoading || (compareMode === "previous" && previousRevisionNumber !== null && previousQuery.isLoading);
+  const listError = revisionsQuery.isError;
+  const diffError = detailQuery.isError || (compareMode === "previous" && previousRevisionNumber !== null && previousQuery.isError);
 
   return {
     revisions,
     isListLoading: revisionsQuery.isLoading,
+    listError,
+    retryList: () => revisionsQuery.refetch(),
     latestRevisionNumber,
     selectedRevision,
     setSelectedRevision,
@@ -160,6 +128,12 @@ export function useWikiHistory({ article, opened, onClose }: UseWikiHistoryParam
     diff,
     hasChanges,
     isDiffLoading,
+    diffError,
+    retryDiff: async () => {
+      const retries = [detailQuery.refetch()];
+      if (compareMode === "previous" && previousRevisionNumber !== null) retries.push(previousQuery.refetch());
+      await Promise.all(retries);
+    },
     isIdenticalToCurrent,
     restore: (revision: number) => restoreMutation.mutate(revision),
     isRestoring: restoreMutation.isPending,

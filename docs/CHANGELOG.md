@@ -8,6 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 
 ## [Unreleased]
 
+### Changed
+
+- Consolidated the completed 0000–0017 migration chain into one final-state `0000_core.sql` and one Drizzle snapshot. Fresh databases no longer execute historical table rebuilds or data conversions. Existing production databases require an explicitly verified, maintenance-gated application-ledger adoption; business tables, credentials, media and Wrangler migration history are preserved. No runtime compatibility branch or automatic ledger rewrite is introduced.
+- Removed the supplemental spaces/Unicode/numbers explanation below password requirements in both languages; the individual requirement checks and password policy are unchanged.
+- Wiki version history now compares complete rich-text documents, reports formatting and table-column width changes, and displays full read-only before/after previews. The responsive dialog separates version selection, comparison actions and scrolling content; failed history requests offer retry instead of appearing empty. Stored revisions and restore concurrency checks are unchanged.
+
 ## [0.1.0] - 2026-08-30
 
 Refreshed public release. This release replaces the earlier `v0.1.0` source snapshot with the reviewed current implementation.

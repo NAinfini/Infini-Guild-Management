@@ -72,16 +72,16 @@ pnpm vps dev
 
 ## 共享 schema 与迁移
 
-已发布的基线已冻结在：
+已合并的 0.1.0 基线冻结在：
 
 ```text
 packages/persistence-sqlite/src/migrations/generated/0000_core.sql
-packages/persistence-sqlite/src/migrations/generated/manifest.json  # 冻结的 0000 基线及后续连续条目
+packages/persistence-sqlite/src/migrations/generated/manifest.json  # 单一合并 core；后续变化追加条目
 ```
 
-Cloudflare D1 与 VPS SQLite 使用同一组有序迁移文件，并从已冻结的 `0000_core.sql` 开始。`app_migrations` 是应用拥有的序号/校验和账本，也是启动校验的权威来源。Cloudflare 还维护 `d1_migrations`，供 Wrangler 记录已应用文件。两张账本归属不同，必须同时存在；空、未知或不匹配的 schema 会被拒绝，绝不会被静默修补。
+Cloudflare D1 与 VPS SQLite 使用同一组有序迁移文件，从 `0000_core.sql` 开始；它包含原 `0017_notice_delivery` 之前所有迁移的最终结构与种子数据。`app_migrations` 是应用拥有的序号/校验和账本，也是启动校验的权威来源。Cloudflare 还维护 `d1_migrations`，供 Wrangler 记录已应用文件名。应保留其历史行，允许其中存在当前目录已没有的旧文件名。空、未知或不匹配的应用 schema 会被拒绝，绝不会被静默修补。
 
-`0000_core.sql` 及其 manifest 条目不可变。不得重新生成、组装或编辑它们。此发布后的每项 schema 变更都必须新增下一个连续序号的迁移，以精确校验和更新 manifest，并通过共享的 D1/SQLite 迁移一致性检查。运行时迁移校验会应用有序多文件链，不会对现有数据库重建基线，也不会静默改写账本。
+本次 0.1.0 刷新包含所有者明确授权的一次性合并。既有数据库必须先用标签 `archive/pre-core-20260830` 完成原 18 个迁移，再按 [PRODUCTION_D1_UPGRADE.zh.md](./PRODUCTION_D1_UPGRADE.zh.md) 执行经过备份、演练的账本切换。**不得向已有数据库执行新 core，也不能认为 Wrangler 跳过同名文件就已更新应用账本。** 此次切换后 core 不可变；后续 schema 变更新增下一个连续序号、从未使用过的文件名及精确校验和，并通过 D1/SQLite 一致性检查。运行时不会静默改写已有账本。
 
 如果要用新的 exact manifest 替换非空开发数据库，且其 `app_migrations` 账本不一致，必须先备份，再使用经过明确规划、验证且保留数据的升级流程。应用刻意不提供运行时兼容分支或远程账本自动改写。除非操作者另行明确执行带 `--remote` 的 Wrangler 命令，仓库命令绝不会修改远程 D1。当前生产升级与回滚流程以 [PRODUCTION_D1_UPGRADE.zh.md](./PRODUCTION_D1_UPGRADE.zh.md) 为准。
 

@@ -14,18 +14,14 @@ const drizzleJournal = JSON.parse(readFileSync(
   fileURLToPath(new URL("./generated/meta/_journal.json", import.meta.url)),
   "utf8",
 )) as { entries: Array<{ idx: number; tag: string }> };
-const baselineSnapshot = JSON.parse(readFileSync(
-  fileURLToPath(new URL("./generated/meta/0000_snapshot.json", import.meta.url)),
-  "utf8",
-)) as DrizzleSnapshot;
-const latestMigration = manifest.at(-1)!;
-const latestSnapshot = JSON.parse(readFileSync(
+const snapshots = manifest.map(({ ordinal }) => JSON.parse(readFileSync(
   fileURLToPath(new URL(
-    `./generated/meta/${String(latestMigration.ordinal).padStart(4, "0")}_snapshot.json`,
+    `./generated/meta/${String(ordinal).padStart(4, "0")}_snapshot.json`,
     import.meta.url,
   )),
   "utf8",
-)) as DrizzleSnapshot;
+)) as DrizzleSnapshot);
+const latestSnapshot = snapshots.at(-1)!;
 const migration = manifest.map(({ file }) => readFileSync(
   fileURLToPath(new URL(`./generated/${file}`, import.meta.url)),
   "utf8",
@@ -37,7 +33,9 @@ describe("Drizzle schema and core migration parity", () => {
     expect(drizzleJournal.entries.map(({ idx, tag }) => ({ idx, tag }))).toEqual(
       manifest.map(({ id, ordinal }) => ({ idx: ordinal, tag: id })),
     );
-    expect(latestSnapshot.prevId).toBe(baselineSnapshot.id);
+    for (const [ordinal, snapshot] of snapshots.entries()) {
+      expect(snapshot.prevId).toBe(snapshots[ordinal - 1]?.id ?? "00000000-0000-0000-0000-000000000000");
+    }
 
     const configs = Object.values(appSchema).map((table) => getTableConfig(table));
     expect(Object.keys(latestSnapshot.tables).sort()).toEqual(configs.map(({ name }) => name).sort());

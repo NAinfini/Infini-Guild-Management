@@ -20,7 +20,7 @@ This file defines the stable working contract for coding agents in this reposito
 - `apps/cloudflare/`: D1/R2/DO/rate-limit/static/scheduled adapters and the Cloudflare root handler.
 - `apps/vps/`: Node SQLite/filesystem/WebSocket/scheduler/static adapters and the VPS runtime.
 - `apps/portal/`: the SPA. `router.tsx` owns routing; `components/layout/route-metadata.ts` owns navigation; services/hooks own orchestration.
-- `packages/persistence-sqlite/src/migrations/generated/0000_core.sql`: the released, frozen core schema assembled from Drizzle plus named invariant SQL.
+- `packages/persistence-sqlite/src/migrations/generated/0000_core.sql`: the consolidated 0.1.0 core schema, including all changes through the former 0017 migration.
 - `docs/SETUP.md` and `docs/SETUP.zh.md`: deployment, migration, bootstrap, backup, and recovery procedures.
 
 Use `rg --files` and targeted symbol search before editing. Do not maintain a second exhaustive file list.
@@ -100,7 +100,8 @@ Do not add a dynamic game-rules table or a second translation/precision model.
 ## Schema and migrations
 
 - Drizzle modules under `packages/persistence-sqlite/src/schema/` are the relational source of truth. Named `.sql` invariants cover behavior Drizzle cannot express.
-- `0000_core.sql` is the released, frozen baseline. Never regenerate, assemble, or edit it; later schema changes add the next contiguous ordinal migration and an exact manifest entry.
+- `0000_core.sql` is the consolidated 0.1.0 baseline. The explicitly authorized consolidation replaces 0000–0017; subsequent schema changes add the next contiguous ordinal migration and an exact manifest entry rather than regenerating it. Existing pre-consolidation databases require the verified, maintenance-gated ledger adoption described in `docs/PRODUCTION_D1_UPGRADE.md`; never replay the core against their business tables.
+- Preserve Wrangler-owned `d1_migrations` history. It may contain the former filenames; the application-owned `app_migrations` must exactly match the current manifest. Never reuse a historical migration filename for a different change.
 - Node SQLite and local workerd D1 must apply the same bytes and pass schema/index/trigger parity tests.
 - Built-in roles, permissions, Site Config defaults, and schema metadata are generated from shared constants.
 - Private first-owner SQL is generated under ignored `private-migrations/` and is never committed.

@@ -69,6 +69,7 @@ export type TipTapEditorProps = {
   mode?: EditorMode;
   readOnly?: boolean;
   editable?: boolean;
+  showTableOfContents?: boolean;
   ariaLabel?: string;
   onImageUpload?: (file: File) => Promise<string>;
   /** Optional image converter. If omitted, the raw file is used as-is. */
@@ -217,6 +218,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     mode = "json",
     readOnly = false,
     editable,
+    showTableOfContents = true,
     ariaLabel,
     onImageUpload,
     convertImage,
@@ -612,7 +614,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
             ) : null}
           </div>
 
-          <TipTapEditorToc editor={editor} labels={labels} />
+          {showTableOfContents ? <TipTapEditorToc editor={editor} labels={labels} /> : null}
         </div>
 
         {linkDialogOpen ? (

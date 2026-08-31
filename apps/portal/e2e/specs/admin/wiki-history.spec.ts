@@ -239,3 +239,53 @@ test("恢复：取消什么都不做，确认后正文回到旧版并多记一�
   expect(revisions[0]?.revision, "恢复本身要记成新的一版").toBe(4);
   expect(revisions[0]?.restored_from, "新版本要记下它是从哪一版恢复来的").toBe(1);
 });
+
+test("列宽变更保留相同文字，并展示数值与完整前后表格", async ({ page, flow, api }, testInfo) => {
+  for (const widths of [[120, 240], [180, 180]]) {
+    const body = {
+      type: "doc",
+      content: [{
+        type: "table",
+        content: [{
+          type: "tableRow",
+          content: widths.map((width, index) => ({
+            type: "tableCell",
+            attrs: { colspan: 1, rowspan: 1, colwidth: [width] },
+            content: [{ type: "paragraph", content: [{ type: "text", text: index === 0 ? "角色" : "攻略内容" }] }],
+          })),
+        }],
+      }],
+    };
+    await readJson(await api.patch(`/api/wiki/articles/${article.id}`, {
+      headers: { "If-Match": await readArticleEtag(api, article.slug) },
+      data: { body_json: JSON.stringify(body) },
+    }), "保存表格列宽版本");
+  }
+  await page.reload();
+  await flow.click(page.getByRole("button", { name: "Version history", exact: true }), REVISIONS);
+  await flow.click(compareSegment(page, "Compare to previous"), REVISION_DETAIL);
+
+  await expect(modal(page)).toContainText("Text is unchanged. Formatting or layout changed");
+  await expect(modal(page).locator(".wiki-history-width-changes")).toContainText("120px → 180px");
+  await expect(modal(page).locator(".wiki-history-width-changes")).toContainText("240px → 180px");
+  await expect(addedParts(page)).toHaveCount(0);
+  await expect(removedParts(page)).toHaveCount(0);
+
+  const before = modal(page).getByRole("region", { name: "Before", exact: true }).filter({ has: page.locator(".ProseMirror") });
+  const after = modal(page).getByRole("region", { name: "After", exact: true }).filter({ has: page.locator(".ProseMirror") });
+  // Collapsed table borders affect measured pixels; the authored width is the content contract.
+  await expect(before.locator("col").nth(0)).toHaveAttribute("style", "width: 120px;");
+  await expect(before.locator("col").nth(1)).toHaveAttribute("style", "width: 240px;");
+  await expect(after.locator("col").nth(0)).toHaveAttribute("style", "width: 180px;");
+  await expect(after.locator(".ProseMirror")).toHaveAttribute("contenteditable", "false");
+  await expect(before).toContainText("攻略内容");
+  await expect(after).toContainText("攻略内容");
+  await page.screenshot({ path: testInfo.outputPath("history-desktop.png") });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(compareSegment(page, "Compare to previous")).toBeVisible();
+  await expect(restoreButton(page)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("history-mobile.png") });
+  await after.scrollIntoViewIfNeeded();
+  await expect(after).toBeVisible();
+});

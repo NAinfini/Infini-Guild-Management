@@ -72,16 +72,16 @@ The development seed runs only for a pristine database. It is safe to rerun and 
 
 ## Shared schema and migrations
 
-The released baseline is frozen at:
+The consolidated 0.1.0 baseline is frozen at:
 
 ```text
 packages/persistence-sqlite/src/migrations/generated/0000_core.sql
-packages/persistence-sqlite/src/migrations/generated/manifest.json  # frozen 0000 baseline plus contiguous later entries
+packages/persistence-sqlite/src/migrations/generated/manifest.json  # one consolidated core; later changes append entries
 ```
 
-Cloudflare D1 and VPS SQLite consume the same ordered migration files, starting with the frozen `0000_core.sql`. `app_migrations` is the application-owned ordinal/checksum ledger and the source of truth for startup validation. Cloudflare also keeps `d1_migrations`, which Wrangler uses to track applied files. The ledgers have different owners and must both exist. The application rejects an empty, unknown, or mismatched schema instead of silently repairing it.
+Cloudflare D1 and VPS SQLite consume the same ordered migration files, starting with `0000_core.sql`, which contains the final structure and seeds through the former `0017_notice_delivery`. `app_migrations` is the application-owned ordinal/checksum ledger and the source of truth for startup validation. Cloudflare also keeps `d1_migrations`, which Wrangler uses to track filenames. Preserve its historical rows: it may contain former filenames absent from the current directory. The application rejects an empty, unknown, or mismatched schema instead of silently repairing it.
 
-`0000_core.sql` and its manifest entry are immutable. Do not regenerate, assemble, or edit either one. Every schema change after this release must add the next contiguous ordinal migration, update the manifest with its exact checksum, and pass the shared D1/SQLite migration-parity checks. Runtime migration validation applies the ordered multi-file chain; it never rebaselines an existing database or silently rewrites its ledger.
+The owner explicitly authorized a one-time consolidation for this 0.1.0 refresh. Existing databases must finish the previous 18-entry chain using tag `archive/pre-core-20260830`, then follow the backed-up, rehearsed ledger adoption in [PRODUCTION_D1_UPGRADE.md](./PRODUCTION_D1_UPGRADE.md). **Do not run the new core on an existing database or assume that Wrangler skipping its filename updates the application ledger.** After this cutover, the core is immutable. Every later schema change must add the next contiguous ordinal with a never-before-used filename and exact checksum, and pass D1/SQLite parity checks. Runtime validation never silently rewrites an existing ledger.
 
 Before replacing a nonempty development database with a new exact manifest, back it up if its `app_migrations` ledger differs, then use an explicitly planned and verified data-preserving upgrade. The application intentionally has no runtime compatibility branch or automatic remote-ledger rewrite. Repository commands never modify remote D1 unless an operator separately runs an explicitly authorized Wrangler command with `--remote`. The current production upgrade and rollback procedure is defined in [PRODUCTION_D1_UPGRADE.md](./PRODUCTION_D1_UPGRADE.md).
 
