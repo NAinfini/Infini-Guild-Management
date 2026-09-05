@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@portal/components/ui/select";
 import { Separator } from "@portal/components/ui/separator";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Switch } from "@portal/components/ui/switch";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
@@ -77,17 +77,6 @@ type AnnouncementDetailCardProps = {
   isPublishReady: boolean;
   emptyTitle: ReactNode;
 };
-
-function EditorSkeleton() {
-  return (
-    <div className="announcement-editor-skeleton" aria-busy="true">
-      <Skeleton className="announcement-editor-skeleton__line announcement-editor-skeleton__line--heading" />
-      <Skeleton className="announcement-editor-skeleton__line" />
-      <Skeleton className="announcement-editor-skeleton__line" />
-      <Skeleton className="announcement-editor-skeleton__line announcement-editor-skeleton__line--short" />
-    </div>
-  );
-}
 
 export function AnnouncementDetailCard({
   navigation,
@@ -263,11 +252,11 @@ export function AnnouncementDetailCard({
           </header>
         )}
 
-        {isLoading ? <EditorSkeleton /> : null}
+        {isLoading ? <LoadingIndicator /> : null}
         {!isLoading && selected && !editing ? (
           <div className="announcement-reader-content">
             <Separator />
-            <Suspense fallback={<EditorSkeleton />}>
+            <Suspense fallback={<LoadingIndicator />}>
               <LazyTipTapEditor
                 value={bodyJson}
                 onChange={() => {}}
@@ -341,7 +330,7 @@ export function AnnouncementDetailCard({
               </div>
               <div className="announcement-editor-composer">
                 <span className="announcement-editor-field-label">{t("field.body")}</span>
-                <Suspense fallback={<EditorSkeleton />}>
+                <Suspense fallback={<LoadingIndicator />}>
                   <LazyTipTapEditor
                     value={bodyJson}
                     onChange={onBodyJsonChange}

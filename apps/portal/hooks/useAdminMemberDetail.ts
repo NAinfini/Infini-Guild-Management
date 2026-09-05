@@ -1,6 +1,8 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { queryKeys } from "../api/query-keys";
+import { fetchUserDetail } from "../services/UserService";
+import { viewerIdentity } from "../session-storage";
 import {
   useAdminMemberMediaController,
   type AdminMemberMediaState,
@@ -30,7 +32,6 @@ const EMPTY_MEDIA_STATE: AdminMemberMediaState = {
 };
 
 type UseAdminMemberDetailParams = {
-  usersData: AdminUserRow[] | undefined;
   memberSearchParam: string | undefined;
   currentUserId?: string;
   showError: (error: unknown, fallbackMessage: string) => void;
@@ -65,7 +66,6 @@ function formsMatch(left: MemberDetailFormState, right: MemberDetailFormState): 
 }
 
 export function useAdminMemberDetail({
-  usersData,
   memberSearchParam,
   currentUserId,
   showError,
@@ -91,6 +91,13 @@ export function useAdminMemberDetail({
   memberDetailIdRef.current = memberDetailId;
   memberDetailFormRef.current = memberDetailForm;
 
+  const memberDetailQuery = useQuery({
+    queryKey: queryKeys.users.detail(viewerIdentity(currentUserId), "internal", memberDetailId),
+    queryFn: ({ signal }) => fetchUserDetail(memberDetailId!, { signal }),
+    enabled: memberDetailId !== null && Boolean(currentUserId),
+  });
+  const selectedMemberDetail = memberDetailQuery.data ?? null;
+
   // Sync form state when selected member changes
   useEffect(() => {
     if (!memberDetailId) {
@@ -99,7 +106,7 @@ export function useAdminMemberDetail({
       setSavedForm(DEFAULT_FORM);
       return;
     }
-    const target = usersData?.find((row) => row.user.id === memberDetailId);
+    const target = selectedMemberDetail;
     if (!target) {
       formMemberIdRef.current = memberDetailId;
       setMemberDetailForm(DEFAULT_FORM);
@@ -132,7 +139,7 @@ export function useAdminMemberDetail({
     });
     setMemberDetailForm(synced);
     setSavedForm(synced);
-  }, [memberDetailId, usersData]);
+  }, [memberDetailId, selectedMemberDetail]);
 
   const isDirty = useMemo(
     () => !formsMatch(memberDetailForm, savedForm),
@@ -163,31 +170,16 @@ export function useAdminMemberDetail({
 
   // Keep route-driven selections repeatable; the router blocker owns dirty navigation confirmation.
   useEffect(() => {
-    const normalizedParam = memberSearchParam?.trim().toLowerCase() || null;
-    if (normalizedParam === appliedMemberSearchParamRef.current) return;
-    if (normalizedParam === null) {
-      appliedMemberSearchParamRef.current = null;
-      setMemberDetailIdState(null);
+    const targetId = memberSearchParam?.trim() || null;
+    if (targetId === appliedMemberSearchParamRef.current) return;
+    const mediaState = memberMediaStateRef.current;
+    if (memberDetailIdRef.current === mediaState.memberId && mediaState.hasPendingChanges) {
+      appliedMemberSearchParamRef.current = targetId;
       return;
     }
-    if (!usersData) return;
-    const target = usersData.find(
-      (row) => row.user.display_name.toLowerCase() === normalizedParam,
-    );
-    if (target) {
-      const mediaState = memberMediaStateRef.current;
-      if (
-        memberDetailIdRef.current === mediaState.memberId
-        && mediaState.hasPendingChanges
-      ) {
-        appliedMemberSearchParamRef.current = normalizedParam;
-        return;
-      }
-      appliedMemberSearchParamRef.current = normalizedParam;
-      setMemberDetailIdState(target.user.id);
-    }
-  }, [memberSearchParam, usersData]);
-
+    appliedMemberSearchParamRef.current = targetId;
+    setMemberDetailIdState(targetId);
+  }, [memberSearchParam]);
   /* 放弃草稿：回到最后一次保存过的那份，而不是重新从 member 推一份——保存成功到
      列表刷新之间有一小段时间，member 还是旧值，从它推会把刚存进去的改动又抹掉。 */
   const resetMemberDetailForm = useCallback(() => {
@@ -231,9 +223,6 @@ export function useAdminMemberDetail({
     memberMediaStateRef.current = state;
   }, []);
 
-  const selectedMemberDetail = memberDetailId
-    ? usersData?.find((row) => row.user.id === memberDetailId) ?? null
-    : null;
   const memberDetailRevisions = memberDetailId
     ? baselineByMemberRef.current.get(memberDetailId)?.revisions ?? null
     : null;
@@ -262,6 +251,7 @@ export function useAdminMemberDetail({
     isDirty,
     markMemberDetailSaved,
     selectedMemberDetail,
+    memberDetailQuery,
     memberDetailRevisions,
     createMemberModalOpen,
     createMemberModalHandlers,

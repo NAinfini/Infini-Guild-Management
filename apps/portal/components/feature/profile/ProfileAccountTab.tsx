@@ -16,7 +16,7 @@ import {
 import { Input } from "@portal/components/ui/input";
 import { Label } from "@portal/components/ui/label";
 import { PasswordInput } from "@portal/components/ui/password-input";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useProfileAccountSecurity } from "@portal/hooks/useProfileAccountSecurity";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -52,17 +52,6 @@ type SensitiveAction =
   | { kind: "resend-email" }
   | { kind: "remove-email" };
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
-function notifyAccountMutationError(error: unknown, fallback: string): void {
-  if (isApiRequestError(error) && error.status === 0) {
-    return;
-  }
-  notifyError(errorMessage(error, fallback));
-}
-
 function validIdentityName(value: string): boolean {
   return identityNameSchema.safeParse(value).success;
 }
@@ -77,6 +66,26 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [email, setEmail] = useState("");
   const [pendingAction, setPendingAction] = useState<SensitiveAction | null>(null);
+
+  const notifyAccountMutationError = (
+    error: unknown,
+    fallbackKey: string,
+    conflictKey = "common:errors.conflict",
+  ) => {
+    let key = fallbackKey;
+    if (isApiRequestError(error)) {
+      switch (error.status) {
+        case 0: return;
+        case 400: key = "account.message.invalidInput"; break;
+        case 401: key = "account.message.confirmationFailed"; break;
+        case 403: key = "common:errors.forbidden"; break;
+        case 409: key = conflictKey; break;
+        case 429: key = "account.message.rateLimited"; break;
+        case 503: key = "common:errors.serviceUnavailable"; break;
+      }
+    }
+    notifyError(t(key));
+  };
 
   useEffect(() => {
     if (!securityQuery.data) return;
@@ -98,7 +107,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       notifySuccess(t("message.passwordChanged"));
       credentialChanged("expired");
     },
-    onError: (error) => notifyAccountMutationError(error, t("message.passwordChangeFailed")),
+    onError: (error) => notifyAccountMutationError(error, "message.passwordChangeFailed"),
   });
   const changeLoginNameMutation = useMutation({
     mutationFn: () => changeLoginName({ currentPassword, login_name: loginName.trim() }),
@@ -106,12 +115,12 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       notifySuccess(t("account.message.loginNameChanged"));
       credentialChanged();
     },
-    onError: (error) => notifyAccountMutationError(error, t("account.message.loginNameChangeFailed")),
+    onError: (error) => notifyAccountMutationError(error, "account.message.loginNameChangeFailed", "account.message.loginNameTaken"),
   });
   const linkOAuthMutation = useMutation({
     mutationFn: (provider: OAuthProvider) => startOAuth(provider, currentPassword),
     onSuccess: ({ authorization_url }) => window.location.assign(authorization_url),
-    onError: (error) => notifyAccountMutationError(error, t("account.message.oauthFailed")),
+    onError: (error) => notifyAccountMutationError(error, "account.message.oauthFailed"),
   });
   const unlinkOAuthMutation = useMutation({
     mutationFn: (provider: OAuthProvider) => unlinkOAuth(provider, currentPassword),
@@ -120,7 +129,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       void invalidateSecurity();
       notifySuccess(t("account.message.oauthUnlinked"));
     },
-    onError: (error) => notifyAccountMutationError(error, t("account.message.oauthFailed")),
+    onError: (error) => notifyAccountMutationError(error, "account.message.oauthFailed"),
   });
   const requestEmailMutation = useMutation({
     mutationFn: () => requestEmailVerification({ current_password: currentPassword, email }),
@@ -128,7 +137,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       finishSensitiveAction();
       notifySuccess(t("account.message.emailSent"));
     },
-    onError: (error) => notifyAccountMutationError(error, t("account.message.emailFailed")),
+    onError: (error) => notifyAccountMutationError(error, "account.message.emailFailed"),
   });
   const resendEmailMutation = useMutation({
     mutationFn: () => resendEmailVerification({ current_password: currentPassword }),
@@ -136,7 +145,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       finishSensitiveAction();
       notifySuccess(t("account.message.emailSent"));
     },
-    onError: (error) => notifyAccountMutationError(error, t("account.message.emailFailed")),
+    onError: (error) => notifyAccountMutationError(error, "account.message.emailFailed", "account.message.emailResendUnavailable"),
   });
   const removeEmailMutation = useMutation({
     mutationFn: () => removeEmail(currentPassword),
@@ -145,7 +154,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
       void invalidateSecurity();
       notifySuccess(t("account.message.emailRemoved"));
     },
-    onError: (error) => notifyAccountMutationError(error, t("account.message.emailFailed")),
+    onError: (error) => notifyAccountMutationError(error, "account.message.emailFailed"),
   });
 
   const passwordError = newPasswordValidationKey(newPassword);
@@ -184,10 +193,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
 
   if (securityQuery.isLoading) {
     return (
-      <div className="profile-account__loading" aria-label={t("common:message.loading")} aria-busy="true">
-        <Skeleton className="profile-account__loading-card profile-account__loading-card--large" />
-        <Skeleton className="profile-account__loading-card" />
-      </div>
+      <LoadingIndicator />
     );
   }
   if (securityBlockingError) {
@@ -204,10 +210,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
   }
   if (!securityQuery.data) {
     return (
-      <div className="profile-account__loading" aria-label={t("common:message.loading")} aria-busy="true">
-        <Skeleton className="profile-account__loading-card profile-account__loading-card--large" />
-        <Skeleton className="profile-account__loading-card" />
-      </div>
+      <LoadingIndicator />
     );
   }
 
@@ -253,12 +256,12 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
             </div>
           </Card>
 
-          <Card className="profile-account__card gap-0 py-0">
+          <Card className="profile-account__card profile-account__password-card gap-0 py-0">
             <SectionHeader title={t("account.section.passwordSecurity")} headingLevel={2} />
-            <div className="profile-account__card-body">
+            <div className="profile-account__card-body profile-account__password-body">
               <div className="password-setup">
                 <div className="password-setup__layout">
-                  <div className="password-setup__fields">
+                  <div className="password-setup__fields profile-account__password-fields">
                     <div className="profile-field">
                       <Label htmlFor="profile-new-password">{t("account.field.newPassword")}</Label>
                       <PasswordInput
@@ -299,7 +302,7 @@ export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
                   <PasswordRequirements id="profile-password-requirements" password={newPassword} confirmation={confirmNewPassword} />
                 </div>
               </div>
-              <div className="profile-account__action-row">
+              <div className="profile-account__action-row profile-account__password-actions">
                 <Button
                   loading={changePasswordMutation.isPending}
                   disabled={!canChangePassword}

@@ -1,52 +1,20 @@
-import type { MemberProfile, User } from "@guild/shared";
-import { isApiRequestError } from "./api/client";
+import type { PortalSession } from "./session-transition";
 
-export type RouteSession = {
-  user: User;
-  profile: MemberProfile;
-  session_scope: "normal" | "password_change";
-};
-
-type RouteSessionDependencies = {
-  getCachedSession: () => RouteSession | null;
-  requestSession: () => Promise<RouteSession>;
-  transitionSession: (session: RouteSession | null) => void;
-};
-
-type RouteSessionResolverDependencies = RouteSessionDependencies & {
+type RouteSessionResolverDependencies = {
+  getCachedSession: () => PortalSession | null;
+  requestSession: () => Promise<PortalSession | null>;
   isSessionResolved: () => boolean;
   markSessionResolved: () => void;
 };
 
 export type RouteSessionResolver = {
-  resolve: () => Promise<RouteSession | null>;
+  resolve: () => Promise<PortalSession | null>;
 };
-
-export async function resolveRouteSession({
-  getCachedSession,
-  requestSession,
-  transitionSession,
-}: RouteSessionDependencies): Promise<RouteSession | null> {
-  const cached = getCachedSession();
-  if (cached) return cached;
-
-  try {
-    const response = await requestSession();
-    transitionSession(response);
-    return response;
-  } catch (error) {
-    if (!isApiRequestError(error) || error.status !== 401) {
-      throw error;
-    }
-    transitionSession(null);
-    return null;
-  }
-}
 
 export function createRouteSessionResolver(
   dependencies: RouteSessionResolverDependencies,
 ): RouteSessionResolver {
-  let inFlight: Promise<RouteSession | null> | null = null;
+  let inFlight: Promise<PortalSession | null> | null = null;
 
   return {
     resolve: () => {
@@ -58,10 +26,10 @@ export function createRouteSessionResolver(
       if (dependencies.isSessionResolved()) {
         return Promise.resolve(null);
       }
-      inFlight ??= resolveRouteSession(dependencies)
-        .then((session) => {
+      inFlight ??= dependencies.requestSession()
+        .then(() => {
           if (!dependencies.isSessionResolved()) dependencies.markSessionResolved();
-          return session;
+          return dependencies.getCachedSession();
         })
         .finally(() => {
           inFlight = null;

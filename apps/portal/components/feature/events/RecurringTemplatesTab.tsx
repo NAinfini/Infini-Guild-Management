@@ -10,7 +10,7 @@ import {
   InputGroupInput,
 } from "@portal/components/ui/input-group";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import {
   CalendarRepeatIcon,
@@ -85,7 +85,7 @@ export function RecurringTemplatesTab({ canManage, templates, loading, onCreateT
   const hasActiveFilters = searchQuery.trim().length > 0 || activeFilterCount > 0;
   const resetFilters = () => { setSearchQuery(""); setStatusFilter("all"); setTypeFilter(null); };
 
-  if (loading) return <div className="recurring-template-list recurring-template-list--loading">{Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-20" />)}</div>;
+  if (loading) return <LoadingIndicator />;
 
   const searchControl = (
     <InputGroup className="recurring-template-filter-search">

@@ -1,7 +1,8 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
-import { expect, readJson, test } from "../../support/test";
+import { expect, readJson, test, type Flow } from "../../support/test";
 import { confirmDialog, dialogTitled, expectNoDialog } from "../../support/ui";
+import { createWikiCategory as createCategory } from "../../support/wiki";
 
 /*
  * Wiki 版本历史弹窗：版本列表、选版本、比较档（对当前 / 对上一版）、恢复。
@@ -77,14 +78,6 @@ function bodyJson(text: string): string {
   });
 }
 
-async function createCategory(api: APIRequestContext, name: string): Promise<{ id: string; name: string }> {
-  const created = await readJson(
-    await api.post("/api/wiki/categories", { data: { name } }),
-    `创建分类 ${name}`,
-  ) as { id: string };
-  return { id: created.id, name };
-}
-
 async function readRevisions(api: APIRequestContext): Promise<Array<{ revision: number; restored_from: number | null }>> {
   return await readJson(
     await api.get(`/api/wiki/articles/${article.id}/revisions`),
@@ -149,8 +142,9 @@ function compareSegment(page: Page, label: string): Locator {
   return modal(page).getByRole("tab", { name: label, exact: true });
 }
 
-async function openHistory(page: Page, flow: { click: (control: Locator, expected: typeof REVISIONS) => Promise<unknown> }): Promise<void> {
-  await flow.click(page.getByRole("button", { name: "Version history", exact: true }), REVISIONS);
+async function openHistory(page: Page, flow: Pick<Flow, "click" | "clickWithoutApi">): Promise<void> {
+  await flow.clickWithoutApi(page.getByRole("button", { name: "More actions", exact: true }));
+  await flow.click(page.getByRole("menuitem", { name: "Version history", exact: true }), REVISIONS);
   await expect(modal(page)).toBeVisible();
   await expect(revisionRows(page)).toHaveCount(3);
 }
@@ -262,7 +256,9 @@ test("列宽变更保留相同文字，并展示数值与完整前后表格", as
     }), "保存表格列宽版本");
   }
   await page.reload();
-  await flow.click(page.getByRole("button", { name: "Version history", exact: true }), REVISIONS);
+  await expect(articleHeading(page, article.title)).toHaveText(article.title);
+  await flow.clickWithoutApi(page.getByRole("button", { name: "More actions", exact: true }));
+  await flow.click(page.getByRole("menuitem", { name: "Version history", exact: true }), REVISIONS);
   await flow.click(compareSegment(page, "Compare to previous"), REVISION_DETAIL);
 
   await expect(modal(page)).toContainText("Text is unchanged. Formatting or layout changed");

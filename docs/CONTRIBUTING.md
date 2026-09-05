@@ -1,6 +1,6 @@
 # Contributing to Infini Guild Management
 
-[Documentation home](../README.md)
+[Documentation home](../README.md) · [中文版本](./CONTRIBUTING.zh.md)
 
 Thanks for helping improve the project. Read [SETUP.md](./SETUP.md) and [AGENTS.md](../AGENTS.md) first. Keep your change focused, work from evidence, and respect the modular backend boundaries.
 
@@ -80,6 +80,68 @@ For a schema change:
 
 ## Validation
 
+### Reproduce CI
+
+Run commands from a Git checkout's root. CI uses **Ubuntu 24.04**; GitHub maintains its OS image updates. Node and pnpm are exact requirements, enforced during installation. Use the committed lockfile rather than resolving new versions.
+
+CI runs on pushes to `main` and pull requests targeting `main`, avoiding duplicate push/PR runs for the same feature branch.
+
+| Tool | Version used by this release | Authority |
+| --- | --- | --- |
+| Node.js | 26.5.1 | `.node-version` and `package.json` engines |
+| pnpm | 11.17.0 | `package.json` packageManager and engines |
+| TypeScript compiler | Native 7.0.2 | `@typescript/native` alias; scripts call its compiler explicitly |
+| TypeScript library | 6.0.2 | `typescript` alias to `@typescript/typescript6`; used by ESLint and other tooling |
+| ESLint | 10.9.1 | Root `eslint.config.js`; legacy `.eslintrc` files are not used |
+| Vitest / Vite | 4.1.11 / 8.2.2 | Root `package.json` and `pnpm-lock.yaml` |
+| Playwright | 1.62.1 | Installs Chromium 151.0.7922.34, revision 1234, from its bundled browser manifest |
+| Wrangler / Miniflare | 4.127.1 / 5.20260828.0-alpha | Pinned together for local workerd configuration mapping |
+| All other packages | Exact resolved versions | `pnpm-lock.yaml`, including transitive dependencies |
+
+Select Node 26.5.1 with your Node version manager, then run:
+
+```bash
+npm install --global pnpm@11.17.0
+node --version
+pnpm --version
+pnpm install --frozen-lockfile
+pnpm release:check
+# Linux: installs Chromium and its required system libraries (may request sudo).
+pnpm exec playwright install --with-deps chromium
+pnpm test:e2e
+```
+
+On Windows or macOS, use `pnpm exec playwright install chromium` for browser installation. No global TypeScript, ESLint, Vitest, Vite or Wrangler installation is needed. CI uses SHA-pinned Actions and no production secrets. It splits the complete browser suite across three independent runners with `pnpm test:e2e --shard=1/3`, `--shard=2/3` and `--shard=3/3`; the command without `--shard` runs the complete suite locally. No tests are sampled or skipped by sharding. When changing tool versions, update the manifest, lockfile and this table together; also update `.node-version` when changing Node. Reinstall Playwright's browser after changing Playwright.
+
+`pnpm typecheck` checks the workspace (including test/config files), Cloudflare and VPS. The runtime configurations deliberately use different ambient types. `pnpm lint` rejects warnings as well as errors. `release:check` executes those checks and all Vitest projects, builds the Portal once, then creates both runtime bundles. Standalone `pnpm cloudflare build` and `pnpm vps build` still perform their own checks and Portal build; `bundle:*` commands are internal artifact steps, not substitutes for validation.
+
+Vitest separates Portal/jsdom, a process-isolated timezone/DST test, shared/scripts Node tests, and backend/runtime tests. POSIX filesystem-mode tests run on POSIX hosts; the Windows-specific case runs on Windows. These conditional cases are intentional platform coverage. Similar Cloudflare and VPS tests protect different adapters and must remain. E2E has guest, member and admin projects, with no automatic retries; it builds the Portal and Worker before starting two isolated local database/blob slots. Tests must restore the database/blob baseline, and a cleanup failure fails the run.
+
+Useful focused commands:
+
+```bash
+pnpm test --project=portal
+pnpm test apps/portal/components/pages/StoragePage.test.tsx
+pnpm test:e2e --project=admin apps/portal/e2e/specs/admin/profile-account.spec.ts
+pnpm test:e2e:ui
+```
+
+E2E owns ports **8787–8788** and inspector ports **9329–9330** by default. Stop your local dev server first, or select free ports. For example, on Linux/macOS:
+
+```bash
+E2E_PORT_BASE=8887 E2E_INSPECTOR_PORT_BASE=9429 pnpm test:e2e
+```
+
+In PowerShell:
+
+```powershell
+$env:E2E_PORT_BASE = '8887'
+$env:E2E_INSPECTOR_PORT_BASE = '9429'
+pnpm test:e2e
+```
+
+`E2E_SLOTS=1` runs one isolated slot when local resources are limited; each CI shard keeps two. Do not run two E2E commands in the same checkout concurrently: their ignored state, artifact and log directories are shared. Startup refuses occupied ports and missing/stale bundles; use `pnpm test:e2e` to rebuild. Worker access logs go to `apps/portal/e2e/.logs/` instead of flooding the console; errors remain visible. Failures retain diagnostics under `.artifacts/` and `.logs/`; each failed CI shard uploads its own `playwright-report/` and full server logs for seven days. Do not commit these generated files.
+
 ### Test policy
 
 - Test durable user behavior, business rules, authorization, security, data integrity, accessibility, and runtime parity.
@@ -114,7 +176,7 @@ pnpm config:check --runtime vps --config scripts/templates/vps.env.example --all
 pnpm release:check
 ```
 
-`release:check` runs locally only and intentionally excludes browser E2E. CI runs it alongside a separate isolated Chromium E2E job; neither job authenticates with Cloudflare, deploys, or modifies remote D1/R2.
+`release:check` runs locally only and intentionally excludes browser E2E. CI runs it alongside three isolated Chromium E2E shards; no job authenticates with Cloudflare, deploys, or modifies remote D1/R2.
 
 ## Pull request checklist
 

@@ -8,10 +8,13 @@ import { SettingsPage } from "./SettingsPage";
 const mocks = vi.hoisted(() => ({
   locale: "en" as "en" | "zh",
   theme: "light" as "light" | "dark",
+  themeMode: "system" as "system" | "light" | "dark",
+  motionPreference: "system" as "system" | "reduce",
   accent: "teal" as "teal" | "indigo" | "violet" | "orange",
   setLocale: vi.fn(),
   setTheme: vi.fn(),
   setAccent: vi.fn(),
+  setMotionPreference: vi.fn(),
 }));
 const authState = vi.hoisted(() => ({
   user: null as { id: string } | null,
@@ -38,6 +41,9 @@ vi.mock("../../stores/preferences", () => ({
   usePreferencesStore: () => ({
     locale: mocks.locale,
     setLocale: mocks.setLocale,
+    themeMode: mocks.themeMode,
+    motionPreference: mocks.motionPreference,
+    setMotionPreference: mocks.setMotionPreference,
   }),
 }));
 
@@ -88,10 +94,13 @@ describe("SettingsPage", () => {
   beforeEach(() => {
     mocks.locale = "en";
     mocks.theme = "light";
+    mocks.themeMode = "system";
+    mocks.motionPreference = "system";
     mocks.accent = "teal";
     mocks.setLocale.mockReset();
     mocks.setTheme.mockReset();
     mocks.setAccent.mockReset();
+    mocks.setMotionPreference.mockReset();
     authState.user = null;
     externalViewState.enabled = false;
     notificationServiceMocks.fetchNotificationPreferences.mockReset();
@@ -122,7 +131,7 @@ describe("SettingsPage", () => {
     const appearance = screen.getByRole("group", { name: "section.appearance" });
     const preferences = screen.getByRole("group", { name: "section.preferences" });
 
-    expect(within(appearance).getByRole("radio", { name: /theme\.light/ })).toHaveAttribute(
+    expect(within(appearance).getByRole("radio", { name: /theme\.system/ })).toHaveAttribute(
       "aria-checked",
       "true",
     );
@@ -138,6 +147,45 @@ describe("SettingsPage", () => {
     expect(mocks.setTheme).toHaveBeenCalledWith("dark");
     expect(mocks.setAccent).toHaveBeenCalledWith("indigo");
     expect(mocks.setLocale).toHaveBeenCalledWith("zh");
+  });
+
+  it("keeps the system preference selected when the resolved theme is dark", () => {
+    mocks.theme = "dark";
+    renderSettingsPage();
+
+    expect(screen.getByRole("radio", { name: /theme\.system/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: /theme\.dark/ })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("radio", { name: /theme\.light/ })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("lets an explicit theme return to the system preference", async () => {
+    const user = userEvent.setup();
+    mocks.themeMode = "light";
+    renderSettingsPage();
+
+    expect(screen.getByRole("radio", { name: /theme\.light/ })).toHaveAttribute("aria-checked", "true");
+    await user.click(screen.getByRole("radio", { name: /theme\.system/ }));
+
+    expect(mocks.setTheme).toHaveBeenCalledWith("system");
+  });
+
+  it.each([
+    ["system", "reduce"],
+    ["reduce", "system"],
+  ] as const)("changes motion preference from %s to %s locally", async (initial, next) => {
+    const user = userEvent.setup();
+    mocks.motionPreference = initial;
+    renderSettingsPage();
+
+    const appearance = screen.getByRole("group", { name: "section.appearance" });
+    const toggle = within(appearance).getByRole("switch", { name: "motion.reduce" });
+    expect(toggle).toHaveAttribute("aria-checked", String(initial === "reduce"));
+    expect(toggle).toHaveAccessibleDescription("motion.reduce.desc");
+    await user.click(toggle);
+
+    expect(mocks.setMotionPreference).toHaveBeenCalledWith(next);
+    expect(notificationServiceMocks.fetchNotificationPreferences).not.toHaveBeenCalled();
+    expect(notificationServiceMocks.updateNotificationPreferences).not.toHaveBeenCalled();
   });
 
   it("supports arrow-key selection within each radio group", async () => {
@@ -159,6 +207,10 @@ describe("SettingsPage", () => {
     const memberJoined = await screen.findByRole("switch", {
       name: /notification\.member_joined\.label/,
     });
+    const preferences = screen.getByRole("group", { name: "section.preferences" });
+    expect(within(preferences).getAllByRole("switch")).toHaveLength(4);
+    expect(within(screen.getByRole("group", { name: "section.appearance" })).queryByText("field.notifications"))
+      .not.toBeInTheDocument();
     expect(notificationServiceMocks.fetchNotificationPreferences).toHaveBeenCalledOnce();
     expect(memberJoined).toHaveAttribute("aria-checked", "true");
 
@@ -202,7 +254,8 @@ describe("SettingsPage", () => {
 
     expect(notificationServiceMocks.fetchNotificationPreferences).not.toHaveBeenCalled();
     expect(screen.queryByText("field.notifications")).not.toBeInTheDocument();
-    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("switch")).toHaveLength(1);
+    expect(screen.getByRole("switch", { name: "motion.reduce" })).toBeInTheDocument();
   });
 
 });

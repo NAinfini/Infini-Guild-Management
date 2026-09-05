@@ -17,7 +17,7 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@portal/components/ui/input-group";
 import { Label } from "@portal/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -204,14 +204,7 @@ export function AdminInviteSection({
       />
 
       {inviteStatsLoading ? (
-        <div className="admin-panel admin-stats" aria-hidden="true">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div className="admin-stat" key={index}>
-              <Skeleton className="mb-1 h-7 w-[45%]" />
-              <Skeleton className="h-3 w-[65%]" />
-            </div>
-          ))}
-        </div>
+        <LoadingIndicator />
       ) : inviteStats ? (
         <div className="admin-panel admin-stats">
           <InviteStatistic value={inviteStats.total} label={t("invite.stats.total")} />
@@ -226,9 +219,7 @@ export function AdminInviteSection({
       ) : null}
 
       {inviteLinksLoading ? (
-        <div className="flex flex-col gap-2">
-          {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-[18px]" />)}
-        </div>
+        <LoadingIndicator />
       ) : null}
       {inviteLinksError ? <AdminLoadError onRetry={onRetryInviteLinks} /> : null}
       {!inviteLinksLoading && !inviteLinksError ? (

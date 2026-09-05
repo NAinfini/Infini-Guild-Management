@@ -2,7 +2,7 @@
 
 [Documentation home](../README.md) · [中文版本](./SETUP.zh.md)
 
-This is the canonical setup guide for the modular backend. Pick one runtime for each deployment:
+This is the canonical setup guide for release [1.0.0](./CHANGELOG.md#100---2026-09-05). Pick one runtime for each deployment:
 
 | Runtime | Database | Blobs | Realtime and schedules | Process model |
 | --- | --- | --- | --- | --- |
@@ -13,13 +13,13 @@ The two runtimes share the application services, HTTP routes, Drizzle schema, an
 
 ## Requirements
 
-- Node.js 26.5.1 or newer
+- Node.js 26.5.1 (the exact version in `.node-version`)
 - pnpm 11.17.0
 - Git or a source archive
 - For Cloudflare: a Cloudflare account with Workers, D1, R2, Durable Objects, Cron Triggers, and Rate Limiting available
 - For VPS: a current 64-bit Linux host, persistent disk, TLS reverse proxy, and a service manager such as systemd
 
-From the repository root, install the locked dependency set:
+Install pnpm with `npm install --global pnpm@11.17.0` after selecting Node 26.5.1. From the repository root, install the locked dependency set:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -34,7 +34,7 @@ pnpm install --frozen-lockfile
 | Build the shared portal | `pnpm build:portal` |
 | Build Cloudflare locally | `pnpm cloudflare build` |
 | Build VPS locally | `pnpm vps build` |
-| Type-check both runtimes | `pnpm typecheck` |
+| Type-check workspace and both runtime environments | `pnpm typecheck` |
 | Run tests | `pnpm test` |
 | Generate the next Drizzle migration | `pnpm db:generate -- --name <migration-name>` |
 | Initialize/verify a VPS database | `pnpm db:migrate:vps --database <sqlite-path>` |
@@ -46,7 +46,9 @@ pnpm install --frozen-lockfile
 | Isolated browser E2E | `pnpm test:e2e` |
 | Deploy Cloudflare | `pnpm deploy:cloudflare` |
 
-`release:check` runs locally only. It scans tracked content, validates both templates, type-checks both runtimes, runs tests, and builds the portal. It never creates, migrates, deploys, or changes remote resources. `deploy:cloudflare` is deliberately separate because it performs a real remote mutation.
+`release:check` runs locally only. It scans tracked content, validates both templates, checks workspace and runtime types, runs zero-warning lint and tests, and builds the Portal once followed by both server bundles. It never creates, migrates, deploys, or changes remote resources. `deploy:cloudflare` is deliberately separate because it performs a real remote mutation.
+
+Before the first E2E run, install the locked browser with `pnpm exec playwright install chromium`; on Linux use `pnpm exec playwright install --with-deps chromium` to include system libraries. The [contribution guide](./CONTRIBUTING.md#reproduce-ci) lists the exact CI toolchain, test projects, port overrides and clean-checkout commands. CI does not need a Cloudflare account or production credentials.
 
 ## Local development
 
@@ -72,18 +74,18 @@ The development seed runs only for a pristine database. It is safe to rerun and 
 
 ## Shared schema and migrations
 
-The consolidated 0.1.0 baseline is frozen at:
+1.0.0 ships one frozen core migration and a manifest with one entry:
 
 ```text
 packages/persistence-sqlite/src/migrations/generated/0000_core.sql
-packages/persistence-sqlite/src/migrations/generated/manifest.json  # one consolidated core; later changes append entries
+packages/persistence-sqlite/src/migrations/generated/manifest.json
 ```
 
-Cloudflare D1 and VPS SQLite consume the same ordered migration files, starting with `0000_core.sql`, which contains the final structure and seeds through the former `0017_notice_delivery`. `app_migrations` is the application-owned ordinal/checksum ledger and the source of truth for startup validation. Cloudflare also keeps `d1_migrations`, which Wrangler uses to track filenames. Preserve its historical rows: it may contain former filenames absent from the current directory. The application rejects an empty, unknown, or mismatched schema instead of silently repairing it.
+Both Cloudflare D1 and VPS SQLite initialize new databases from this same `0000_core.sql`, which contains the complete schema and canonical seeds. No separate historical migration chain is shipped in 1.0.0. The adjacent Drizzle `meta/` files are generation metadata, not additional SQL migrations. `app_migrations` is the application-owned ordinal/checksum ledger and the source of truth for startup validation. Cloudflare also keeps Wrangler's filename ledger, `d1_migrations`; preserve its existing history. The application rejects an empty, unknown, or mismatched schema instead of silently repairing it.
 
-The owner explicitly authorized a one-time consolidation for this 0.1.0 refresh. Existing databases must finish the previous 18-entry chain using tag `archive/pre-core-20260830`, then follow the backed-up, rehearsed ledger adoption in [PRODUCTION_D1_UPGRADE.md](./PRODUCTION_D1_UPGRADE.md). **Do not run the new core on an existing database or assume that Wrangler skipping its filename updates the application ledger.** After this cutover, the core is immutable. Every later schema change must add the next contiguous ordinal with a never-before-used filename and exact checksum, and pass D1/SQLite parity checks. Runtime validation never silently rewrites an existing ledger.
+Existing databases use the backup, rehearsal and ledger-adoption procedure in [PRODUCTION_D1_UPGRADE.md](./PRODUCTION_D1_UPGRADE.md). Databases already matching the current manifest need no adoption. **Do not run the core on existing business tables or assume that Wrangler skipping its filename updates the application ledger.** The 1.0.0 core is immutable. Later schema changes add the next contiguous ordinal with a never-before-used filename and exact checksum, and must pass D1/SQLite parity checks. Runtime validation never silently rewrites an existing ledger.
 
-Before replacing a nonempty development database with a new exact manifest, back it up if its `app_migrations` ledger differs, then use an explicitly planned and verified data-preserving upgrade. The application intentionally has no runtime compatibility branch or automatic remote-ledger rewrite. Repository commands never modify remote D1 unless an operator separately runs an explicitly authorized Wrangler command with `--remote`. The current production upgrade and rollback procedure is defined in [PRODUCTION_D1_UPGRADE.md](./PRODUCTION_D1_UPGRADE.md).
+Before replacing a nonempty development database with a new exact manifest, back it up if its `app_migrations` ledger differs, then use an explicitly planned and verified data-preserving upgrade. The application intentionally has no runtime compatibility branch or automatic remote-ledger rewrite. Repository commands never modify remote D1 unless an operator separately runs an explicitly authorized Wrangler command with `--remote`. The upgrade and rollback procedure for a pre-consolidation database is defined in [PRODUCTION_D1_UPGRADE.md](./PRODUCTION_D1_UPGRADE.md).
 
 Initialize or verify VPS SQLite:
 
@@ -249,6 +251,8 @@ pnpm verify:data:vps --database /srv/infini/data/infini-guild.sqlite --blobs /sr
 pnpm start:vps
 ```
 
+The VPS build emits `apps/vps/dist/server.mjs`, which runs directly under Node. Keep the dependencies installed by `pnpm install --frozen-lockfile` in the release: `ws` remains a runtime dependency so Node loads its own ESM/CommonJS boundary and optional native addons. The release test suite also builds an isolated copy and verifies startup, health and an authenticated WebSocket heartbeat without a TypeScript loader.
+
 Run `start:vps` under the service manager as the dedicated user. Set its working directory to the repository or release root, and make `apps/vps/.env` readable only by that user. Terminate TLS at the reverse proxy, and forward `/api`, `/ws`, and static requests to the same Node process. Configure restart-on-failure, graceful `SIGTERM`, and persistent disk mounts before enabling traffic.
 
 #### Reverse proxy hardening
@@ -371,6 +375,8 @@ Before a remote migration or deployment, use an explicitly authorized Wrangler `
 For either runtime: read the release notes, stop writes or schedule maintenance, take a complete backup, install with the locked pnpm version, run `release:check`, review new migrations, apply them to the selected backend, then start or deploy and verify health.
 
 The GitHub workflow runs `release:check` and the isolated Chromium E2E suite as separate local-only jobs. It does not log in to Cloudflare, create resources, run remote D1/R2 operations, deploy, or start a production VPS.
+
+E2E runs the compiled Cloudflare Worker directly in official Miniflare/workerd, with two isolated D1/R2/Durable Object slots. Wrangler applies the shared migrations and fixture before startup; its exported configuration mapper supplies the runtime bindings without a development reverse proxy. Wrangler and Miniflare are pinned together because that mapper is an unstable public API. Each run must complete artifact cleanup and restore both database baselines.
 
 ## Troubleshooting
 

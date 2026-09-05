@@ -10,7 +10,7 @@ import { clearEmailVerificationToken, readEmailVerificationToken } from "../../u
 import { AuthPageFrame } from "./AuthPageFrame";
 
 export function VerifyEmailPage() {
-  const { t } = useTranslation("profile");
+  const { t } = useTranslation(["profile", "auth"]);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [token] = useState(readEmailVerificationToken);
@@ -34,7 +34,7 @@ export function VerifyEmailPage() {
         ) : null}
         {mutation.error instanceof Error ? (
           <Alert variant="destructive" role="alert">
-            <AlertDescription>{mutation.error.message}</AlertDescription>
+            <AlertDescription>{t("auth:requestFailed")}</AlertDescription>
           </Alert>
         ) : null}
         <Button disabled={!token} loading={mutation.isPending} onClick={() => mutation.mutate()}>

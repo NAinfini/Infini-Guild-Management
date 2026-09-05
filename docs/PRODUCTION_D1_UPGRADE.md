@@ -1,14 +1,16 @@
 # Production D1 upgrade and core-consolidation runbook
 
-The 0.1.0 refresh folds the completed `0000`–`0017` chain into one final-state `0000_core.sql`. This explicitly authorized one-time cutover does not authorize automatic ledger repair. The application still accepts exactly one manifest.
+[Documentation home](../README.md) · [中文版本](./PRODUCTION_D1_UPGRADE.zh.md)
 
-**Release checkpoint (2026-08-30):** the owner requested Git/release publication only after consolidation. Production remains on commit `250544ba` with its completed 18-entry application ledger; no production adoption or deployment was performed for this source refresh. Do not deploy the consolidated source to that database until the maintenance-gated adoption below is complete.
+1.0.0 ships only the final-state `0000_core.sql`. This runbook covers upgrading databases from the former `0000`–`0017` development chain; those historical files are not part of the 1.0.0 release. The explicitly authorized one-time cutover does not authorize automatic ledger repair. The application still accepts exactly one manifest.
+
+**Reference deployment checkpoint (2026-09-05):** the project deployment completed the rehearsed 18-entry-to-one-entry ledger adoption and released `v1.0.0`. This is evidence for that deployment only. Any other database that still carries the former ledger must complete its own backup, rehearsal and maintenance-gated adoption below before running consolidated source.
 
 ## Choose the correct path
 
 - **Fresh database:** initialize from the consolidated core: 68 application tables, 152 named indexes, 90 triggers and canonical seeds, without historical table rebuilds.
 - **Complete former 18-entry database:** do not execute the new core. Verify structural equivalence and adopt its application ledger under maintenance as described below.
-- **Partial or older database:** stop; first finish the old chain using tag `archive/pre-core-20260830`, with separate backup and rehearsal.
+- **Partial or older database:** stop; first finish the old chain from the [`archive/pre-core-20260830` snapshot](https://github.com/NAinfini/Infini-Guild-Management/tree/archive/pre-core-20260830), with separate backup and rehearsal.
 - **Already consolidated database:** an exact match with the checked-in manifest needs no adoption.
 
 Freeze the consolidated core after this cutover. Future schema changes append contiguous ordinals with new filenames; never reuse any historical filename for different SQL. Git preserves the removed migration history.
@@ -57,8 +59,6 @@ Ordinary future code-only deployments need no maintenance; this incompatible led
 Retain or restore maintenance first. Only if adoption changed the verified ledger alone and no subsequent migration ran may the rehearsed inverse transaction restore the old application ledger/triggers, paired with the recorded matching Worker/assets. Verify schema, all business hashes and Wrangler history before reopening.
 
 Otherwise stop for a reviewed recovery from paired D1/R2 backups or Time Travel. Never blindly overwrite later user writes with an old bookmark. A Worker rollback alone cannot repair a ledger mismatch. Preserve Durable Object classes/namespaces; do not roll back across their lifecycle changes.
-
-CI remains separate under the owner's explicit local-validation waiver for this release, not a waiver of data, backup or login checks. Successful media HTTP responses do not establish audible hover-audio playback; this cutover does not claim to fix that separate report.
 
 ## Official references
 

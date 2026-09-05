@@ -20,7 +20,7 @@ import {
   UserPlusIcon,
 } from "@portal/components/icons";
 import { Button } from "@portal/components/ui/button";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { formatLocaleDateTime } from "@portal/utils/datetime";
 import type { TFunction } from "i18next";
@@ -311,9 +311,7 @@ export function AuditLogViewer({
   return (
     <div className="admin-fill audit-log-viewer">
       {auditLoading ? (
-        <div className="audit-log-skeletons" aria-busy="true">
-          {Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="audit-log-skeleton" />)}
-        </div>
+        <LoadingIndicator />
       ) : null}
 
       {auditError ? <AdminLoadError onRetry={onRetryAudit} /> : null}

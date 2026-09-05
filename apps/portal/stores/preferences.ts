@@ -37,29 +37,39 @@ function removeStorage(key: string): void {
   }
 }
 
-type ThemeMode = "light" | "dark";
+export type ThemeMode = "system" | "light" | "dark";
+export type MotionPreference = "system" | "reduce";
+
+export const DARK_MODE_MEDIA_QUERY = "(prefers-color-scheme: dark)";
+export const REDUCED_MOTION_MEDIA_QUERY = "(prefers-reduced-motion: reduce)";
+
 type Accent = "teal" | "indigo" | "violet" | "orange";
 const DEFAULT_ACCENT: Accent = "teal";
 
 function isThemeMode(value: string | null): value is ThemeMode {
-  return value === "light" || value === "dark";
+  return value === "system" || value === "light" || value === "dark";
+}
+
+function isMotionPreference(value: string | null): value is MotionPreference {
+  return value === "system" || value === "reduce";
 }
 
 function isAccent(value: string | null): value is Accent {
   return value === "teal" || value === "indigo" || value === "violet" || value === "orange";
 }
 
-function resolveDefaultThemeMode(): ThemeMode {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+export function resolveThemeMode(mode: ThemeMode, systemDark: boolean): "light" | "dark" {
+  return mode === "system" ? (systemDark ? "dark" : "light") : mode;
 }
 
 type PreferencesState = {
   locale: Locale;
   themeMode: ThemeMode;
+  motionPreference: MotionPreference;
   accent: Accent;
   setLocale: (locale: Locale) => void;
   setThemeMode: (mode: ThemeMode) => void;
+  setMotionPreference: (preference: MotionPreference) => void;
   setAccent: (accent: Accent) => void;
   resetPreferences: () => void;
 };
@@ -69,7 +79,8 @@ const initialLocale = isLocale(initialLocaleRaw) ? initialLocaleRaw : resolveDef
 
 export const usePreferencesStore = create<PreferencesState>((set) => ({
   locale: initialLocale,
-  themeMode: (() => { const v = readStorage("themeMode"); return isThemeMode(v) ? v : resolveDefaultThemeMode(); })(),
+  themeMode: (() => { const v = readStorage("themeMode"); return isThemeMode(v) ? v : "system"; })(),
+  motionPreference: (() => { const v = readStorage("motionPreference"); return isMotionPreference(v) ? v : "system"; })(),
   accent: (() => { const v = readStorage("accent"); return isAccent(v) ? v : DEFAULT_ACCENT; })(),
   setLocale: (locale) => {
     writeStorage("locale", locale);
@@ -79,6 +90,10 @@ export const usePreferencesStore = create<PreferencesState>((set) => ({
     writeStorage("themeMode", themeMode);
     set({ themeMode });
   },
+  setMotionPreference: (motionPreference) => {
+    writeStorage("motionPreference", motionPreference);
+    set({ motionPreference });
+  },
   setAccent: (accent) => {
     writeStorage("accent", accent);
     set({ accent });
@@ -87,10 +102,12 @@ export const usePreferencesStore = create<PreferencesState>((set) => ({
     const locale = resolveDefaultLocale();
     removeStorage("locale");
     removeStorage("themeMode");
+    removeStorage("motionPreference");
     removeStorage("accent");
     set({
       locale,
-      themeMode: resolveDefaultThemeMode(),
+      themeMode: "system",
+      motionPreference: "system",
       accent: DEFAULT_ACCENT,
     });
   },

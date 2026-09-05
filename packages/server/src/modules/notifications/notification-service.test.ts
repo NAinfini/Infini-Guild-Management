@@ -90,4 +90,20 @@ describe("NotificationService", () => {
     expect(canReceiveNotification(authorization([], "user-1"), message)).toBe(true);
     expect(canReceiveNotification(authorization([], "user-2"), message)).toBe(false);
   });
+
+  it.each(["event_created", "event_archived", "raffle_drawn", "announcement_published"] as const)(
+    "allows a coalesced %s hint for every member without per-entity filtering",
+    (hint) => {
+      const message = {
+        type: "entity_changed",
+        entity_type: hint === "announcement_published" ? "announcement" : "event",
+        entity_id: "first-committed-entity",
+        updated_at: "2026-08-09T00:00:00.000Z",
+        hint,
+      };
+      expect(canReceiveNotification(authorization([]), message)).toBe(true);
+      expect(canReceiveNotification(authorization([], "another-user"), message)).toBe(true);
+      expect(canReceiveNotification(createAuthorizationContext(null), message)).toBe(false);
+    },
+  );
 });

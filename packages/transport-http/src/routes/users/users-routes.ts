@@ -10,6 +10,10 @@ import {
   updateMemberProfileResponseSchema,
   uploadMemberProfileImagesResponseSchema,
   uploadMemberProfileMediaResponseSchema,
+  memberListSortSchema,
+  memberDirectoryResponseSchema,
+  memberPlanningResponseSchema,
+  memberAvailabilitySummarySchema,
 } from "@guild/shared";
 import { LIMITS, MAX_CONFIGURABLE_AUDIO_BYTES, MAX_OFFSET_PAGE } from "@guild/shared/config/limits";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
@@ -34,19 +38,39 @@ import {
 } from "../../presenters/users/users-presenter.js";
 
 const booleanQuery = z.enum(["true", "false"]).transform((value) => value === "true");
+const jsonQuery = z.string().transform((value, context): unknown => {
+  try { return JSON.parse(value); } catch {
+    context.addIssue({ code: "custom", message: "Invalid JSON query value" });
+    return z.NEVER;
+  }
+});
+const memberIdsQuery = jsonQuery.pipe(z.array(z.string().min(1).max(128)).min(1).max(100)
+  .refine((ids) => new Set(ids).size === ids.length, "Member IDs must be unique"));
 const usersQuerySchema = z.object({
   page: z.coerce.number().int().positive().max(MAX_OFFSET_PAGE).default(1),
   limit: z.coerce.number().int().positive().max(LIMITS.pagination.users).default(20),
   search: z.string().max(100).optional(),
   role: z.string().min(1).optional(),
   class: z.string().min(1).optional(),
+  classes: jsonQuery.pipe(z.array(z.string().min(1).max(128)).max(LIMITS.content.classCatalogSize.max)).optional(),
+  sort: memberListSortSchema.optional(),
+  direction: z.enum(["asc", "desc"]).optional(),
+  search_scope: z.enum(["name", "management"]).optional(),
   active: booleanQuery.optional(),
   include_total: booleanQuery.default(false),
   external_view: booleanQuery.default(false),
 }).strict();
+const directoryQuerySchema = z.object({
+  search: z.string().max(100).optional(),
+  limit: z.coerce.number().int().positive().max(50).default(50),
+  cursor: jsonQuery.pipe(z.object({ displayName: z.string().min(1).max(50), userId: z.string().min(1).max(128) }).strict()).optional(),
+  ids: memberIdsQuery.optional(),
+  external_view: booleanQuery.default(false),
+}).strict().refine((query) => !query.ids || (!query.search && !query.cursor), "ID lookups cannot use directory search or cursors");
+const planningQuerySchema = z.object({ ids: memberIdsQuery, external_view: booleanQuery.default(false) }).strict();
 const detailQuerySchema = z.object({ external_view: booleanQuery.default(false) }).strict();
 type MemberHttpService = Pick<MemberService,
-  | "list" | "stats" | "detail" | "updateProfile"
+  | "list" | "stats" | "detail" | "updateProfile" | "directory" | "planning" | "availabilitySummary"
   | "listAbsenceWindow" | "listUserAbsences" | "createAbsence" | "deleteAbsence"
   | "uploadImages" | "deleteImages" | "uploadAvatar" | "deleteAvatar"
   | "uploadAudio" | "deleteAudio"
@@ -66,6 +90,10 @@ export function createUsersRoutes(dependencies: UsersRoutesDependencies): Hono<H
       ...(query.search === undefined ? {} : { search: query.search }),
       ...(query.role === undefined ? {} : { roleId: query.role }),
       ...(query.class === undefined ? {} : { classId: query.class }),
+      ...(query.classes === undefined ? {} : { classIds: query.classes }),
+      ...(query.sort === undefined ? {} : { sort: query.sort }),
+      ...(query.direction === undefined ? {} : { direction: query.direction }),
+      ...(query.search_scope === undefined ? {} : { searchScope: query.search_scope }),
       ...(query.active === undefined ? {} : { active: query.active }),
       includeTotal: query.include_total,
       externalView: query.external_view,
@@ -77,6 +105,24 @@ export function createUsersRoutes(dependencies: UsersRoutesDependencies): Hono<H
     requestContext(context);
     return context.json(await dependencies.service.stats());
   });
+
+  routes.get("/directory", async (context) => {
+    const { external_view, ...query } = parseQuery(context.req.raw, directoryQuerySchema);
+    return context.json(memberDirectoryResponseSchema.parse(await dependencies.service.directory(
+      requestContext(context), { ...query, externalView: external_view },
+    )));
+  });
+
+  routes.get("/planning", async (context) => {
+    const query = parseQuery(context.req.raw, planningQuerySchema);
+    return context.json(memberPlanningResponseSchema.parse(await dependencies.service.planning(
+      requestContext(context), query.ids, query.external_view,
+    )));
+  });
+
+  routes.get("/availability-summary", async (context) => context.json(memberAvailabilitySummarySchema.parse(
+    await dependencies.service.availabilitySummary(requestContext(context)),
+  )));
 
   routes.get("/absences", async (context) => {
     const query = parseQuery(context.req.raw, absenceWindowQuerySchema);

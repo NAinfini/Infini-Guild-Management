@@ -1,6 +1,6 @@
 import type { AdminOperationsResponse } from "@guild/shared/schemas/admin-operations";
 import { Alert, AlertTitle } from "@portal/components/ui/alert";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
@@ -140,12 +140,7 @@ export function AdminOperationsTab({
           <div className="admin-panel__body admin-panel__body--flush admin-panel__body--scroll">
             {operationsError ? <AdminLoadError onRetry={onRetryOperations} /> : null}
             {operationsLoading && !operationsData ? (
-              <div className="operations-skeleton" aria-label={t("operations.jobs.title")}>
-                <Skeleton className="operations-skeleton__head" />
-                <Skeleton className="operations-skeleton__row" />
-                <Skeleton className="operations-skeleton__row" />
-                <Skeleton className="operations-skeleton__row" />
-              </div>
+              <LoadingIndicator />
             ) : operationsData ? (
               <table className="operations-jobs-table" aria-label={t("operations.jobs.title")}>
                 <thead>
@@ -250,11 +245,7 @@ export function AdminOperationsTab({
           </div>
           <div className="admin-panel__body admin-panel__body--scroll">
             {operationsLoading && !operationsData ? (
-              <div className="operations-skeleton">
-                <Skeleton className="operations-skeleton__line" />
-                <Skeleton className="operations-skeleton__line" />
-                <Skeleton className="operations-skeleton__line" />
-              </div>
+              <LoadingIndicator />
             ) : operationsData ? (
               <dl className="operations-facts">
                 <div>
@@ -296,10 +287,7 @@ export function AdminOperationsTab({
           </div>
           <div className="admin-panel__body admin-panel__body--scroll">
             {operationsLoading && !operationsData ? (
-              <div className="operations-skeleton">
-                <Skeleton className="operations-skeleton__stats" />
-                <Skeleton className="operations-skeleton__table" />
-              </div>
+              <LoadingIndicator />
             ) : operationsData ? (
               <>
                 <div className="admin-stats admin-stats--3 admin-stats--inset">

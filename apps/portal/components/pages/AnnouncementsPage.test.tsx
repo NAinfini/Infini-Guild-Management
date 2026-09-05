@@ -196,28 +196,27 @@ describe("AnnouncementsPage", () => {
     expect(screen.getAllByTestId("pinned-announcement")).toHaveLength(3);
     expect(screen.getByTestId("announcement-list")).toBeInTheDocument();
     expect(screen.queryByTestId("announcement-detail")).not.toBeInTheDocument();
-    expect(document.querySelector(".content-pinned-section")).toHaveAttribute("data-slot", "card");
+    expect(screen.getByRole("region", { name: "pinned.title" })).toBeInTheDocument();
 
-    const rail = document.querySelector<HTMLElement>(".content-category-rail");
-    expect(rail).not.toBeNull();
+    const rail = screen.getByRole("navigation");
     expect(within(rail as HTMLElement).getByRole("button", { name: /^category\.all/ })).toHaveAttribute("aria-pressed", "true");
     expect(within(rail as HTMLElement).getByRole("button", { name: "category.event" })).toBeInTheDocument();
   });
 
-  it("sizes the pinned grid from its item count and hides it when empty", () => {
+  it("renders every pinned item and hides the section when empty", () => {
     const pinnedRows = [...controller.pinnedRows];
 
     for (const count of [1, 2, 3]) {
       controller.pinnedRows = pinnedRows.slice(0, count);
-      const { container, unmount } = renderPage();
+      const { unmount } = renderPage();
 
-      expect(container.querySelector(".content-pinned-grid")).toHaveAttribute("data-count", String(count));
+      expect(screen.getAllByTestId("pinned-announcement")).toHaveLength(count);
       unmount();
     }
 
     controller.pinnedRows = [];
-    const { container } = renderPage();
-    expect(container.querySelector(".content-pinned-section")).not.toBeInTheDocument();
+    renderPage();
+    expect(screen.queryByRole("region", { name: "pinned.title" })).not.toBeInTheDocument();
     controller.pinnedRows = pinnedRows;
   });
 
@@ -251,7 +250,7 @@ describe("AnnouncementsPage", () => {
     fireEvent.click(screen.getAllByTestId("pinned-announcement")[1]!);
     expect(controller.setSelectedId).toHaveBeenCalledWith("pinned-2");
 
-    const rail = document.querySelector<HTMLElement>(".content-category-rail");
+    const rail = screen.getByRole("navigation");
     fireEvent.click(within(rail as HTMLElement).getByRole("button", { name: "category.event" }));
     expect(controller.setCategoryFilter).toHaveBeenCalledWith("event");
   });
@@ -261,9 +260,8 @@ describe("AnnouncementsPage", () => {
     controller.search = "missing";
     renderPage();
 
-    const emptyState = screen.getByText("empty.filtered").closest(".empty-state");
-    expect(emptyState).not.toBeNull();
-    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", { name: "action.resetFilters" }));
+    expect(screen.getByText("empty.filtered")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "action.resetFilters" }));
     expect(controller.resetFilters).toHaveBeenCalledOnce();
   });
 

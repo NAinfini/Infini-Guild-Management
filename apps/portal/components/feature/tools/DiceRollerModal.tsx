@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@portal/compon
 import { Input } from "@portal/components/ui/input";
 import { Label } from "@portal/components/ui/label";
 import { useLocalStorageState } from "@portal/hooks/useLocalStorageState";
-import { useMediaQuery } from "@portal/hooks/useMediaQuery";
+import { useReducedMotionPreference } from "@portal/hooks/useReducedMotionPreference";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -36,7 +36,7 @@ export function DiceRollerModal({ opened, onClose }: DiceRollerModalProps) {
   const [diceHistory, setDiceHistory] = useLocalStorageState<DiceHistoryEntry[]>("tools.diceHistory", []);
   const [isRolling, setIsRolling] = useState(false);
   const [rollAnnouncement, setRollAnnouncement] = useState<RollAnnouncement | null>(null);
-  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const prefersReducedMotion = useReducedMotionPreference();
   const rollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const announcementIdRef = useRef(0);
@@ -86,6 +86,15 @@ export function DiceRollerModal({ opened, onClose }: DiceRollerModalProps) {
       completeRoll(createResults());
     }, ROLL_ANIM_DURATION);
   }, [completeRoll, createResults, diceCount, diceSides, isRolling, prefersReducedMotion]);
+
+  useEffect(() => {
+    if (!prefersReducedMotion || !isRolling) return;
+    if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+    if (rollTimeoutRef.current) clearTimeout(rollTimeoutRef.current);
+    rollIntervalRef.current = null;
+    rollTimeoutRef.current = null;
+    completeRoll(createResults());
+  }, [completeRoll, createResults, isRolling, prefersReducedMotion]);
 
   useEffect(() => {
     return () => {

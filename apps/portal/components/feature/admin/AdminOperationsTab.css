@@ -52,18 +52,6 @@
   gap: var(--space-sm);
 }
 
-.operations-skeleton {
-  display: grid;
-  gap: 1px;
-  background: var(--border-subtle);
-}
-
-.operations-skeleton__head { height: 36px; border-radius: 0; }
-.operations-skeleton__row { height: 44px; border-radius: 0; }
-.operations-skeleton__line { height: 20px; }
-.operations-skeleton__stats { height: 64px; }
-.operations-skeleton__table { height: 84px; }
-
 .operations-panel__disclosure {
   margin: 2px 0 0;
   color: var(--text-muted);

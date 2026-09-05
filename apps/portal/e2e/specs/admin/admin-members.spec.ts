@@ -1,5 +1,5 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
-import { createThrowawayMember, uniqueTag } from "../../support/members";
+import { createThrowawayMember, expectMemberListPage, searchAdminMembers, uniqueTag } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
 import { appSiderNavigationItem, ensureFiltersOpen, field, readInteger, topDialog } from "../../support/ui";
 import { canAccessAdmin } from "../../../utils/permissions";
@@ -63,20 +63,22 @@ async function readStats(page: Page): Promise<{
 }
 
 async function serverUserTotal(api: APIRequestContext): Promise<number> {
-  const response = await readJson(await api.get("/api/users?page=1&limit=500"), "读取成员总数") as {
+  const response = await readJson(await api.get("/api/users?page=1&limit=1&include_total=true"), "读取成员总数") as {
     total: number;
   };
   return response.total;
 }
 
 async function openMembers(page: Page): Promise<void> {
-  await page.goto("/admin");
+  await expectMemberListPage(page, {
+    page: "1", limit: "20", search_scope: "management", sort: "created_at", direction: "asc",
+  }, () => page.goto("/admin"));
   await expect(appSiderNavigationItem(page, "Member Mgmt")).toHaveAttribute("aria-current", "page");
   await expect(searchBox(page)).toBeVisible();
   await page.waitForLoadState("networkidle");
 }
 
-/** 盯着 /api/ 证明这段操作真的是纯前端的。搜索和筛选都在内存里做，一个请求都不该有。 */
+/** 返回已加载且未过期的查询时，缓存应直接恢复结果，不发额外请求。 */
 async function expectNoApiCalls(page: Page, action: () => Promise<void>): Promise<void> {
   const calls: string[] = [];
   const record = (response: { url: () => string; request: () => { method: () => string } }): void => {
@@ -101,17 +103,18 @@ test("搜索框：缩到唯一一行，四个统计块跟着搜索结果重算�
   const before = await readStats(page);
   expect(before.total, "统计块的总数必须等于服务端的成员总数").toBe(total);
 
-  await expectNoApiCalls(page, async () => {
-    await searchBox(page).fill(member.display_name);
-    await expect(memberRows(page), "用户名是唯一的，只该剩这一行").toHaveCount(1);
-  });
+  const matched = await searchAdminMembers(page, member.display_name);
+  expect(matched.data.map((row) => row.user.id)).toEqual([member.id]);
+  await expect(memberRows(page), "用户名是唯一的，只该剩这一行").toHaveCount(1);
   await expect(memberRow(page, member.display_name)).toBeVisible();
 
   const managementAccess = canAccessAdmin([member.role], member.role.id) ? 1 : 0;
   expect(await readStats(page)).toEqual({ total: 1, active: 1, inactive: 0, managementAccess });
 
-  await searchBox(page).fill("");
-  expect(await readStats(page), "清空搜索必须完全回到原样").toEqual(before);
+  await expectNoApiCalls(page, async () => {
+    await searchBox(page).fill("");
+    await expect.poll(() => readStats(page), "清空搜索必须完全回到原样").toEqual(before);
+  });
 });
 
 test("状态筛选：三段各自过滤可见行，而统计块按搜索结果算、不跟着筛选变", async ({ page, api }) => {
@@ -125,28 +128,39 @@ test("状态筛选：三段各自过滤可见行，而统计块按搜索结果�
   ).toBe(200);
 
   await openMembers(page);
-  await searchBox(page).fill(tag);
+  const matched = await searchAdminMembers(page, tag);
+  expect(new Set(matched.data.map((row) => row.user.id))).toEqual(new Set([running.id, paused.id]));
   await expect(memberRows(page)).toHaveCount(2);
 
   const managementAccess = canAccessAdmin([running.role], running.role.id) ? 2 : 0;
   const stats = { total: 2, active: 1, inactive: 1, managementAccess };
   expect(await readStats(page)).toEqual(stats);
 
-  await expectNoApiCalls(page, async () => {
-    await ensureFiltersOpen(memberFilterToolbar(page));
-    await statusFilterOption(page, "Enabled").click();
-    await expect(memberRows(page)).toHaveCount(1);
-  });
+  await ensureFiltersOpen(memberFilterToolbar(page));
+  const enabled = await expectMemberListPage(page, {
+    page: "1", limit: "20", search_scope: "management", search: tag,
+    sort: "created_at", direction: "asc", active: "true",
+  }, () => statusFilterOption(page, "Enabled").click());
+  expect(enabled.data.map((row) => row.user.id)).toEqual([running.id]);
+  await expect(memberRows(page)).toHaveCount(1);
   await expect(statusFilterOption(page, "Enabled")).toBeChecked();
   await expect(memberRow(page, running.display_name)).toBeVisible();
-  expect(await readStats(page), "统计块的口径是搜索结果，状态筛选只是视图").toEqual(stats);
+  expect(await readStats(page), "统计块按搜索结果汇总，不随状态条件改变").toEqual(stats);
 
-  await statusFilterOption(page, "Disabled").click();
+  const disabled = await expectMemberListPage(page, {
+    page: "1", limit: "20", search_scope: "management", search: tag,
+    sort: "created_at", direction: "asc", active: "false",
+  }, () => statusFilterOption(page, "Disabled").click());
+  expect(disabled.data.map((row) => row.user.id)).toEqual([paused.id]);
   await expect(statusFilterOption(page, "Disabled")).toBeChecked();
   await expect(memberRows(page)).toHaveCount(1);
   await expect(memberRow(page, paused.display_name)).toBeVisible();
 
-  await statusFilterOption(page, "All").click();
+  expect(await readStats(page)).toEqual(stats);
+  await expectNoApiCalls(page, async () => {
+    await statusFilterOption(page, "All").click();
+    await expect(memberRows(page)).toHaveCount(2);
+  });
   await expect(statusFilterOption(page, "All")).toBeChecked();
   await expect(memberRows(page)).toHaveCount(2);
 });
@@ -171,11 +185,16 @@ test("分页：末页行数正确，单页时仍可改回每页数量", async ({
   const lastPage = Math.ceil(total / PAGE_SIZE);
   const lastPageRows = total - (lastPage - 1) * PAGE_SIZE;
 
-  await pagination(page).getByRole("button", { name: `Go to page ${lastPage}` }).click();
+  const last = await expectMemberListPage(page, {
+    page: String(lastPage), limit: String(PAGE_SIZE), search_scope: "management",
+    sort: "created_at", direction: "asc",
+  }, () => pagination(page).getByRole("button", { name: `Go to page ${lastPage}` }).click());
+  expect(last.data).toHaveLength(lastPageRows);
   await expect(
     memberRows(page),
     `末页应当只剩 ${lastPageRows} 行（总数 ${total}，每页 ${PAGE_SIZE}）`,
   ).toHaveCount(lastPageRows);
+  for (const row of last.data) await expect(memberRow(page, row.user.display_name)).toBeVisible();
 
   await field(pagination(page), "Per page").click();
   await page.getByRole("option", { name: "50", exact: true }).click();
@@ -194,7 +213,7 @@ test("选择：单击换选，Ctrl 点选累加，再单击一行把选中收回
   const second = await createThrowawayMember(api, tag);
 
   await openMembers(page);
-  await searchBox(page).fill(tag);
+  await searchAdminMembers(page, tag);
   await expect(memberRows(page)).toHaveCount(2);
 
   await expect(page.getByText(/Click or press Space to select/)).toBeVisible();
@@ -219,7 +238,7 @@ test("键盘：提示文案承诺的三件事都要真的能做到——空格�
   const member = await createThrowawayMember(api, tag);
 
   await openMembers(page);
-  await searchBox(page).fill(tag);
+  await searchAdminMembers(page, tag);
   await expect(memberRows(page)).toHaveCount(1);
 
   const row = memberRow(page, member.display_name);

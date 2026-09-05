@@ -11,7 +11,7 @@ export class SqliteGalleryStore implements GalleryStore {
   async list(query: GalleryListQuery): Promise<Readonly<{ data: readonly GalleryRecord[]; hasMore: boolean }>> {
     const { where, params } = galleryWhere(query);
     const direction = query.order === "asc" ? "ASC" : "DESC";
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "all",
       sql: `${selectGallery()} ${where}
         ORDER BY items.created_at ${direction}, items.id ${direction}
@@ -23,7 +23,7 @@ export class SqliteGalleryStore implements GalleryStore {
   }
 
   async get(id: string, viewerUserId: string | null): Promise<GalleryRecord | null> {
-    const row = oneRow(await this.sql.execute({
+    const row = oneRow(await this.sql.read({
       method: "get",
       sql: `${selectGallery()} WHERE items.id = ? LIMIT 1`,
       params: [viewerUserId ?? "", id],

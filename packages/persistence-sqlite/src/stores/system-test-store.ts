@@ -30,7 +30,7 @@ export class SqliteSystemTestStore implements SystemTestStore {
   }
 
   async getRun(id: string): Promise<SystemTestRunRecord | null> {
-    const row = oneRow(await this.sql.execute({
+    const row = oneRow(await this.sql.read({
       method: "get",
       sql: "SELECT id, actor_user_id, status, cleanup_attempts FROM system_test_runs WHERE id = ?",
       params: [id],
@@ -81,7 +81,7 @@ export class SqliteSystemTestStore implements SystemTestStore {
   }
 
   async isActiveRequest(requestId: string): Promise<boolean> {
-    return oneRow(await this.sql.execute({
+    return oneRow(await this.sql.read({
       method: "get",
       sql: `SELECT 1 FROM system_test_requests AS requests
         JOIN system_test_runs AS runs ON runs.id = requests.run_id
@@ -107,7 +107,7 @@ export class SqliteSystemTestStore implements SystemTestStore {
   }
 
   async listArtifacts(runId: string, limit: number): Promise<readonly SystemTestArtifact[]> {
-    const rows = allRows(await this.sql.execute({
+    const rows = allRows(await this.sql.read({
       method: "all",
       sql: `SELECT artifact_type, artifact_key
         FROM system_test_artifacts
@@ -170,7 +170,7 @@ export class SqliteSystemTestStore implements SystemTestStore {
   }
 
   async listExpiredRunIds(before: string, limit: number): Promise<readonly string[]> {
-    return allRows(await this.sql.execute({
+    return allRows(await this.sql.read({
       method: "all",
       sql: `SELECT id FROM system_test_runs
         WHERE expires_at <= ?
@@ -183,7 +183,7 @@ export class SqliteSystemTestStore implements SystemTestStore {
   }
 
   async inspectExpiredBacklog(before: string) {
-    const pendingAt = allRows(await this.sql.execute({
+    const pendingAt = allRows(await this.sql.read({
       method: "all",
       columns: ["pending_at"],
       sql: `SELECT expires_at AS pending_at FROM system_test_runs

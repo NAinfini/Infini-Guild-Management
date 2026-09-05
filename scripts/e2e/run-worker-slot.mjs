@@ -17,7 +17,7 @@ export function parseSlotArgument(value) {
 }
 
 export function logPathForSlot(slot, root = repoRoot) {
-  return resolve(root, "apps", "portal", "e2e", ".logs", `wrangler-slot-${slot}.log`);
+  return resolve(root, "apps", "portal", "e2e", ".logs", `worker-slot-${slot}.log`);
 }
 
 function slotSetting(environment, name, fallback) {
@@ -99,21 +99,24 @@ export async function runLoggedCommand({ command, args, cwd, logPath, label, app
   }
 }
 
-export async function runWranglerSlot(slot, root = repoRoot, environment = process.env) {
+export async function runWorkerSlot(slot, root = repoRoot, environment = process.env) {
   const port = slotSetting(environment, "E2E_SLOT_PORT", String(8787 + slot));
   const inspectorPort = slotSetting(environment, "E2E_SLOT_INSPECTOR_PORT", String(9329 + slot));
   const origin = slotSetting(environment, "E2E_SLOT_ORIGIN", `http://127.0.0.1:${port}`);
   const persistPath = resolve(root, "apps", "portal", "e2e", ".state", "slots", `slot-${slot}`, "wrangler");
   const logPath = logPathForSlot(slot, root);
+  const slotEnvironment = {
+    ...environment,
+    WRANGLER_LOG_PATH: resolve(dirname(logPath), `slot-${slot}-config.debug.log`),
+  };
   const preparePath = resolve(root, "scripts", "e2e", "prepare-slot.mjs");
-  const wranglerPath = resolve(root, "node_modules", "wrangler", "bin", "wrangler.js");
+  const serverPath = resolve(root, "scripts", "e2e", "serve-worker-slot.mjs");
   const configPath = resolve(root, "scripts", "e2e", "wrangler.e2e.jsonc");
   const workerBundlePath = resolve(root, "apps", "cloudflare", "dist", "worker.mjs");
 
-  /* E2E exercises one immutable, deployable Worker bundle. `wrangler dev`'s
-     normal source watcher can replace a downstream Worker between a browser
-     mutation and its response; the proxy intentionally turns that PATCH into
-     a 503 rather than replaying it. The test command builds this file first. */
+  /* Run the immutable deployment bundle directly in workerd. Wrangler's dev
+     proxy has its own pooled HTTP hop, where an expired connection can kill
+     the whole dev session. E2E needs neither that hop nor a source watcher. */
   await access(workerBundlePath);
 
   const prepared = await runLoggedCommand({
@@ -122,35 +125,26 @@ export async function runWranglerSlot(slot, root = repoRoot, environment = proce
     cwd: root,
     logPath,
     label: "prepare-slot",
-    env: environment,
+    env: slotEnvironment,
   });
   if (prepared.code !== 0 || prepared.signal !== null) return prepared.code ?? 1;
 
   const served = await runLoggedCommand({
     command: process.execPath,
-    args: [
-      wranglerPath,
-      "dev",
-      "--no-bundle",
-      "--local",
-      "--config", configPath,
-      "--persist-to", persistPath,
-      "--name", `infini-guild-e2e-${slot}`,
-      "--ip", "127.0.0.1",
-      "--port", port,
-      "--inspector-ip", "127.0.0.1",
-      "--inspector-port", inspectorPort,
-      "--local-protocol", "http",
-      "--show-interactive-dev-session=false",
-      "--var", `IG_PUBLIC_URL:${origin}`,
-      "--var", `IG_ALLOWED_ORIGINS:${origin}`,
-      "--var", "IG_PBKDF2_ITERATIONS:10000",
-    ],
+    args: [serverPath, JSON.stringify({
+      configPath,
+      workerBundlePath,
+      persistPath,
+      name: `infini-guild-e2e-${slot}`,
+      port: Number(port),
+      inspectorPort: Number(inspectorPort),
+      origin,
+    })],
     cwd: root,
     logPath,
-    label: "wrangler",
+    label: "workerd",
     append: true,
-    env: environment,
+    env: slotEnvironment,
   });
   return served.code ?? 1;
 }
@@ -160,7 +154,7 @@ const isMainModule = process.argv[1]
 
 if (isMainModule) {
   try {
-    process.exitCode = await runWranglerSlot(parseSlotArgument(process.argv[2]));
+    process.exitCode = await runWorkerSlot(parseSlotArgument(process.argv[2]));
   } catch (error) {
     console.error(error instanceof Error ? error.stack ?? error.message : String(error));
     process.exitCode = 1;

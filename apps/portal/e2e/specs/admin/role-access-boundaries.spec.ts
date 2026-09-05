@@ -11,6 +11,7 @@ import { clientIdentityHeaders, PORTAL_ORIGIN } from "../../support/config";
 import {
   createThrowawayMember,
   readAssignableRoles,
+  searchAdminMembers,
   uniqueTag,
   type ThrowawayMember,
 } from "../../support/members";
@@ -187,7 +188,19 @@ test("版主能进入获授权工作区，但看不到站点配置与高权限�
     await expect(
       session.page.locator(".app-sider").getByRole("button", { name: "Member Mgmt", exact: true }),
     ).toHaveAttribute("aria-current", "page");
-    await expect(session.page.getByRole("button", { name: "Create Member", exact: true })).toBeVisible();
+    await expect(
+      session.page.getByRole("button", { name: "Create Member", exact: true }),
+      "创建成员同时授予角色，版主缺少 admin.users.role 时不得显示入口",
+    ).toHaveCount(0);
+    const forbiddenName = `e2e_${uniqueTag("forbidden_create")}`;
+    const forbiddenCreate = await session.context.request.post("/api/admin/users", {
+      headers: { ...MUTATION_HEADERS, ...identityHeaders(clientAddress, trackArtifacts) },
+      data: { login_name: forbiddenName, display_name: forbiddenName, role_id: memberRole.id },
+    });
+    expect(forbiddenCreate.status(), "绕过界面直接创建成员也必须被后端拒绝").toBe(403);
+    const unchanged = await api.get(`/api/users?search=${forbiddenName}&page=1&limit=20&include_total=true`);
+    expect(unchanged.ok()).toBe(true);
+    expect((await unchanged.json() as { total: number }).total, "越权创建不得留下账号").toBe(0);
 
     for (const forbiddenArea of ["Classes", "Badges", "Site Config", "Notices"]) {
       await expect(
@@ -207,7 +220,8 @@ test("版主能进入获授权工作区，但看不到站点配置与高权限�
       "不可访问的后台查询参数必须回落到首个获授权工作区",
     ).toHaveAttribute("aria-current", "page");
 
-    await session.page.getByRole("textbox", { name: "Search members", exact: true }).fill(target.display_name);
+    await session.page.waitForLoadState("networkidle");
+    await searchAdminMembers(session.page, target.display_name);
     const targetRow = session.page.getByRole("row", {
       name: `${target.display_name} member row`,
       exact: true,

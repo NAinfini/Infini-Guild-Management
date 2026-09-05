@@ -22,12 +22,9 @@ describe("MySignupsCard", () => {
       />,
     );
 
-    const emptyState = screen.getByText("card.mySignups.empty").closest(".empty-state");
     const browseButton = screen.getByRole("button", { name: "card.mySignups.browseEvents" });
 
-    expect(emptyState).toHaveClass("dashboard-signups-empty");
-    expect(emptyState?.querySelector(".dashboard-signups-empty__icon")).toBeInTheDocument();
-    expect(browseButton).not.toHaveAttribute("data-variant", "default");
+    expect(screen.getByText("card.mySignups.empty")).toBeInTheDocument();
 
     await userEvent.click(browseButton);
     expect(onBrowseEvents).toHaveBeenCalledOnce();

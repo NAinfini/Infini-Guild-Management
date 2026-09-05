@@ -204,7 +204,6 @@
 .wiki-editor-metadata,
 .wiki-reader-loading,
 .wiki-article-list,
-.wiki-list-skeletons,
 .wiki-category-editor-tree {
   display: flex;
   flex-direction: column;
@@ -331,14 +330,6 @@
   margin-block-start: var(--space-xs);
 }
 
-.wiki-list-skeletons {
-  padding-block: var(--space-xs);
-}
-
-.wiki-list-skeleton {
-  block-size: 2.75rem;
-}
-
 .wiki-reader-loading {
   padding-block: var(--space-sm);
 }
@@ -348,25 +339,7 @@
   gap: var(--space-xs);
 }
 
-.wiki-skeleton-line {
-  block-size: 0.875rem;
-}
-
-.wiki-skeleton-line--title {
-  inline-size: 55%;
-  block-size: 1.375rem;
-}
-
-.wiki-skeleton-line--tiny { inline-size: 15%; }
-.wiki-skeleton-line--short { inline-size: 35%; }
-.wiki-skeleton-line--medium { inline-size: 60%; }
-.wiki-skeleton-line--wide { inline-size: 80%; }
-
 .wiki-pane-loading {
-  min-block-size: 12.5rem;
-}
-
-.wiki-pane-loading [data-slot="skeleton"] {
   min-block-size: 12.5rem;
 }
 
@@ -434,8 +407,13 @@
 }
 
 .wiki-article-editor-header {
+  flex-wrap: wrap;
   padding-bottom: var(--space-lg);
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.wiki-article-editor-header > .wiki-article-editor-title {
+  flex-shrink: 0;
 }
 
 .wiki-article-editor-actions [data-slot="button"] {
@@ -515,18 +493,9 @@
 
 .wiki-catalog__header {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-md);
-}
-
-.wiki-catalog__eyebrow {
-  margin: 0 0 var(--space-xs);
-  color: var(--domain-wiki);
-  font-size: var(--text-micro);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
 }
 
 .wiki-catalog__title {
@@ -545,10 +514,10 @@
 
 .wiki-preview-list {
   display: grid;
-  gap: var(--space-md);
+  gap: 0;
 }
 
-.wiki-preview-skeleton { min-height: 9rem; }
+.wiki-preview-list > .content-preview-card:last-child { border-bottom: 0; }
 
 .wiki-detail-reader {
   padding: 0;
@@ -576,8 +545,6 @@
   width: 100%;
   margin-inline: auto;
 }
-
-.wiki-detail-skeleton { min-height: 28rem; }
 
 .wiki-detail-page > .wiki-article-editor-card,
 .wiki-detail-page > .wiki-category-editor-card {
@@ -927,8 +894,6 @@
   .wiki-detail-actions {
     justify-content: flex-start;
   }
-
-  .wiki-detail-actions > * { flex: 1 1 auto; }
 
   .wiki-article-list-card,
   .wiki-article-editor-card {

@@ -2,7 +2,7 @@
 
 [文档首页](../README.md) · [English version](./SETUP.md)
 
-这是模块化后端的权威安装指南。每套部署只能选择一种运行时：
+这是 [1.0.0](./CHANGELOG.zh.md#100---2026-09-05) 版本的权威安装指南。每套部署只能选择一种运行时：
 
 | 运行时 | 数据库 | Blob | 实时与调度 | 进程模型 |
 | --- | --- | --- | --- | --- |
@@ -13,13 +13,13 @@
 
 ## 环境要求
 
-- Node.js 26.5.1 或更新版本
+- Node.js 26.5.1（`.node-version` 中的精确版本）
 - pnpm 11.17.0
 - Git 或源码压缩包
 - Cloudflare：支持 Workers、D1、R2、Durable Objects、Cron Triggers 与 Rate Limiting 的账号
 - VPS：当前 64 位 Linux、持久磁盘、TLS 反向代理，以及 systemd 等服务管理器
 
-在仓库根目录安装锁定的依赖版本：
+切换到 Node 26.5.1 后，使用 `npm install --global pnpm@11.17.0` 安装 pnpm。然后在仓库根目录安装锁定的依赖版本：
 
 ```bash
 pnpm install --frozen-lockfile
@@ -34,7 +34,7 @@ pnpm install --frozen-lockfile
 | 构建共享门户 | `pnpm build:portal` |
 | 本地构建 Cloudflare | `pnpm cloudflare build` |
 | 本地构建 VPS | `pnpm vps build` |
-| 检查两种运行时类型 | `pnpm typecheck` |
+| 检查工作区及两种运行时环境的类型 | `pnpm typecheck` |
 | 运行测试 | `pnpm test` |
 | 生成下一条 Drizzle 迁移 | `pnpm db:generate -- --name <migration-name>` |
 | 初始化或校验 VPS 数据库 | `pnpm db:migrate:vps --database <sqlite-path>` |
@@ -46,7 +46,9 @@ pnpm install --frozen-lockfile
 | 隔离浏览器 E2E | `pnpm test:e2e` |
 | 部署 Cloudflare | `pnpm deploy:cloudflare` |
 
-`release:check` 只在本地执行：它会扫描已跟踪内容、校验两份模板、检查两端类型、运行测试并构建门户，但不会创建、迁移、部署或修改远程资源。`deploy:cloudflare` 则刻意单独提供，因为它会进行真实的远程变更。
+`release:check` 只在本地执行：它会扫描已跟踪内容、校验两份模板、检查工作区及两端类型、运行零警告 lint 和测试，再构建一次门户及两份服务端产物，但不会创建、迁移、部署或修改远程资源。`deploy:cloudflare` 则刻意单独提供，因为它会进行真实的远程变更。
+
+首次运行 E2E 前，使用 `pnpm exec playwright install chromium` 安装锁定的浏览器；Linux 上使用 `pnpm exec playwright install --with-deps chromium` 一并安装系统库。[贡献指南](./CONTRIBUTING.zh.md#复现-ci) 列出了精确 CI 工具链、测试项目、端口覆盖及干净检出的执行步骤。CI 不需要 Cloudflare 账号或生产凭据。
 
 ## 本地开发
 
@@ -72,18 +74,18 @@ pnpm vps dev
 
 ## 共享 schema 与迁移
 
-已合并的 0.1.0 基线冻结在：
+1.0.0 仅发布一个冻结的 core 迁移及只含一个条目的 manifest：
 
 ```text
 packages/persistence-sqlite/src/migrations/generated/0000_core.sql
-packages/persistence-sqlite/src/migrations/generated/manifest.json  # 单一合并 core；后续变化追加条目
+packages/persistence-sqlite/src/migrations/generated/manifest.json
 ```
 
-Cloudflare D1 与 VPS SQLite 使用同一组有序迁移文件，从 `0000_core.sql` 开始；它包含原 `0017_notice_delivery` 之前所有迁移的最终结构与种子数据。`app_migrations` 是应用拥有的序号/校验和账本，也是启动校验的权威来源。Cloudflare 还维护 `d1_migrations`，供 Wrangler 记录已应用文件名。应保留其历史行，允许其中存在当前目录已没有的旧文件名。空、未知或不匹配的应用 schema 会被拒绝，绝不会被静默修补。
+Cloudflare D1 与 VPS SQLite 都用同一个 `0000_core.sql` 初始化全新数据库，其中已包含完整 schema 与权威种子数据。1.0.0 不再附带单独的历史迁移链。旁边的 Drizzle `meta/` 文件属于生成元数据，并非额外 SQL 迁移。`app_migrations` 是应用拥有的序号/校验和账本，也是启动校验的权威来源。Cloudflare 还保留 Wrangler 的文件名账本 `d1_migrations`，其既有历史应予保留。空、未知或不匹配的应用 schema 会被拒绝，绝不会被静默修补。
 
-本次 0.1.0 刷新包含所有者明确授权的一次性合并。既有数据库必须先用标签 `archive/pre-core-20260830` 完成原 18 个迁移，再按 [PRODUCTION_D1_UPGRADE.zh.md](./PRODUCTION_D1_UPGRADE.zh.md) 执行经过备份、演练的账本切换。**不得向已有数据库执行新 core，也不能认为 Wrangler 跳过同名文件就已更新应用账本。** 此次切换后 core 不可变；后续 schema 变更新增下一个连续序号、从未使用过的文件名及精确校验和，并通过 D1/SQLite 一致性检查。运行时不会静默改写已有账本。
+既有数据库应按 [PRODUCTION_D1_UPGRADE.zh.md](./PRODUCTION_D1_UPGRADE.zh.md) 完成备份、恢复演练及账本切换；已经与当前 manifest 一致的数据库无需再次切换。**不得向已有业务表执行 core，也不能认为 Wrangler 跳过同名文件就已更新应用账本。** 1.0.0 core 不可变；后续 schema 变更新增下一个连续序号、从未使用过的文件名及精确校验和，并通过 D1/SQLite 一致性检查。运行时不会静默改写已有账本。
 
-如果要用新的 exact manifest 替换非空开发数据库，且其 `app_migrations` 账本不一致，必须先备份，再使用经过明确规划、验证且保留数据的升级流程。应用刻意不提供运行时兼容分支或远程账本自动改写。除非操作者另行明确执行带 `--remote` 的 Wrangler 命令，仓库命令绝不会修改远程 D1。当前生产升级与回滚流程以 [PRODUCTION_D1_UPGRADE.zh.md](./PRODUCTION_D1_UPGRADE.zh.md) 为准。
+如果要用新的 exact manifest 替换非空开发数据库，且其 `app_migrations` 账本不一致，必须先备份，再使用经过明确规划、验证且保留数据的升级流程。应用刻意不提供运行时兼容分支或远程账本自动改写。除非操作者另行明确执行带 `--remote` 的 Wrangler 命令，仓库命令绝不会修改远程 D1。合并前数据库的升级与回滚流程以 [PRODUCTION_D1_UPGRADE.zh.md](./PRODUCTION_D1_UPGRADE.zh.md) 为准。
 
 初始化或校验 VPS SQLite：
 
@@ -249,6 +251,8 @@ pnpm verify:data:vps --database /srv/infini/data/infini-guild.sqlite --blobs /sr
 pnpm start:vps
 ```
 
+VPS 构建生成 `apps/vps/dist/server.mjs`，直接由 Node 执行。发布目录必须保留 `pnpm install --frozen-lockfile` 安装的依赖：`ws` 作为运行时依赖，由 Node 加载其原生 ESM/CommonJS 边界及可选原生扩展。发布测试也会构建隔离副本，在不加载 TypeScript loader 的情况下验证启动、健康检查及认证后的 WebSocket 心跳。
+
 让服务管理器以专属用户运行 `start:vps`。将工作目录设为仓库或发布根目录，并确保只有该用户可读 `apps/vps/.env`。在反向代理处终止 TLS，并将 `/api`、`/ws` 与静态请求转发到同一 Node 进程。开放流量前配置失败重启、优雅 `SIGTERM` 与持久磁盘挂载。
 
 #### 反向代理加固
@@ -371,6 +375,8 @@ IG_MAINTENANCE_UNTIL=2026-08-30T12:00:00.000Z
 无论使用哪种运行时，流程都是：阅读 release notes，停止写入或安排维护窗口，完整备份，使用锁定 pnpm 版本安装，运行 `release:check`，审核新迁移，向所选后端应用迁移，然后启动或部署并验证健康状态。
 
 GitHub workflow 以两个仅限本地的独立任务运行 `release:check` 与隔离 Chromium E2E。它不会登录 Cloudflare、创建资源、操作远程 D1/R2、部署，也不会启动生产 VPS。
+
+E2E 通过官方 Miniflare/workerd 直接运行编译后的 Cloudflare Worker，使用两组隔离的 D1/R2/Durable Object。Wrangler 在启动前应用共享迁移和测试种子，其公开配置转换函数提供运行时绑定，不经过开发反向代理。由于该函数属于不稳定公开 API，Wrangler 与 Miniflare 版本一同锁定。每轮测试都必须完成产物清理，并恢复两组数据库基线。
 
 ## 常见问题
 

@@ -27,7 +27,7 @@ export function GalleryPage() {
 
   useEffect(() => {
     const target = loadMoreRef.current;
-    if (!target || !c.galleryQuery.hasNextPage || c.galleryQuery.isFetchingNextPage) {
+    if (!target || !c.galleryQuery.hasNextPage || c.galleryQuery.isFetchingNextPage || c.galleryQuery.isPlaceholderData) {
       return;
     }
     if (typeof IntersectionObserver === "undefined") {
@@ -44,7 +44,7 @@ export function GalleryPage() {
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [c.galleryQuery.fetchNextPage, c.galleryQuery.hasNextPage, c.galleryQuery.isFetchingNextPage]);
+  }, [c.galleryQuery.fetchNextPage, c.galleryQuery.hasNextPage, c.galleryQuery.isFetchingNextPage, c.galleryQuery.isPlaceholderData]);
 
   const filters = (
     <GalleryFiltersCard
@@ -149,7 +149,7 @@ export function GalleryPage() {
         />
 
         <div ref={loadMoreRef} className="gallery-load-more-sentinel" />
-        {c.galleryQuery.hasNextPage ? (
+        {c.galleryQuery.hasNextPage && !c.galleryQuery.isPlaceholderData ? (
           <div className="gallery-load-more">
             <Button
               variant="outline"

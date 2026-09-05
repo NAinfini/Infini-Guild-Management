@@ -128,7 +128,7 @@ export class SqliteEventAutoArchiveStore implements BoundedEventAutoArchiveStore
     title: string;
     pendingAt: string;
   }>[]> {
-    const [ended, started] = await this.sql.batch([
+    const [ended, started] = await this.sql.readBatch([
       {
         method: "all",
         columns: ["id", "title", "pending_at"],
@@ -185,7 +185,7 @@ export class SqliteAnnouncementPublishStore implements BoundedAnnouncementPublis
 
   async publishDue(input: Parameters<BoundedAnnouncementPublishStore["publishDue"]>[0]) {
     assertLimit(input.limit, 50, "Announcement publish");
-    const selected = rows(await this.sql.execute({
+    const selected = rows(await this.sql.read({
       method: "all",
       columns: ["id", "title", "publish_at"],
       sql: `SELECT id, title, publish_at FROM announcements INDEXED BY idx_announcements_schedule
@@ -284,7 +284,7 @@ export class SqliteAnnouncementPublishStore implements BoundedAnnouncementPublis
   }
 
   async inspectBacklog(now: string) {
-    const pendingAt = rows(await this.sql.execute({
+    const pendingAt = rows(await this.sql.read({
       method: "all",
       columns: ["publish_at"],
       sql: `SELECT publish_at FROM announcements INDEXED BY idx_announcements_schedule
@@ -309,7 +309,7 @@ export class SqliteRaffleAutoDrawStore implements BoundedRaffleAutoDrawStore {
 
   async listDue(now: string, limit: number) {
     assertLimit(limit, 25, "Raffle auto-draw");
-    const selected = rows(await this.sql.execute({
+    const selected = rows(await this.sql.read({
       method: "all",
       columns: ["id", "title", "winner_count", "created_by", "updated_at"],
       sql: `SELECT id, title, winner_count, created_by, updated_at FROM events INDEXED BY idx_events_raffle_due
@@ -328,7 +328,7 @@ export class SqliteRaffleAutoDrawStore implements BoundedRaffleAutoDrawStore {
     });
     const candidates = selected.slice(0, limit);
     if (candidates.length === 0) return { raffles: [], hasMore: false };
-    const participantRows = rows(await this.sql.execute({
+    const participantRows = rows(await this.sql.read({
       method: "all",
       columns: ["event_id", "user_id", "participant_number"],
       sql: `WITH ranked AS (
@@ -384,7 +384,7 @@ export class SqliteRaffleAutoDrawStore implements BoundedRaffleAutoDrawStore {
   }
 
   async inspectBacklog(now: string) {
-    const pendingAt = rows(await this.sql.execute({
+    const pendingAt = rows(await this.sql.read({
       method: "all",
       columns: ["end_at"],
       sql: `SELECT end_at FROM events INDEXED BY idx_events_raffle_due
@@ -408,7 +408,7 @@ export class SqliteSessionCleanupJob implements SessionCleanupJob {
     assertLimit(input.limit, 500, "Session cleanup");
     const cutoffs = maintenanceCutoffs(input.expiresBefore);
     const windowLimit = input.limit + 1;
-    const selected = await this.sql.batch([
+    const selected = await this.sql.readBatch([
       {
         method: "all",
         columns: ["candidate_key", "pending_at"],
@@ -537,7 +537,7 @@ export class SqliteSessionCleanupJob implements SessionCleanupJob {
 
   async inspectBacklog(input: Parameters<SessionCleanupJob["inspectBacklog"]>[0]) {
     const cutoffs = maintenanceCutoffs(input.expiresBefore);
-    const observed = await this.sql.batch([
+    const observed = await this.sql.readBatch([
       {
         method: "all",
         columns: ["token_digest", "pending_at"],

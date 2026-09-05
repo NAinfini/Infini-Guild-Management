@@ -132,16 +132,20 @@ describe("StorageInventoryPanel pagination", () => {
     expect(within(dialog).getByTestId("storage-ledger-panel")).toHaveAttribute("data-enabled", "true");
   });
 
-  it("sends the stock filter to the server query", async () => {
+  it.each([
+    ["empty", "filter.empty"],
+    ["deposit", "filter.depositEnabled"],
+    ["withdraw", "filter.withdrawEnabled"],
+  ])("sends the %s stock filter to the server query", async (stock, label) => {
     const user = userEvent.setup();
     renderPanel();
 
     await user.click(screen.getByRole("button", { name: "common:filter.toggle" }));
     const filters = within(await screen.findByRole("dialog"));
-    await user.click(filters.getByRole("radio", { name: "filter.empty" }));
+    await user.click(filters.getByRole("radio", { name: label }));
 
     expect(hookMocks.useStorageItems).toHaveBeenLastCalledWith(expect.objectContaining({
-      stock: "empty",
+      stock,
     }));
   });
 

@@ -13,7 +13,7 @@ import {
 import { Input } from "@portal/components/ui/input";
 import { Label } from "@portal/components/ui/label";
 import { ScrollArea } from "@portal/components/ui/scroll-area";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { SectionHeader } from "@portal/components/shared/SectionHeader";
@@ -453,9 +453,7 @@ export function AdminRolesSection({
   return (
     <div className="admin-fill admin-roles">
       {rolesLoading ? (
-        <div className="admin-roles__loading">
-          {Array.from({ length: 4 }).map((_, index) => <Skeleton className="admin-md__skeleton" key={index} />)}
-        </div>
+        <LoadingIndicator />
       ) : null}
       {rolesError ? <AdminLoadError onRetry={onRetryRoles} /> : null}
 

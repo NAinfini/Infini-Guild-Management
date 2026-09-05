@@ -1,6 +1,6 @@
 # Product
 
-[Documentation home](../README.md)
+[Documentation home](../README.md) · [中文版本](./PRODUCT.zh.md)
 
 ## What it is
 

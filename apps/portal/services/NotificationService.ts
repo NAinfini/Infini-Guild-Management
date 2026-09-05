@@ -19,5 +19,6 @@ export {
   fetchAdminImportantNotices,
   fetchImportantNoticeAudienceRoles,
   fetchInboxNotifications,
+  fetchInboxUnreadCount,
   fetchNotificationPreferences,
 } from "../api/queries/notifications";

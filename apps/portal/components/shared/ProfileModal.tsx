@@ -1,4 +1,4 @@
-import type { MemberProfile, User } from "@guild/shared";
+import type { MemberProfile, MemberSummary } from "@guild/shared";
 import { PencilIcon, XIcon } from "@portal/components/icons";
 import { Button } from "@portal/components/ui/button";
 import {
@@ -22,7 +22,7 @@ import styles from "./ProfileModal.module.css";
 
 type ProfileModalProps = {
   open: boolean;
-  user: User | null;
+  user: MemberSummary | null;
   profile: MemberProfile | null;
   onClose: () => void;
   onEdit?: () => void;

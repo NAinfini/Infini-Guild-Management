@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "共享应用架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [960, 460]
+  },
+  "components": [
+    {
+      "id": "portal",
+      "type": "frontend",
+      "label": "门户前端",
+      "sublabel": "React 客户端",
+      "pos": [35, 230],
+      "size": [150, 80]
+    },
+    {
+      "id": "transport",
+      "type": "backend",
+      "label": "HTTP 传输层",
+      "sublabel": "路由与中间件",
+      "pos": [255, 230],
+      "size": [165, 80]
+    },
+    {
+      "id": "domain",
+      "type": "backend",
+      "label": "领域服务",
+      "sublabel": "权限策略与业务逻辑",
+      "pos": [490, 230],
+      "size": [170, 80]
+    },
+    {
+      "id": "ports",
+      "type": "backend",
+      "label": "内核端口",
+      "sublabel": "运行时无关契约",
+      "pos": [730, 230],
+      "size": [180, 80]
+    },
+    {
+      "id": "composition",
+      "type": "backend",
+      "label": "应用组合层",
+      "sublabel": "组装共享应用",
+      "tag": "组合根",
+      "pos": [355, 55],
+      "size": [240, 86]
+    }
+  ],
+  "connections": [
+    {
+      "id": "portal-http",
+      "from": "portal",
+      "to": "transport",
+      "label": "HTTP 请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "transport-domain",
+      "from": "transport",
+      "to": "domain",
+      "label": "调用服务",
+      "variant": "emphasis"
+    },
+    {
+      "id": "domain-ports",
+      "from": "domain",
+      "to": "ports",
+      "label": "使用端口",
+      "variant": "emphasis"
+    },
+    {
+      "id": "composition-transport",
+      "from": "composition",
+      "to": "transport",
+      "label": "装配",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "composition-domain",
+      "from": "composition",
+      "to": "domain",
+      "label": "装配",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "单一应用路径",
+      "items": ["门户请求经由 HTTP 传输层进入", "领域服务依赖运行时无关的内核端口"]
+    },
+    {
+      "dot": "emerald",
+      "title": "组合边界",
+      "items": ["应用包负责装配传输层与领域服务", "组合根用于组装，不是 HTTP 请求中的一跳"]
+    }
+  ]
+}

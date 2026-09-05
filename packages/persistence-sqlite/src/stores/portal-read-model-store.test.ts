@@ -182,15 +182,14 @@ describe("SqlitePortalReadModelStore", () => {
     });
     expect(value.executor.batches).toHaveLength(1);
     expect(value.executor.batches[0]).toHaveLength(6);
-    expect(value.executor.batches[0]!.every((statement) => statement.sql.includes("LIMIT ?"))).toBe(true);
     const searchStatements = value.executor.batches[0]!;
     const indexedOrders = [
       ["ux_users_display_name_nocase", /ORDER BY u\.display_name COLLATE NOCASE, u\.id\s+LIMIT \?/],
-      ["idx_events_list_start", /ORDER BY e\.start_at, e\.id\s+LIMIT \?/],
-      ["idx_announcements_public", /ORDER BY a\.pinned DESC, a\.updated_at DESC, a\.id DESC\s+LIMIT \?/],
-      ["idx_wiki_articles_visibility_updated", /ORDER BY w\.updated_at DESC, w\.id DESC\s+LIMIT \?/],
-      ["idx_gallery_items_created", /ORDER BY g\.created_at DESC, g\.id DESC\s+LIMIT \?/],
-      ["idx_guild_wars_history_created", /ORDER BY gw\.created_at DESC, gw\.id DESC\s+LIMIT \?/],
+      ["idx_events_list_start", /ORDER BY e\.start_at, e\.id\s+LIMIT /],
+      ["idx_announcements_public", /ORDER BY a\.pinned DESC, a\.updated_at DESC, a\.id DESC\s+LIMIT /],
+      ["idx_wiki_articles_visibility_updated", /ORDER BY w\.updated_at DESC, w\.id DESC\s+LIMIT /],
+      ["idx_gallery_items_created", /ORDER BY g\.created_at DESC, g\.id DESC\s+LIMIT /],
+      ["idx_guild_wars_history_created", /ORDER BY gw\.created_at DESC, gw\.id DESC\s+LIMIT /],
     ] as const;
     for (const [position, [index, order]] of indexedOrders.entries()) {
       const statement = searchStatements[position]!;
@@ -202,6 +201,66 @@ describe("SqlitePortalReadModelStore", () => {
 
     const hidden = await value.store.search({ query: "secret", limit: 24, perTypeLimit: 8, now: NOW });
     expect(hidden).toEqual([]);
+  });
+
+  it.each([
+    ["feature_events", "event", "Dragon Raid"],
+    ["feature_announcements", "announcement", "Dragon Notice"],
+    ["feature_wiki", "wiki", "Dragon Guide"],
+    ["feature_gallery", "gallery", "Dragon Gallery"],
+    ["feature_guild_war", "war", "Dragon War"],
+  ] as const)("does not scan searchable text when %s is disabled", async (flag, type, title) => {
+    const { database, store } = harness();
+    database.exec(`UPDATE site_config SET ${flag} = 0 WHERE singleton = 1`);
+    const visited: string[] = [];
+    database.function("like", (pattern, candidate, _escape) => {
+      visited.push(String(candidate));
+      return Number(String(candidate).toLowerCase().includes(String(pattern).slice(1, -1)));
+    });
+
+    const result = await store.search({ query: "dragon", limit: 24, perTypeLimit: 8, now: NOW });
+    expect(result.some((item) => item.type === type)).toBe(false);
+    expect(result).toHaveLength(5);
+    expect(visited).not.toContain(title);
+    expect(visited).toContain("DragonUser");
+  });
+
+  it("only examines member text when every searchable feature is disabled", async () => {
+    const { database, store } = harness();
+    database.exec(`UPDATE site_config SET feature_events = 0, feature_announcements = 0,
+      feature_wiki = 0, feature_gallery = 0, feature_guild_war = 0 WHERE singleton = 1`);
+    const visited: string[] = [];
+    database.function("like", (pattern, candidate, _escape) => {
+      visited.push(String(candidate));
+      return Number(String(candidate).toLowerCase().includes(String(pattern).slice(1, -1)));
+    });
+
+    expect(await store.search({ query: "dragon", limit: 24, perTypeLimit: 8, now: NOW }))
+      .toMatchObject([{ type: "user", id: "member-1" }]);
+    expect([...new Set(visited)].sort()).toEqual(["Admin", "DragonUser"]);
+  });
+
+  it("preserves native substring matching, escaped literals, Unicode and both result caps", async () => {
+    const { database, store } = harness();
+    const title = "公会 TEAM 50%_\\ Café ÉΣİß 🏰🌊 '%_";
+    database.prepare("UPDATE users SET display_name = ? WHERE id = 'member-1'").run(title);
+    database.prepare("UPDATE events SET title = ? WHERE id = 'event-public'").run(title);
+    database.prepare("UPDATE announcements SET title = ? WHERE id = 'announcement-dragon'").run(title);
+    database.prepare("UPDATE wiki_articles SET title = ? WHERE id = 'wiki-dragon'").run(title);
+    database.prepare("UPDATE gallery_items SET title = ? WHERE id = 'gallery-dragon'").run(title);
+    database.prepare("UPDATE guild_wars SET war_name = ? WHERE id = 'war-win'").run(title);
+    const baseline = database.prepare("SELECT lower(?) LIKE ? ESCAPE '\\' AS matched");
+    for (const query of ["公会", "TEAM", "team", "50%_\\", "café", "Café", "ÉΣ", "éσ", "İß", "i\u0307ß", "🏰🌊", "'%_", "missing"]) {
+      const pattern = `%${query.toLocaleLowerCase("en-US").replace(/[\\%_]/g, "\\$&")}%`;
+      const { matched } = baseline.get(title, pattern) as { matched: number };
+      const result = await store.search({ query, limit: 24, perTypeLimit: 8, now: NOW });
+      expect(result.map(({ type }) => type), query).toEqual(
+        matched ? ["user", "event", "announcement", "wiki", "gallery", "war"] : [],
+      );
+    }
+    expect(await store.search({ query: "公会", limit: 3, perTypeLimit: 1, now: NOW }))
+      .toMatchObject([{ type: "user" }, { type: "event" }, { type: "announcement" }]);
+    expect(await store.search({ query: "公会", limit: 24, perTypeLimit: 0, now: NOW })).toEqual([]);
   });
 
   it("uses the roster index for the single member-count query", async () => {

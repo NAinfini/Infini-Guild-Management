@@ -1,7 +1,7 @@
-import type { MemberAvailability, MemberProfile, User, UserBadge } from "@guild/shared";
+import type { MemberAvailability, MemberProfile, MemberSummary, UserBadge } from "@guild/shared";
 
 export type AdminUserRow = {
-  user: User;
+  user: MemberSummary;
   profile: MemberProfile;
   badges: UserBadge[];
   edit_revisions?: AdminMemberEditRevisions;
@@ -23,3 +23,4 @@ export type MemberDetailFormState = {
   role: string;
   isActive: boolean;
 };
+export type MemberStatusFilter = "all" | "active" | "inactive";

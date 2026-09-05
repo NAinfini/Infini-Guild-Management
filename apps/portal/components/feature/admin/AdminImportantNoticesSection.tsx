@@ -32,7 +32,7 @@ import {
 import { Input } from "@portal/components/ui/input";
 import { Label } from "@portal/components/ui/label";
 import { ScrollArea } from "@portal/components/ui/scroll-area";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useAppError } from "@portal/hooks/useAppError";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
@@ -313,9 +313,7 @@ export function AdminImportantNoticesSection() {
               </Alert>
             ) : null}
             {noticesQuery.isLoading ? (
-              Array.from({ length: 4 }).map((_, index) => (
-                <Skeleton className="important-notices-admin__notice-skeleton" key={index} />
-              ))
+              <LoadingIndicator />
             ) : noticesBlockingError ? (
               <EmptyState
                 status="error"

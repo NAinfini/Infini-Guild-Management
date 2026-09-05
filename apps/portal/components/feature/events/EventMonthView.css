@@ -343,7 +343,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .month-calendar__cell,
   .month-calendar__create-btn {
     transition: none;

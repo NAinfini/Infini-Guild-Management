@@ -742,7 +742,7 @@
 
 /* ── Reduced Motion ── */
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .api-console__progress-fill--running {
     animation: none;
   }

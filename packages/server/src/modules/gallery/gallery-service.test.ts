@@ -266,7 +266,7 @@ describe("GalleryService", () => {
       actorId: "owner-1",
       requestId: "request-1",
       subjectType: "gallery_item",
-      subjectId: "request-1",
+      subjectId: mutation.records.map(({ id }) => id).join(","),
       subjectLabel: "image",
       action: "upload_images",
       payload: {

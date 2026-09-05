@@ -40,6 +40,7 @@
   "filter.all": "All Categories",
   "filter.category": "Filter by category",
   "filter.search": "Search items",
+  "filter.searchMembers": "Search members",
   "filter.stockAll": "All stock",
   "filter.available": "In stock",
   "filter.empty": "Out of stock",

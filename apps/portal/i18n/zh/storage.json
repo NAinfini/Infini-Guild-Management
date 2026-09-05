@@ -40,6 +40,7 @@
   "filter.all": "全部分类",
   "filter.category": "按分类筛选",
   "filter.search": "搜索物品",
+  "filter.searchMembers": "搜索成员",
   "filter.stockAll": "全部库存",
   "filter.available": "有库存",
   "filter.empty": "缺货",

@@ -88,10 +88,6 @@
   padding: 6px;
 }
 
-.important-notices-admin__notice-skeleton {
-  height: 52px;
-}
-
 .important-notices-admin__notice {
   display: flex;
   align-items: center;
@@ -271,10 +267,6 @@
   overflow-y: auto;
 }
 
-.important-notices-admin__role-skeleton {
-  block-size: 7rem;
-}
-
 .important-notices-admin__validation {
   color: var(--status-danger);
   font-size: var(--text-micro);
@@ -402,7 +394,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .important-notices-admin__notice {
     transition: none;
   }

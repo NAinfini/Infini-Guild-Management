@@ -23,6 +23,7 @@ import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useDebouncedSearch } from "./useDebouncedSearch";
+import { useRetainedQueryData } from "./useRetainedQueryData";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
@@ -246,7 +247,9 @@ export function useAnnouncementsController() {
     });
   }, [abandonPendingAttachmentUpload, closeCreating]);
 
+  const retainedListData = useRetainedQueryData();
   const listQuery = useInfiniteQuery({
+    ...retainedListData,
     queryKey: queryKeys.announcements.list(
       effectiveStatusFilter ?? "all",
       categoryFilter ?? "all",
@@ -508,7 +511,7 @@ export function useAnnouncementsController() {
     return raw;
   }, [accumulatedAnnouncements, canManageContent, effectiveStatusFilter]);
 
-  const listHasMore = listQuery.hasNextPage ?? false;
+  const listHasMore = !listQuery.isPlaceholderData && (listQuery.hasNextPage ?? false);
 
   const selected = detailQuery.data ?? null;
 
@@ -820,7 +823,7 @@ export function useAnnouncementsController() {
     selected,
     listHasMore,
     listLoadingMore: listQuery.isFetchingNextPage,
-    onLoadMoreList: () => void listQuery.fetchNextPage(),
+    onLoadMoreList: () => { if (!listQuery.isPlaceholderData) void listQuery.fetchNextPage(); },
     isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending || deleteMutation.isPending,
     savePending: createMutation.isPending || updateMutation.isPending,
     archivePending: archiveMutation.isPending,

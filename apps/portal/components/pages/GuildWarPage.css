@@ -180,8 +180,7 @@
   gap: var(--space-sm);
 }
 
-.guild-war-team-conflict__actions,
-.guild-war-active-skeleton__row {
+.guild-war-team-conflict__actions {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -190,25 +189,6 @@
 .guild-war-team-conflict [data-slot="alert-description"] {
   display: grid;
   gap: var(--space-sm);
-}
-
-.guild-war-active-skeleton {
-  display: grid;
-  gap: var(--space-sm);
-  padding: var(--space-md);
-}
-
-.guild-war-active-board-skeleton {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-md);
-  padding: var(--space-md);
-}
-
-.guild-war-active-board-skeleton__column {
-  display: grid;
-  gap: var(--space-sm);
-  min-width: 0;
 }
 
 .guild-war-dnd-split {
@@ -2911,7 +2891,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .guild-war-column-card,
   .guild-war-member-card,
   .guild-war-member-card__progress,

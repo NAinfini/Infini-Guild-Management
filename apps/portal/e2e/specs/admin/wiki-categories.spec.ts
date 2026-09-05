@@ -2,6 +2,7 @@ import type { APIRequestContext, Locator, Page, Request } from "@playwright/test
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
 import { confirmDialog, expectNoDialog, field } from "../../support/ui";
+import { createWikiCategory as createCategory } from "../../support/wiki";
 
 /*
  * Wiki 扁平分类编辑器：新建、改名、拖拽排序、删除、关闭（含丢弃确认）。
@@ -72,13 +73,6 @@ test.afterEach(async ({ api }) => {
     expect([200, 204, 404], `清理分类 ${id} 返回 ${response.status()}`).toContain(response.status());
   }
 });
-
-async function createCategory(api: APIRequestContext, name: string): Promise<Category> {
-  return await readJson(
-    await api.post("/api/wiki/categories", { data: { name } }),
-    `创建分类 ${name}`,
-  ) as Category;
-}
 
 async function readCategoryCatalog(api: APIRequestContext): Promise<CategoryCatalog> {
   return await readJson(await api.get("/api/wiki/categories"), "回读分类表") as CategoryCatalog;

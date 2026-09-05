@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -151,6 +151,33 @@ describe("DashboardPage initial load errors", () => {
     expect(screen.queryByText("upcoming-events-card")).not.toBeInTheDocument();
     expect(screen.queryByText("last-war-card")).not.toBeInTheDocument();
     expect(screen.queryByText("command.bulletin.label")).not.toBeInTheDocument();
+  });
+
+  it("keeps the public event summary while omitting personal signups for guests", () => {
+    mocks.siteConfig.features = { announcements: false, events: true, guildWar: false };
+    mocks.useQuery.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
+      if (queryKey[1] === "events") {
+        return successfulQuery({
+          active_events_count: 2,
+          featured_events: [],
+          my_signup_event_ids: [],
+          upcoming_events: [],
+        });
+      }
+      if (queryKey[1] === "wars") {
+        return successfulQuery({ all_war_win_rate: 0, recent_war_mvps: [], recent_wars: [] });
+      }
+      if (queryKey[1] === "latest-announcement") return successfulQuery({ data: [] });
+      throw new Error(`Unexpected dashboard query: ${String(queryKey[1])}`);
+    });
+
+    render(<DashboardPage />);
+
+    expect(screen.getByText("upcoming-events-card")).toBeInTheDocument();
+    expect(screen.queryByText("my-signups-card")).not.toBeInTheDocument();
+    const pulse = screen.getByRole("region", { name: "pulse.ariaLabel" });
+    expect(within(pulse).queryByText("pulse.signups")).not.toBeInTheDocument();
+    expect(within(pulse).getAllByRole("listitem")).toHaveLength(2);
   });
 
   it("does not announce an all-clear attention state while events are loading", () => {

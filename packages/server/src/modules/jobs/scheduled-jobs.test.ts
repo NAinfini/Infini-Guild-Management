@@ -143,7 +143,7 @@ describe("ScheduledJobCoordinator", () => {
     expect(overflowing.leases.release).toHaveBeenCalledOnce();
   });
 
-  it("stops after one media batch so one invocation stays within its D1 budget", async () => {
+  it("drains multiple media batches under one lease and stops when the queue is empty", async () => {
     const dependencies = createDependencies();
     vi.mocked(dependencies.mediaGarbageCollection.run)
       .mockResolvedValueOnce({ processed: SCHEDULED_JOB_LIMITS.mediaGarbageCollection, hasMore: true })
@@ -151,12 +151,79 @@ describe("ScheduledJobCoordinator", () => {
 
     await expect(new ScheduledJobCoordinator(dependencies).run("media-gc")).resolves.toMatchObject({
       status: "completed",
-      processed: SCHEDULED_JOB_LIMITS.mediaGarbageCollection,
-      hasMore: true,
-      batches: 1,
+      processed: SCHEDULED_JOB_LIMITS.mediaGarbageCollection + 7,
+      hasMore: false,
+      batches: 2,
+    });
+    expect(dependencies.mediaGarbageCollection.run).toHaveBeenCalledTimes(2);
+    expect(dependencies.leases.renew).toHaveBeenCalledOnce();
+    expect(dependencies.leases.tryAcquire).toHaveBeenCalledOnce();
+    expect(dependencies.leases.release).toHaveBeenCalledOnce();
+  });
+
+  it("caps media cleanup at four batches and reports observed remaining work", async () => {
+    const dependencies = createDependencies();
+    vi.mocked(dependencies.mediaGarbageCollection.run).mockResolvedValue({ processed: 10, hasMore: true });
+    vi.mocked(dependencies.mediaGarbageCollection.inspectBacklog).mockResolvedValue({
+      ...emptyBacklog, pendingCount: 12, oldestPendingAt: "2026-08-01T00:00:00.000Z",
+    });
+    await expect(new ScheduledJobCoordinator(dependencies).run("media-gc")).resolves.toMatchObject({
+      processed: 40, batches: 4, hasMore: true, backlog: { pendingCount: 12 },
+    });
+    expect(dependencies.mediaGarbageCollection.run).toHaveBeenCalledTimes(4);
+    expect(dependencies.leases.renew).toHaveBeenCalledTimes(3);
+  });
+
+  it("uses the media backlog observation when a full last batch drained the queue", async () => {
+    const dependencies = createDependencies();
+    vi.mocked(dependencies.mediaGarbageCollection.run).mockResolvedValue({ processed: 10, hasMore: true });
+    await expect(new ScheduledJobCoordinator(dependencies).run("media-gc")).resolves.toMatchObject({
+      processed: 40, batches: 4, hasMore: false, backlog: emptyBacklog,
+    });
+  });
+
+  it("does not start another media batch after the 25-second budget", async () => {
+    let elapsed = 0;
+    const dependencies = { ...createDependencies(), monotonicNow: () => elapsed };
+    vi.mocked(dependencies.mediaGarbageCollection.run).mockImplementation(async () => {
+      elapsed = 25_000;
+      return { processed: 10, hasMore: true };
+    });
+    vi.mocked(dependencies.mediaGarbageCollection.inspectBacklog).mockResolvedValue({
+      ...emptyBacklog, pendingCount: 2, oldestPendingAt: "2026-08-01T00:00:00.000Z",
+    });
+    await expect(new ScheduledJobCoordinator(dependencies).run("media-gc")).resolves.toMatchObject({
+      processed: 10, batches: 1, hasMore: true,
     });
     expect(dependencies.mediaGarbageCollection.run).toHaveBeenCalledOnce();
     expect(dependencies.leases.renew).not.toHaveBeenCalled();
+  });
+
+  it.each(["batch failure", "lease lost"])("retains completed-batch evidence and releases the lease on %s", async (failure) => {
+    const dependencies = createDependencies();
+    vi.mocked(dependencies.mediaGarbageCollection.run)
+      .mockResolvedValueOnce({ processed: 10, hasMore: true })
+      .mockRejectedValueOnce(new Error("R2 unavailable"));
+    if (failure === "lease lost") vi.mocked(dependencies.leases.renew).mockResolvedValue(false);
+    const [outcome] = await new ScheduledJobCoordinator(dependencies).runMany(["media-gc"]);
+    expect(outcome).toMatchObject({ status: "failed", backlog: { status: "unknown", reason: "job-failed" } });
+    expect(dependencies.statuses.recordOutcome).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: expect.objectContaining({ status: "failed", error: expect.stringContaining("10 item(s) in 1 completed batch(es)") }),
+    }));
+    expect(dependencies.mediaGarbageCollection.run).toHaveBeenCalledTimes(failure === "lease lost" ? 1 : 2);
+    expect(dependencies.leases.release).toHaveBeenCalledOnce();
+  });
+
+  it("reports a post-commit broadcast warning without discarding completed work", async () => {
+    const dependencies = createDependencies();
+    const warning = "Database changes committed; live refresh failed: upstream unavailable";
+    vi.mocked(dependencies.announcementPublish.run).mockResolvedValue({ processed: 50, hasMore: true, warning });
+    await expect(new ScheduledJobCoordinator(dependencies).run("announcement-publish")).resolves.toMatchObject({
+      status: "completed", processed: 50, batches: 1, hasMore: true, warning,
+    });
+    expect(dependencies.statuses.recordOutcome).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: expect.objectContaining({ status: "completed", processed: 50, warning }),
+    }));
   });
 
   it("leaves scheduled publication backlog for the next invocation", async () => {

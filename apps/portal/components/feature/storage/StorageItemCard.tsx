@@ -171,6 +171,7 @@ export function StorageItemCard({
               <Button
                 size="icon-lg"
                 variant="ghost"
+                className="storage-item-card__edit"
                 onClick={() => onEdit(item)}
                 aria-label={t("action.edit")}
               >

@@ -11,6 +11,26 @@ afterEach(() => {
 });
 
 describe("VpsScheduledJobScheduler", () => {
+  it("logs committed work with a broadcast warning at warning severity", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T00:14:59.000Z"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const outcome: ScheduledJobOutcome = {
+      name: "announcement-publish", status: "completed", processed: 50, hasMore: false, batches: 1,
+      backlog: { status: "known", pendingCount: 0, countPrecision: "exact", oldestPendingAt: null },
+      warning: "Database changes committed; live refresh failed: push unavailable",
+    };
+    const scheduler = new VpsScheduledJobScheduler({ runSchedule: vi.fn().mockResolvedValue([outcome]) });
+    try {
+      scheduler.start();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(warn).toHaveBeenCalledWith("VPS scheduled job completed with warning", { schedule: "quarter-hourly", ...outcome });
+    } finally {
+      await scheduler.stop();
+      warn.mockRestore();
+    }
+  });
+
   it("aligns staggered work to its next boundary and waits for active work during stop", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-09T00:00:01.000Z"));

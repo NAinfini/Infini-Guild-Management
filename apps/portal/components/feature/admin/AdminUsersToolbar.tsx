@@ -9,7 +9,7 @@ import {
 } from "@portal/components/shared/ContentFilterToolbar";
 import { useTranslation } from "react-i18next";
 
-export type MemberStatusFilter = "all" | "active" | "inactive";
+import type { MemberStatusFilter } from "../../../types/admin";
 
 type AdminUsersToolbarProps = {
   memberSearch: string;

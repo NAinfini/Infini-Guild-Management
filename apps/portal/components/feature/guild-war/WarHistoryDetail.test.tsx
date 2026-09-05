@@ -5,14 +5,16 @@ import {
   dataTableFeatures,
   type DataTableColumnDef,
 } from "@portal/components/shared/data-table-features";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useMemo } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { HistoryDetailData, HistoryMemberStat } from "@portal/types/guild-war";
+import type { HistoryDetailData, HistoryMemberStat, HistoryViewMode } from "@portal/types/guild-war";
+import { usePreferencesStore } from "@portal/stores/preferences";
 import { WarHistoryDetail } from "./WarHistoryDetail";
 
 const AVATAR_MEDIA_ID = "avatar1234567890abcde";
+const { chartProps } = vi.hoisted(() => ({ chartProps: vi.fn() }));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -21,7 +23,10 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("echarts-for-react/esm/core", () => ({
-  default: () => <div data-testid="history-chart" />,
+  default: (props: Record<string, unknown>) => {
+    chartProps(props);
+    return <div data-testid="history-chart" />;
+  },
 }));
 
 function setMobileViewport(matches: boolean) {
@@ -29,7 +34,7 @@ function setMobileViewport(matches: boolean) {
     configurable: true,
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
-      matches,
+      matches: query === "(max-width: 767px)" && matches,
       media: query,
       onchange: null,
       addListener: vi.fn(),
@@ -45,12 +50,14 @@ type HistoryDetailHarnessProps = {
   onBackToList: () => void;
   onExport?: (format: "csv" | "json") => void;
   canManage?: boolean;
+  historyViewMode?: HistoryViewMode;
 };
 
 function HistoryDetailHarness({
   onBackToList,
   onExport = vi.fn(),
   canManage = false,
+  historyViewMode = "table",
 }: HistoryDetailHarnessProps) {
   const memberRows = useMemo<HistoryMemberStat[]>(() => [{
     id: "member-stat-1",
@@ -128,7 +135,7 @@ function HistoryDetailHarness({
       historyDetailError={false}
       loadErrorMessage="Load error"
       historyMvp={null}
-      historyViewMode="table"
+      historyViewMode={historyViewMode}
       historyChartMetric="damage"
       detailTable={detailTable}
       canManage={canManage}
@@ -159,12 +166,28 @@ function HistoryDetailHarness({
 
 describe("WarHistoryDetail", () => {
   beforeEach(() => {
+    localStorage.clear();
+    usePreferencesStore.getState().resetPreferences();
+    chartProps.mockClear();
     setMobileViewport(false);
     vi.spyOn(HTMLImageElement.prototype, "complete", "get").mockReturnValue(true);
     vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(20);
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  it("disables initial and updated chart animations when reduced motion is requested", () => {
+    usePreferencesStore.getState().setMotionPreference("reduce");
+    render(<HistoryDetailHarness onBackToList={vi.fn()} historyViewMode="chart" />);
+    const initialOption = chartProps.mock.lastCall?.[0].option;
+    expect(initialOption.animation).toBe(false);
+
+    act(() => usePreferencesStore.getState().setMotionPreference("system"));
+    expect(chartProps.mock.lastCall?.[0].option).toEqual({ ...initialOption, animation: true });
+
+    act(() => usePreferencesStore.getState().setMotionPreference("reduce"));
+    expect(chartProps.mock.lastCall?.[0].option).toEqual(initialOption);
+  });
 
   it("renders history detail inline instead of in a dialog and provides a list return action", async () => {
     const onBackToList = vi.fn();

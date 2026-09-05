@@ -4,11 +4,14 @@ import {
   assertSqlBatch,
   assertSqlStatement,
   decodeSqlRow,
-  firstSqlToken,
   normalizeSqlParams,
+  prepareSqlReadBatch,
+  prepareSqlReadStatement,
   type SqlBatchStatement,
   type SqlExecutor,
   type SqlMethod,
+  type SqlReadBatchStatement,
+  type SqlReadStatement,
   type SqlResult,
   type SqlStatement,
   type SqlValue,
@@ -19,7 +22,7 @@ import { preparePrivateSqliteDatabase } from "./private-filesystem.js";
  * node:sqlite 是同步 API：在主线程上执行会把整个事件循环卡住，HTTP、WebSocket
  * 和定时任务全部陪跑。这里把 SQLite 全部移出主线程：一条写通道（worker 内天然
  * 串行，BEGIN IMMEDIATE 批次不可能交错）加 N 条只读通道（WAL 允许读写并行，
- * readOnly 打开保证词法路由判错也写不进去）。主线程只做校验、路由、解码——
+ * readOnly 打开进一步保证读通道不能写入）。主线程只做校验、路由、解码——
  * 全部走 kernel 的单一实现。
  *
  * worker 源码是一段自包含 CJS 字符串（eval worker）：tsx 开发态和 esbuild
@@ -92,8 +95,8 @@ function runStatement(statement) {
   return { rows: prepared.all(...statement.params) };
 }
 
-function runBatch(statements) {
-  database.exec('BEGIN IMMEDIATE');
+function runBatch(statements, readOnly) {
+  database.exec(readOnly ? 'BEGIN DEFERRED' : 'BEGIN IMMEDIATE');
   try {
     const outcomes = statements.map(runStatement);
     database.exec('COMMIT');
@@ -119,8 +122,8 @@ parentPort.on('message', function (message) {
     return;
   }
   try {
-    const outcome = message.kind === 'batch'
-      ? runBatch(message.statements)
+    const outcome = message.kind === 'batch' || message.kind === 'readBatch'
+      ? runBatch(message.statements, message.kind === 'readBatch')
       : runStatement(message.statement);
     parentPort.postMessage({ kind: 'result', id: message.id, outcome });
   } catch (error) {
@@ -158,7 +161,7 @@ type WireSqlStatement = Readonly<{
 
 type SqlWorkerJob =
   | Readonly<{ kind: "execute"; statement: WireSqlStatement }>
-  | Readonly<{ kind: "batch"; statements: readonly WireSqlStatement[] }>;
+  | Readonly<{ kind: "batch" | "readBatch"; statements: readonly WireSqlStatement[] }>;
 
 type SerializedWorkerError = Readonly<{
   name: string;
@@ -271,13 +274,13 @@ class SqlWorkerLane {
   }
 
   async run(payload: SqlWorkerJob): Promise<unknown> {
-    await this.ready;
-    if (this.closing) throw new Error(CLOSED_MESSAGE);
-    if (this.failure) throw this.failure;
-    const worker = this.worker;
-    if (!worker) throw new Error(CLOSED_MESSAGE);
     this.inFlight += 1;
     try {
+      await this.ready;
+      if (this.closing) throw new Error(CLOSED_MESSAGE);
+      if (this.failure) throw this.failure;
+      const worker = this.worker;
+      if (!worker) throw new Error(CLOSED_MESSAGE);
       return await new Promise((resolve, reject) => {
         const id = this.nextJobId;
         this.nextJobId += 1;
@@ -362,10 +365,25 @@ export class NodeSqlExecutor implements SqlExecutor {
     );
   }
 
+  async read(statement: SqlReadStatement): Promise<SqlResult> {
+    const prepared = prepareSqlReadStatement(statement);
+    const outcome = await this.dispatch(this.leastBusyReader(), { kind: "execute", statement: wireStatement(prepared) });
+    return decodeOutcome(statement.method, outcome);
+  }
+
+  async readBatch(statements: readonly SqlReadBatchStatement[]): Promise<readonly SqlResult[]> {
+    const prepared = prepareSqlReadBatch(statements);
+    if (prepared.length === 0) return [];
+    const outcomes = await this.dispatch(this.leastBusyReader(), {
+      kind: "readBatch",
+      statements: prepared.map(wireStatement),
+    }) as readonly unknown[];
+    return outcomes.map((outcome, index) => decodeOutcome(statements[index]!.method, outcome));
+  }
+
   async execute(statement: SqlStatement): Promise<SqlResult> {
     assertSqlStatement(statement);
-    const lane = firstSqlToken(statement.sql) === "SELECT" ? this.leastBusyReader() : this.writer;
-    const outcome = await this.dispatch(lane, { kind: "execute", statement: wireStatement(statement) });
+    const outcome = await this.dispatch(this.writer, { kind: "execute", statement: wireStatement(statement) });
     return decodeOutcome(statement.method, outcome);
   }
 

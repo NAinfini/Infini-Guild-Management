@@ -3,14 +3,21 @@ import {
   importantNoticeAudienceRolesResponseSchema,
   importantNoticeSchema,
   inboxNotificationListResponseSchema,
+  inboxNotificationUnreadCountResponseSchema,
   notificationPreferencesSchema,
   type InboxNotificationListResponse,
+  type InboxNotificationUnreadCountResponse,
   type ImportantNoticeActive,
   type ImportantNoticeAudienceRole,
   type ImportantNotice,
   type NotificationPreferences,
 } from "@guild/shared";
 import { apiRequest } from "../client";
+
+export function fetchInboxUnreadCount(): Promise<InboxNotificationUnreadCountResponse> {
+  return apiRequest<unknown>("/api/notifications/unread-count")
+    .then((response) => inboxNotificationUnreadCountResponseSchema.parse(response));
+}
 
 export function fetchInboxNotifications(params: {
   limit?: number;

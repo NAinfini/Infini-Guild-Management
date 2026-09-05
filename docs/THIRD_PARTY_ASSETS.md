@@ -1,16 +1,14 @@
-# Third-party asset credits / 第三方素材归属
+# Third-party asset credits
 
-## Class glyphs / 职业图标
+[Documentation home](../README.md) · [中文版本](./THIRD_PARTY_ASSETS.zh.md)
+
+## Class glyphs
 
 The built-in class glyphs in `apps/portal/components/shared/ClassGlyphIcon.tsx` are adapted from [Game Icons](https://game-icons.net/) and its [official SVG repository](https://github.com/game-icons/icons). They are licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
 
-内置职业图标改编自 [Game Icons](https://game-icons.net/) 及其[官方 SVG 仓库](https://github.com/game-icons/icons)，按照 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) 使用。
-
 Attribution: Icons made by Delapouite and Lorc. Available on https://game-icons.net.
 
-Adaptations: the source black background paths were removed; the foreground paths are embedded as local React SVG data, rendered with `currentColor`, and scaled for the portal's class markers. No remote asset is loaded at runtime.
-
-改动说明：移除源文件的黑色背景路径，将前景路径作为本地 React SVG 数据嵌入，并使用 `currentColor` 与门户职业标记尺寸渲染；运行时不会加载远程素材。
+Adaptations: the source black background paths were removed; the foreground paths are embedded as local React SVG data, rendered with `currentColor`, and scaled for the Portal's class markers. No remote asset is loaded at runtime.
 
 | Author | Portal icon IDs | Upstream SVG names |
 | --- | --- | --- |
@@ -18,3 +16,7 @@ Adaptations: the source black background paths were removed; the foreground path
 | [Lorc](https://game-icons.net/about.html#authors) | `sword`, `swords`, `dagger`, `scythe`, `target-arrow`, `snowflake`, `chalice`, `rings` | `sword-array`, `crossed-swords`, `broad-dagger`, `reaper-scythe`, `target-arrows`, `snowflake-1`, `jeweled-chalice`, `linked-rings` |
 
 The authoritative upstream attribution and contributor license list remains the Game Icons [license file](https://github.com/game-icons/icons/blob/master/license.txt).
+
+## README diagrams
+
+The English and Chinese diagrams in `docs/diagrams/` are generated with Archify 2.16 from the project-owned JSON specifications beside each SVG. They adapt to light and dark themes without external resources. The exported renderer styles retain the [Archify MIT license notice](./diagrams/LICENSE), credited to tt-a1i and Cocoon AI.

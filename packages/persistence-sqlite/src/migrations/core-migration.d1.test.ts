@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 import { describe, expect, it } from "vitest";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlStatement } from "@guild/kernel";
+import { prepareSqlReadBatch, prepareSqlReadStatement, type SqlBatchStatement, type SqlExecutor, type SqlResult, type SqlStatement } from "@guild/kernel";
 import { SqliteGalleryStore } from "../stores/gallery-store.js";
 import { SqliteWikiStore } from "../stores/wiki-store.js";
 import {
@@ -105,6 +105,18 @@ async function applyD1Migration(
 class StatementCaptureExecutor implements SqlExecutor {
   readonly executed: SqlStatement[] = [];
   readonly batches: SqlBatchStatement[][] = [];
+
+  async read(statement: Parameters<SqlExecutor["read"]>[0]): Promise<SqlResult> {
+    this.executed.push(prepareSqlReadStatement(statement));
+    return { rows: statement.method === "get" ? undefined : [] };
+  }
+
+  async readBatch(statements: Parameters<SqlExecutor["readBatch"]>[0]): Promise<readonly SqlResult[]> {
+    this.batches.push([...prepareSqlReadBatch(statements)]);
+    return statements.map((statement) => ({
+      rows: statement.method === "get" && statement.columns[0] === "total" ? [0] : [],
+    }));
+  }
 
   async execute(statement: SqlStatement): Promise<SqlResult> {
     this.executed.push(statement);

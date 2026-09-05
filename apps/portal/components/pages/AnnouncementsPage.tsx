@@ -2,7 +2,6 @@ import { ArrowLeftIcon, SpeakerphoneIcon } from "@portal/components/icons";
 import { ContentPreviewCard } from "@portal/components/shared/ContentPreviewCard";
 import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
-import { Card } from "@portal/components/ui/card";
 import { isApiRequestError } from "@portal/services/AnnouncementService";
 import { useTranslation } from "react-i18next";
 import { usePageHeaderActions } from "../../context/PageHeaderContext";
@@ -186,16 +185,14 @@ export function AnnouncementsPage() {
     >
       <div className="announcements-page__workspace">
         {showPinnedSection ? (
-          <Card className="content-pinned-section" role="region" aria-labelledby="announcement-pinned-title">
+          <section className="content-pinned-section" aria-labelledby="announcement-pinned-title">
             <header className="content-pinned-section__header">
-              <p>{t("pinned.eyebrow")}</p>
               <h2 id="announcement-pinned-title">{t("pinned.title")}</h2>
             </header>
             <div className="content-pinned-grid" data-count={controller.pinnedRows.length}>
               {controller.pinnedRows.map((item) => (
                 <ContentPreviewCard
                   key={item.id}
-                  compact
                   domain="announcements"
                   title={item.title}
                   excerpt={item.excerpt}
@@ -211,13 +208,12 @@ export function AnnouncementsPage() {
                 />
               ))}
             </div>
-          </Card>
+          </section>
         ) : null}
 
         <div className="content-catalog-layout">
-          <Card className="content-category-rail">
-            <p className="content-category-rail__eyebrow">{t("categoryRail.eyebrow")}</p>
-            <h2 className="content-category-rail__title">{t("categoryRail.title")}</h2>
+          <nav className="content-category-rail" aria-labelledby="announcement-category-rail-title">
+            <h2 id="announcement-category-rail-title" className="content-category-rail__title">{t("categoryRail.title")}</h2>
             <div className="content-category-rail__options">
               <button
                 type="button"
@@ -240,7 +236,7 @@ export function AnnouncementsPage() {
                 </button>
               ))}
             </div>
-          </Card>
+          </nav>
 
           <AnnouncementListCard
             title={t("list.title")}

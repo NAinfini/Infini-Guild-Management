@@ -1,6 +1,7 @@
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
 import type { MemberView } from "@guild/server/modules/members";
 import { memberProfileRevisionEtag, type MemberAbsence } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { createHttpErrorHandler } from "../../core/error-handler.js";
@@ -46,6 +47,9 @@ function buildApp() {
   const service = {
     list: vi.fn().mockResolvedValue({ data: [view], total: 1, page: 1, limit: 20, totalPages: 1 }),
     stats: vi.fn().mockResolvedValue({ active_members: 1, total_members: 1 }),
+    directory: vi.fn().mockResolvedValue({ data: [{ user: { id: "user-1", display_name: "Member" }, profile: { classes: [], power: 12, avatar_media_id: null } }], next_cursor: null }),
+    planning: vi.fn().mockResolvedValue({ data: [] }),
+    availabilitySummary: vi.fn().mockResolvedValue({ hourly_counts: Array.from({ length: 7 }, () => Array(24).fill(0)), member_count: 0 }),
     detail: vi.fn().mockResolvedValue(view),
     updateProfile: vi.fn().mockResolvedValue({ profile, revisionToken: "profile-v2" }),
     listAbsenceWindow: vi.fn().mockResolvedValue({ data: [absence] }),
@@ -77,6 +81,38 @@ function buildApp() {
 }
 
 describe("users Portal HTTP contract", () => {
+  it.each([21, LIMITS.content.classCatalogSize.max])("accepts a roster OR filter containing %i catalog classes", async (count) => {
+    const { app, service } = buildApp();
+    const classIds = Array.from({ length: count }, (_, index) => `class-${index}`);
+    const response = await app.request(`/api/users?${new URLSearchParams({ classes: JSON.stringify(classIds) })}`);
+    expect(response.status).toBe(200);
+    expect(service.list).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ classIds }));
+  });
+
+  it("rejects a roster class filter larger than the full catalog before storage access", async () => {
+    const { app, service } = buildApp();
+    const classIds = Array.from({ length: LIMITS.content.classCatalogSize.max + 1 }, (_, index) => `class-${index}`);
+    const response = await app.request(`/api/users?${new URLSearchParams({ classes: JSON.stringify(classIds) })}`);
+    expect(response.status).toBe(400);
+    expect(service.list).not.toHaveBeenCalled();
+  });
+
+  it("parses bounded selectors before the detail route and preserves requested list filters", async () => {
+    const { app, service } = buildApp();
+    const query = new URLSearchParams({ ids: JSON.stringify(["user-1"]), external_view: "true" });
+    expect((await app.request(`/api/users/directory?${query}`)).status).toBe(200);
+    expect(service.directory).toHaveBeenCalledWith(expect.anything(), { ids: ["user-1"], externalView: true, limit: 50 });
+    expect(service.detail).not.toHaveBeenCalled();
+    expect((await app.request(`/api/users/planning?${query}`)).status).toBe(200);
+    expect((await app.request("/api/users/availability-summary")).status).toBe(200);
+    expect((await app.request(`/api/users/directory?${new URLSearchParams({ ids: JSON.stringify(Array.from({ length: 101 }, (_, index) => `u-${index}`)) })}`)).status).toBe(400);
+    expect((await app.request("/api/users/directory?limit=51")).status).toBe(400);
+    expect((await app.request("/api/users/directory?cursor=invalid")).status).toBe(400);
+    expect((await app.request(`/api/users/directory?${query}&search=member`)).status).toBe(400);
+    const filters = new URLSearchParams({ classes: JSON.stringify(["class-1", "class-2"]), sort: "class", direction: "desc", search_scope: "management" });
+    expect((await app.request(`/api/users?${filters}`)).status).toBe(200);
+    expect(service.list).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ classIds: ["class-1", "class-2"], sort: "class", direction: "desc", searchScope: "management" }));
+  });
   it("rejects pathological offset pages before querying storage", async () => {
     const { app, service } = buildApp();
 

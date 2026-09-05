@@ -1,6 +1,5 @@
-import type { GuildWarActiveResponse, MemberAvailability } from "@guild/shared";
+import type { GuildWarActiveResponse, MemberAvailability, MemberPlanningEntry } from "@guild/shared";
 import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
-import type { UsersListResponse } from "../../services/UserService";
 
 export type DragMemberItem = {
   itemId: string;
@@ -59,7 +58,7 @@ type TeamDraftState = {
 
 type UseGuildWarDragDataParams = {
   activeData: GuildWarActiveResponse | undefined;
-  usersData: UsersListResponse["data"] | undefined;
+  usersData: MemberPlanningEntry[] | undefined;
   poolLabel: string;
   draft: TeamDraftState;
 };

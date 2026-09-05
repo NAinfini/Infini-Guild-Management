@@ -4,9 +4,13 @@ import {
   assertSqlStatement,
   decodeSqlRow,
   normalizeSqlParams,
+  prepareSqlReadBatch,
+  prepareSqlReadStatement,
   type SqlExecutor,
   type SqlBatchStatement,
   type SqlMethod,
+  type SqlReadBatchStatement,
+  type SqlReadStatement,
   type SqlResult,
   type SqlRow,
   type SqlRows,
@@ -55,7 +59,24 @@ function fromD1Result(statement: SqlStatement, result: D1Result<unknown>): SqlRe
 export class D1SqlExecutor implements SqlExecutor {
   constructor(private readonly database: D1Database) {}
 
+  async read(statement: SqlReadStatement): Promise<SqlResult> {
+    return this.executePrepared(prepareSqlReadStatement(statement));
+  }
+
+  async readBatch(statements: readonly SqlReadBatchStatement[]): Promise<readonly SqlResult[]> {
+    return this.executeBatch(prepareSqlReadBatch(statements));
+  }
+
   async execute(statement: SqlStatement): Promise<SqlResult> {
+    return this.executePrepared(statement);
+  }
+
+  async batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
+    assertSqlBatch(statements);
+    return this.executeBatch(statements);
+  }
+
+  private async executePrepared(statement: SqlStatement): Promise<SqlResult> {
     const prepared = preparedStatement(this.database, statement);
     if (statement.method === "run") {
       return fromD1Result(statement, await prepared.run<unknown>());
@@ -69,9 +90,8 @@ export class D1SqlExecutor implements SqlExecutor {
     };
   }
 
-  async batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
+  private async executeBatch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
     if (statements.length === 0) return [];
-    assertSqlBatch(statements);
     const prepared = statements.map((statement) => preparedStatement(this.database, statement));
     const results = await this.database.batch<unknown>(prepared);
     if (results.length !== statements.length) {

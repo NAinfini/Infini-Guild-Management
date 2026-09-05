@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   fetchEventDetailBatch: vi.fn(),
   useEventsData: vi.fn(),
+  useMemberDirectory: vi.fn(),
+  useMemberAvailabilitySummary: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -28,6 +30,11 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("./data/useEventsData", () => ({
   useEventsData: mocks.useEventsData,
+}));
+
+vi.mock("./data/useMemberDirectory", () => ({
+  useMemberDirectory: mocks.useMemberDirectory,
+  useMemberAvailabilitySummary: mocks.useMemberAvailabilitySummary,
 }));
 
 vi.mock("../services/EventService", () => ({
@@ -78,6 +85,8 @@ describe("useEventsFiltering list-only data", () => {
     mocks.navigate.mockReset();
     mocks.fetchEventDetailBatch.mockReset();
     mocks.useEventsData.mockReset();
+    mocks.useMemberDirectory.mockReset();
+    mocks.useMemberAvailabilitySummary.mockReset();
     mocks.routeSearch = {
       search: "Archived War Event #2",
       view: "cards",
@@ -100,18 +109,15 @@ describe("useEventsFiltering list-only data", () => {
       eventsHasMore: false,
       eventsLoadingMore: false,
       onLoadMoreEvents: vi.fn(),
-      usersQuery: {
-        isError: false,
-        data: {
-          data: [
-            {
-              user: { id: "member-1", display_name: "Member One" },
-              profile: { classes: [], power: 0, avatar_media_id: null },
-            },
-          ],
-        },
-      },
     });
+    mocks.useMemberDirectory.mockReturnValue({
+      entries: [{
+        user: { id: "member-1", display_name: "Member One" },
+        profile: { classes: [], power: 0, avatar_media_id: null },
+      }],
+      isError: false,
+    });
+    mocks.useMemberAvailabilitySummary.mockReturnValue({ data: undefined, isError: false });
   });
 
   it("uses batch preview data for the current list without owning a detail route", async () => {
@@ -121,15 +127,6 @@ describe("useEventsFiltering list-only data", () => {
       eventsHasMore: false,
       eventsLoadingMore: false,
       onLoadMoreEvents: vi.fn(),
-      usersQuery: {
-        isError: false,
-        data: {
-          data: [{
-            user: { id: "member-1", display_name: "Member One" },
-            profile: { classes: [], power: 0, avatar_media_id: null },
-          }],
-        },
-      },
     });
     const { result } = renderHook(
       () => useEventsFiltering({ currentUserId: "member-1" }),
@@ -145,6 +142,10 @@ describe("useEventsFiltering list-only data", () => {
     await waitFor(() => {
       expect(result.current.eventMembersMap.get("archived-event-2")?.[0]?.user.id).toBe("member-1");
     });
+    expect(mocks.useMemberDirectory).toHaveBeenLastCalledWith(expect.objectContaining({
+      enabled: false,
+      selectedIds: ["member-1"],
+    }));
   });
 
   it("requests the public member projection for an anonymous visitor", () => {
@@ -153,8 +154,9 @@ describe("useEventsFiltering list-only data", () => {
       { wrapper: createWrapper() },
     );
 
-    expect(mocks.useEventsData).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.useMemberDirectory).toHaveBeenCalledWith(expect.objectContaining({
       publicMemberProjection: true,
     }));
+    expect(mocks.useMemberAvailabilitySummary).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
   });
 });

@@ -314,8 +314,11 @@ test("拖拽调人：从池子拖进队伍，再拖到回收区移出这场战",
 
   // 拖到回收区是「退出这场战」，比换队重，所以要过确认框；取消不该动数据。
   await dragCardTo(page, memberCard(teamColumns(page), member.display_name), page.locator(".guild-war-trash-zone"));
-  await (await confirmDialog(page, "Remove from War"))
-    .getByRole("button", { name: "Cancel", exact: true }).click();
+  const cancelRemoval = (await confirmDialog(page, "Remove from War"))
+    .getByRole("button", { name: "Cancel", exact: true });
+  // 从落点移到弹窗按钮再点击；瞬移点击仍可能被 dnd-kit 的防误点监听拦下。
+  await moveToCenterOf(page, cancelRemoval, 12);
+  await cancelRemoval.click();
   expect((await readBoard(api)).teams[0]!.members, "取消后人必须还在队里").toHaveLength(1);
   /* 确认框退场比 role="dialog" 卸载晚：遮罩还在的时候按下鼠标，
      按下的是遮罩，拖拽根本不会启动，表现成「拖了没反应」。 */
@@ -323,8 +326,10 @@ test("拖拽调人：从池子拖进队伍，再拖到回收区移出这场战",
 
   await flow.act(async () => {
     await dragCardTo(page, memberCard(teamColumns(page), member.display_name), page.locator(".guild-war-trash-zone"));
-    await (await confirmDialog(page, "Remove from War"))
-      .getByRole("button", { name: "Remove", exact: true }).click();
+    const confirmRemoval = (await confirmDialog(page, "Remove from War"))
+      .getByRole("button", { name: "Remove", exact: true });
+    await moveToCenterOf(page, confirmRemoval, 12);
+    await confirmRemoval.click();
   }, MOVE_MEMBER);
 
   board = await readBoard(api);

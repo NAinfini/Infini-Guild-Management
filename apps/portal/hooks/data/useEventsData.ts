@@ -1,7 +1,6 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { fetchEventsList } from "../../services/EventService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import type { EventStatusFilter } from "../../utils/event-navigation";
 import { viewerIdentity } from "../../session-storage";
 import { useAuthStore } from "../../stores/auth";
@@ -14,13 +13,6 @@ type UseEventsDataOptions = {
   searchQuery: string;
   pinnedOnly: boolean;
   lockedOnly: boolean;
-  publicMemberProjection: boolean;
-};
-
-type UseEventMemberDirectoryOptions = {
-  currentUserId?: string;
-  publicMemberProjection: boolean;
-  enabled?: boolean;
 };
 
 function toArchivedParam(status: EventStatusFilter): boolean | undefined {
@@ -29,26 +21,8 @@ function toArchivedParam(status: EventStatusFilter): boolean | undefined {
   return undefined;
 }
 
-export function useEventMemberDirectory({
-  currentUserId,
-  publicMemberProjection,
-  enabled = true,
-}: UseEventMemberDirectoryOptions) {
-  const viewerKey = viewerIdentity(currentUserId);
-
-  return useQuery({
-    queryKey: queryKeys.users.directory(
-      viewerKey,
-      publicMemberProjection ? "public" : "internal",
-    ),
-    queryFn: () => fetchAllUsersListWithOptions({ externalView: publicMemberProjection }),
-    enabled,
-    staleTime: 10 * 60_000,
-  });
-}
-
 export function useEventsData(options: UseEventsDataOptions) {
-  const { eventType, status, searchQuery, pinnedOnly, lockedOnly, publicMemberProjection } = options;
+  const { eventType, status, searchQuery, pinnedOnly, lockedOnly } = options;
   const normalizedSearch = searchQuery.trim();
   const currentUserId = useAuthStore((state) => state.user?.id);
   const viewerKey = viewerIdentity(currentUserId);
@@ -88,17 +62,11 @@ export function useEventsData(options: UseEventsDataOptions) {
   const accumulatedEvents =
     eventsQuery.data?.pages.flatMap((page) => page.data) ?? [];
 
-  const usersQuery = useEventMemberDirectory({
-    currentUserId,
-    publicMemberProjection,
-  });
-
   return {
     eventsQuery,
     eventsQueryData: accumulatedEvents,
     eventsHasMore: eventsQuery.hasNextPage ?? false,
     eventsLoadingMore: eventsQuery.isFetchingNextPage,
     onLoadMoreEvents: () => eventsQuery.fetchNextPage(),
-    usersQuery,
   };
 }

@@ -1,7 +1,7 @@
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
 import { Card, CardContent } from "@portal/components/ui/card";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import type { ImageGridEditorItem } from "@portal/types/media";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -142,7 +142,7 @@ export function RecurringTemplateEditorPage({ mode }: RecurringTemplateEditorPag
   }, [confirm, controller, t]);
 
   if (controller.loading) {
-    return <PageLayout className="events-page recurring-template-editor-page"><div className="event-route-loading"><Skeleton className="h-9" /><Skeleton className="h-105" /></div></PageLayout>;
+    return <PageLayout className="events-page recurring-template-editor-page"><LoadingIndicator /></PageLayout>;
   }
   if (controller.error) {
     return (

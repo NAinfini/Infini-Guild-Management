@@ -17,22 +17,29 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-.app-shell__scene {
-  position: fixed;
+.app-workspace-scene.visual-theme-scene {
+  position: absolute;
+  grid-column: 2;
+  grid-row: 2;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
 }
 
-.app-shell__scene::after {
+.app-shell-root[data-compact-navigation] .app-workspace-scene {
+  grid-column: 1;
+  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+}
+
+.app-workspace-scene::after {
   content: "";
   position: absolute;
   inset: 0;
   background: color-mix(in srgb, var(--surface-base) 18%, transparent);
 }
 
-[data-theme="light"] .app-shell__scene::after {
-  background: color-mix(in srgb, var(--surface-base) 14%, transparent);
+.app-workspace-scene[data-visual-color-mode="dark"]::after {
+  background: color-mix(in srgb, var(--surface-base) 6%, transparent);
 }
 
 .app-skip-link {
@@ -57,8 +64,8 @@
 .app-login-content,
 .app-login-panel {
   width: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100%;
+  min-height: 0;
 }
 
 .app-public-layout {
@@ -83,50 +90,7 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border-subtle);
-  /*
-   * The permanent rail keeps one route-neutral scene over the sunken surface.
-   * Its upper field is deliberately quiet for navigation; the scenic emphasis
-   * sits at the bottom, where the graduated semantic scrim can reveal it without
-   * weakening label or focus contrast above.
-   */
   background: var(--surface-sunken);
-}
-
-.app-sider__scene {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center bottom;
-  pointer-events: none;
-  user-select: none;
-}
-
-.app-sider::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background: linear-gradient(
-    160deg,
-    color-mix(in srgb, var(--surface-sunken) 82%, transparent) 0%,
-    color-mix(in srgb, var(--surface-sunken) 66%, transparent) 62%,
-    color-mix(in srgb, var(--surface-sunken) 48%, transparent) 100%
-  );
-  pointer-events: none;
-}
-
-.app-sider > .app-brand,
-.app-sider > .app-sider-menu,
-.app-sider > .app-viewing-as {
-  position: relative;
-  z-index: 2;
-}
-
-.app-sider--collapsed .app-sider__scene {
-  display: none;
 }
 
 .app-brand {
@@ -464,30 +428,11 @@
   gap: var(--space-md);
   isolation: isolate;
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-overlay);
+  background: var(--surface-base);
 }
 
 .app-shell-root[data-compact-navigation] .app-header {
   grid-column: 1;
-}
-
-.app-header--with-scene {
-  border-bottom-color: transparent;
-  background: transparent;
-}
-
-.app-header--with-scene::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: var(--surface-overlay);
-  opacity: 0.22;
-}
-
-[data-theme="light"] .app-header--with-scene::before {
-  opacity: 0.12;
 }
 
 /*
@@ -707,15 +652,11 @@
   overflow-x: clip;
   overflow-y: hidden;
   box-sizing: border-box;
-  background: var(--surface-base);
+  background: transparent;
 }
 
 .app-shell-root[data-compact-navigation] .app-content {
   grid-column: 1;
-}
-
-.app-content.app-content.app-content--with-scene {
-  background: transparent;
 }
 
 .app-main {
@@ -1047,7 +988,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .app-shell-root *,
   .app-shell-root *::before,
   .app-shell-root *::after {

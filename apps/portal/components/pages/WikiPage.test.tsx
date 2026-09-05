@@ -1,4 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { ConfirmDialogHost } from "@portal/components/shared/ConfirmDialogHost";
 import type { ReactNode } from "react";
 import { ApiRequestError } from "../../api/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -184,10 +186,6 @@ vi.mock("../../hooks/useWikiPageController", () => ({
   useWikiPageController: () => controller,
 }));
 
-vi.mock("../../hooks/useConfirmDialog", () => ({
-  useConfirmDialog: () => vi.fn().mockResolvedValue(true),
-}));
-
 vi.mock("../../hooks/useLoadWarningToast", () => ({
   useLoadWarningToast: vi.fn(),
 }));
@@ -294,7 +292,13 @@ vi.mock("react-i18next", () => ({
 }));
 
 function renderPage() {
-  return render(<WikiPage />);
+  return render(<><WikiPage /><ConfirmDialogHost /></>);
+}
+
+async function openArticleMenu(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "common:action.more" }));
+  // jsdom 没有布局，Floating UI 可能隐藏已打开的浮层；仍使用真实菜单交互。
+  return within(await screen.findByRole("menu", { hidden: true }));
 }
 
 describe("WikiPage", () => {
@@ -316,6 +320,8 @@ describe("WikiPage", () => {
     controller.isEditorPaneVisible = false;
     controller.editorTab = "article";
     controller.articleEditor.isCreatingArticle = false;
+    controller.articleEditor.isArchiving = false;
+    controller.articleEditor.isDeleting = false;
     controller.articlesQuery = { isError: false, isLoading: false, isFetching: false, refetch: vi.fn() };
     controller.detailQuery = { isError: false, isLoading: false, isFetching: false, error: null, refetch: vi.fn() };
     controller.articles = defaultArticles.map((article) => ({ ...article }));
@@ -338,29 +344,28 @@ describe("WikiPage", () => {
     expect(screen.getByTestId("page-toolbar")).toContainElement(screen.getByTestId("wiki-filters"));
     expect(screen.getAllByTestId("pinned-wiki")).toHaveLength(3);
     expect(screen.getByTestId("wiki-list")).toBeInTheDocument();
-    expect(document.querySelector(".content-pinned-section")).toHaveAttribute("data-slot", "card");
+    expect(screen.getByRole("region", { name: "pinned.title" })).toBeInTheDocument();
 
-    const rail = document.querySelector<HTMLElement>(".content-category-rail");
-    expect(rail).not.toBeNull();
+    const rail = screen.getByRole("navigation");
     expect(within(rail as HTMLElement).getByRole("button", { name: "filter.allCategories" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(within(rail as HTMLElement).getByRole("button", { name: "Guides" }));
     expect(controller.setSelectedCategoryId).toHaveBeenCalledWith("guides");
   });
 
-  it("sizes the pinned grid from its item count and hides it when empty", () => {
+  it("renders every pinned item and hides the section when empty", () => {
     const pinnedArticles = [...controller.pinnedArticles];
 
     for (const count of [1, 2, 3]) {
       controller.pinnedArticles = pinnedArticles.slice(0, count);
-      const { container, unmount } = renderPage();
+      const { unmount } = renderPage();
 
-      expect(container.querySelector(".content-pinned-grid")).toHaveAttribute("data-count", String(count));
+      expect(screen.getAllByTestId("pinned-wiki")).toHaveLength(count);
       unmount();
     }
 
     controller.pinnedArticles = [];
-    const { container } = renderPage();
-    expect(container.querySelector(".content-pinned-section")).not.toBeInTheDocument();
+    renderPage();
+    expect(screen.queryByRole("region", { name: "pinned.title" })).not.toBeInTheDocument();
     controller.pinnedArticles = pinnedArticles;
   });
 
@@ -431,30 +436,27 @@ describe("WikiPage", () => {
     expect(screen.getByRole("radio", { name: "filter.sort.curated" })).toBeInTheDocument();
   });
 
-  it("renders an independent reader page and returns to the catalog", async () => {
+  it.each([null, "preview-media"])("reads an article with preview %s and returns to the catalog", async (previewMediaId) => {
     controller.selectedSlug = "raid-guide";
     controller.selectedCategory = { id: "guides", name: "Guides", slug: "guides", sort_order: 0 };
     controller.selectedArticle = {
       ...controller.articles[0]!,
-      preview_media_id: "preview-media",
+      preview_media_id: previewMediaId,
       view_count: 12,
       pinned: true,
     };
     renderPage();
 
-    expect(screen.getByRole("heading", { level: 2, name: "Raid guide" })).toHaveClass("wiki-detail-title");
+    expect(screen.getByRole("heading", { level: 2, name: "Raid guide" })).toBeInTheDocument();
+    expect(screen.getByText("Guide Author")).toBeInTheDocument();
     expect(screen.queryByTestId("wiki-list")).not.toBeInTheDocument();
     expect(screen.queryByTestId("wiki-filters")).not.toBeInTheDocument();
     expect(await screen.findByTestId("wiki-reader-content")).toBeInTheDocument();
-    expect(document.querySelector(".wiki-detail-author-avatar")).toBeInTheDocument();
     expect(screen.getByText("articleEditor.pinned")).toBeInTheDocument();
     expect(screen.getByText("meta.lastEditor")).toBeInTheDocument();
     expect(screen.getByText("meta.updatedLabel")).toBeInTheDocument();
     expect(screen.getByText("meta.viewsLabel")).toBeInTheDocument();
     expect(document.querySelector(".content-detail-header data")).toHaveAttribute("value", "12");
-    expect(document.querySelector(".wiki-detail-reader")).toContainElement(
-      screen.getByRole("button", { name: "backToList" }),
-    );
 
     fireEvent.click(screen.getByRole("button", { name: "backToList" }));
     expect(controller.handleBackToList).toHaveBeenCalledOnce();
@@ -473,35 +475,6 @@ describe("WikiPage", () => {
 
     expect(screen.getByText("meta.editorFallback")).toBeInTheDocument();
     expect(screen.queryByText("private-")).not.toBeInTheDocument();
-  });
-
-  it("does not reserve an empty hero when an article has no preview image", async () => {
-    controller.selectedSlug = "raid-guide";
-    controller.selectedCategory = { id: "guides", name: "Guides", slug: "guides", sort_order: 0 };
-    controller.selectedArticle = {
-      ...controller.articles[0]!,
-      preview_media_id: null,
-    };
-
-    const { container } = renderPage();
-
-    expect(container.querySelector(".wiki-detail-cover")).not.toBeInTheDocument();
-    expect(await screen.findByTestId("wiki-reader-content")).toBeInTheDocument();
-  });
-
-  it("keeps article metadata without repeating the preview image beside the title", () => {
-    controller.selectedSlug = "raid-guide";
-    controller.selectedCategory = { id: "guides", name: "Guides", slug: "guides", sort_order: 0 };
-    controller.selectedArticle = {
-      ...controller.articles[0]!,
-      preview_media_id: "preview-media",
-    };
-    const { container } = renderPage();
-    expect(container.querySelector(".wiki-detail-hero")).not.toBeInTheDocument();
-    expect(container.querySelector(".wiki-detail-cover")).not.toBeInTheDocument();
-    expect(container.querySelector(".content-detail-header__cover")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: "Raid guide" })).toBeInTheDocument();
-    expect(screen.getByText("Guide Author")).toBeInTheDocument();
   });
 
   it("uses the detail route for new articles and for the category editor", async () => {
@@ -587,7 +560,8 @@ describe("WikiPage", () => {
     expect(refetch).toHaveBeenCalledOnce();
   });
 
-  it("shows only the dedicated archive action to an archive-only role", async () => {
+  it("shows only archive in the menu for an archive-only role and waits for confirmation", async () => {
+    const user = userEvent.setup();
     controller.selectedSlug = "raid-guide";
     controller.selectedArticle = controller.articles[0]!;
     controller.canCreateArticle = false;
@@ -598,13 +572,19 @@ describe("WikiPage", () => {
     renderPage();
 
     expect(screen.queryByRole("button", { name: "editor.editWiki" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "history.button" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "common:action.delete" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "articleEditor.archive" }));
+    const menu = await openArticleMenu(user);
+    expect(menu.getAllByRole("menuitem", { hidden: true })).toHaveLength(1);
+    expect(menu.queryByRole("menuitem", { name: "history.button", hidden: true })).not.toBeInTheDocument();
+    expect(menu.queryByRole("menuitem", { name: "common:action.delete", hidden: true })).not.toBeInTheDocument();
+    await user.click(menu.getByRole("menuitem", { name: "articleEditor.archive", hidden: true }));
+    const dialog = await screen.findByRole("alertdialog", { name: "confirm.archiveArticle.title" });
+    expect(controller.articleEditor.archiveArticle).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "articleEditor.archive" }));
     await waitFor(() => expect(controller.articleEditor.archiveArticle).toHaveBeenCalledOnce());
   });
 
-  it("shows only the dedicated delete action to a delete-only role", async () => {
+  it("shows only delete in the menu for a delete-only role and waits for confirmation", async () => {
+    const user = userEvent.setup();
     controller.selectedSlug = "raid-guide";
     controller.selectedArticle = controller.articles[0]!;
     controller.canCreateArticle = false;
@@ -615,8 +595,94 @@ describe("WikiPage", () => {
     renderPage();
 
     expect(screen.queryByRole("button", { name: "editor.editWiki" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "articleEditor.archive" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "common:action.delete" }));
+    const menu = await openArticleMenu(user);
+    expect(menu.getAllByRole("menuitem", { hidden: true })).toHaveLength(1);
+    expect(menu.queryByRole("menuitem", { name: "history.button", hidden: true })).not.toBeInTheDocument();
+    expect(menu.queryByRole("menuitem", { name: "articleEditor.archive", hidden: true })).not.toBeInTheDocument();
+    const deleteItem = menu.getByRole("menuitem", { name: "common:action.delete", hidden: true });
+    expect(deleteItem).toHaveAttribute("data-variant", "destructive");
+    await user.click(deleteItem);
+    const dialog = await screen.findByRole("alertdialog", { name: "confirm.deleteArticle.title" });
+    expect(controller.articleEditor.deleteArticle).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "common:action.delete" }));
     await waitFor(() => expect(controller.articleEditor.deleteArticle).toHaveBeenCalledOnce());
+  });
+
+  it("keeps edit as the primary button and exposes only history to an edit-only role", async () => {
+    const user = userEvent.setup();
+    controller.selectedSlug = "raid-guide";
+    controller.selectedArticle = controller.articles[0]!;
+    controller.canArchiveArticle = false;
+    controller.canDeleteArticle = false;
+
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "editor.editWiki" }));
+    expect(controller.handleOpenArticleEditor).toHaveBeenCalledOnce();
+    const menu = await openArticleMenu(user);
+    expect(menu.getAllByRole("menuitem", { hidden: true })).toHaveLength(1);
+    await user.click(menu.getByRole("menuitem", { name: "history.button", hidden: true }));
+    expect(controller.openHistory).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [false, null],
+    [true, "2026-01-03T00:00:00.000Z"],
+  ] as const)("omits an empty menu with archive permission %s and archived date %s", (canArchive, archivedAt) => {
+    controller.selectedSlug = "raid-guide";
+    controller.selectedArticle = { ...controller.articles[0]!, archived_at: archivedAt };
+    controller.canEditArticle = false;
+    controller.canArchiveArticle = canArchive;
+    controller.canDeleteArticle = false;
+
+    renderPage();
+
+    expect(screen.queryByRole("button", { name: "common:action.more" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "editor.editWiki" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["isArchiving", "articleEditor.archive"],
+    ["isDeleting", "common:action.delete"],
+  ] as const)("disables the pending %s menu action", async (pendingState, actionLabel) => {
+    const user = userEvent.setup();
+    controller.selectedSlug = "raid-guide";
+    controller.selectedArticle = controller.articles[0]!;
+    controller.articleEditor[pendingState] = true;
+
+    renderPage();
+
+    const menu = await openArticleMenu(user);
+    const item = menu.getByRole("menuitem", { name: actionLabel, hidden: true });
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(item);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(controller.articleEditor.archiveArticle).not.toHaveBeenCalled();
+    expect(controller.articleEditor.deleteArticle).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["articleEditor.archive", "confirm.archiveArticle.title"],
+    ["common:action.delete", "confirm.deleteArticle.title"],
+  ] as const)("cancels %s without mutating and returns focus to the menu trigger", async (actionLabel, dialogTitle) => {
+    const user = userEvent.setup();
+    controller.selectedSlug = "raid-guide";
+    controller.selectedArticle = controller.articles[0]!;
+
+    renderPage();
+
+    const trigger = screen.getByRole("button", { name: "common:action.more" });
+    const menu = await openArticleMenu(user);
+    await user.click(menu.getByRole("menuitem", { name: actionLabel, hidden: true }));
+    const dialog = await screen.findByRole("alertdialog", { name: dialogTitle });
+    const cancel = within(dialog).getByRole("button", { name: "common:action.cancel" });
+    expect(cancel).toHaveFocus();
+    await user.click(cancel);
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(controller.articleEditor.archiveArticle).not.toHaveBeenCalled();
+    expect(controller.articleEditor.deleteArticle).not.toHaveBeenCalled();
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 });

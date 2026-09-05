@@ -60,13 +60,6 @@ function renderMediaTab(
 const audioGroup = () => within(screen.getByRole("group", { name: "media.group.audio" }));
 
 describe("ProfileMediaTab", () => {
-  it("keeps the music upload action on the 44px touch target", () => {
-    renderMediaTab();
-
-    expect(audioGroup().getByRole("button", { name: "media.selectAudio" }))
-      .toHaveClass("profile-media__icon-button");
-  });
-
   it("uploads the picked music file straight away, with no second button to press", () => {
     const onUploadAudio = vi.fn();
     renderMediaTab(onUploadAudio);
@@ -87,12 +80,9 @@ describe("ProfileMediaTab", () => {
     expect(screen.getByText("media.group.audio")).toBeInTheDocument();
     expect(screen.getByTestId("image-grid-editor")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "media.videos" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "media.group.images" }))
-      .toHaveClass("profile-media__group");
-    expect(screen.getByRole("group", { name: "media.group.videos" }))
-      .toHaveClass("profile-media__group");
-    expect(screen.getByRole("group", { name: "media.group.audio" }))
-      .toHaveClass("profile-media__group");
+    expect(screen.getByRole("group", { name: "media.group.images" })).toBeVisible();
+    expect(screen.getByRole("group", { name: "media.group.videos" })).toBeVisible();
+    expect(audioGroup().getByRole("button", { name: "media.selectAudio" })).toBeEnabled();
   });
 
   it("names the chosen song, and says so plainly when there is none", () => {

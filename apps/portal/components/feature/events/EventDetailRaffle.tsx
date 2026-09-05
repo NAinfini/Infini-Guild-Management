@@ -1,15 +1,15 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { MemberDirectoryEntry } from "@guild/shared";
 import { Button } from "@portal/components/ui/button";
 import { GiftIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useTranslation } from "react-i18next";
 import { EventMemberIdentity } from "./EventMemberIdentity";
+import type { EventDetailResponse } from "@portal/services/EventService";
 
-type MemberEntry = { user: User; profile: MemberProfile };
+type MemberEntry = MemberDirectoryEntry;
 
 type EventDetailRaffleProps = {
-  event: Event;
-  members: MemberEntry[];
+  event: EventDetailResponse;
   allUsers: MemberEntry[];
   canManage: boolean;
   onDrawRaffle?: (eventId: string) => void;
@@ -19,7 +19,6 @@ type EventDetailRaffleProps = {
 /* 详情弹窗右栏的抽奖区：开奖前报名池，开奖后中奖名单。 */
 export function EventDetailRaffle({
   event,
-  members,
   allUsers,
   canManage,
   onDrawRaffle,
@@ -29,6 +28,7 @@ export function EventDetailRaffle({
   const confirm = useConfirmDialog();
   const winners = event.raffle_winners ?? [];
   const hasDrawn = winners.length > 0;
+  const participantCount = event.participants.length;
 
   const handleDraw = async () => {
     if (!onDrawRaffle) {
@@ -36,7 +36,7 @@ export function EventDetailRaffle({
     }
     const confirmed = await confirm({
       title: t("raffle.confirm.draw.title"),
-      description: <p>{t("raffle.confirm.draw.description", { count: event.winner_count ?? 0, pool: members.length })}</p>,
+      description: <p>{t("raffle.confirm.draw.description", { count: event.winner_count ?? 0, pool: participantCount })}</p>,
       confirmLabel: t("raffle.detail.drawNow"),
       cancelLabel: t("button.cancel"),
       intent: "warning",
@@ -55,7 +55,7 @@ export function EventDetailRaffle({
         </div>
         {hasDrawn ? (
           <strong className="event-detail-content__raffle-status">{t("raffle.status.drawn")}</strong>
-        ) : canManage && onDrawRaffle && members.length > 0 ? (
+        ) : canManage && onDrawRaffle && participantCount > 0 ? (
           <Button
             variant="secondary"
             size="xs"
@@ -93,7 +93,7 @@ export function EventDetailRaffle({
       ) : (
         <div className="event-detail-content__raffle-stack">
           <p className="event-detail-content__raffle-copy">{t("raffle.detail.winnerCount", { count: event.winner_count ?? 0 })}</p>
-          <p className="event-detail-content__raffle-copy">{t("raffle.detail.pool", { count: members.length })}</p>
+          <p className="event-detail-content__raffle-copy">{t("raffle.detail.pool", { count: participantCount })}</p>
           {!canManage ? <p className="event-detail-content__raffle-copy">{t("raffle.detail.pendingDraw")}</p> : null}
         </div>
       )}

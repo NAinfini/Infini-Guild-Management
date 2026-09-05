@@ -31,18 +31,9 @@
 
 .announcements-catalog__header {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-md);
-}
-
-.announcements-catalog__eyebrow {
-  margin: 0 0 var(--space-xs);
-  color: var(--domain-ink);
-  font-size: var(--text-micro);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
 }
 
 .announcements-catalog__title {
@@ -54,10 +45,10 @@
 
 .announcements-preview-list {
   display: grid;
-  gap: var(--space-md);
+  gap: 0;
 }
 
-.announcements-preview-skeleton { min-height: 9rem; }
+.announcements-preview-list > .content-preview-card:last-child { border-bottom: 0; }
 
 .announcements-detail-navigation {
   display: flex;
@@ -162,30 +153,10 @@
   scrollbar-gutter: stable;
 }
 
-.announcements-list,
-.announcements-list-skeletons {
+.announcements-list {
   display: grid;
   gap: var(--space-sm);
   min-width: 0;
-}
-
-.announcements-list-skeleton {
-  display: grid;
-  gap: var(--space-sm);
-  min-height: var(--control-hit-area);
-  padding: var(--space-md);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-}
-
-.announcements-list-skeleton__title {
-  width: 70%;
-  height: var(--space-md);
-}
-
-.announcements-list-skeleton__meta {
-  width: 40%;
-  height: var(--space-sm);
 }
 
 .announcements-list-row {
@@ -450,29 +421,6 @@
   white-space: nowrap;
 }
 
-.announcement-editor-skeleton {
-  display: grid;
-  gap: var(--space-md);
-  min-height: 12.5rem;
-  padding: var(--space-lg);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-}
-
-.announcement-editor-skeleton__line {
-  width: 100%;
-  height: var(--space-md);
-}
-
-.announcement-editor-skeleton__line--heading {
-  width: 56%;
-  height: var(--space-lg);
-}
-
-.announcement-editor-skeleton__line--short {
-  width: 72%;
-}
-
 .announcement-editor-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(13.75rem, 15rem);
@@ -659,7 +607,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .announcements-page__loading > span {
     animation: none;
   }
@@ -667,7 +615,6 @@
 
 @media (max-width: 61.99em) {
   .announcements-page__workspace {
-    display: block;
     min-block-size: auto;
   }
 

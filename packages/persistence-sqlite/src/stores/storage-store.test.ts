@@ -62,6 +62,14 @@ class RejectSnapshotExecutor implements SqlExecutor {
     private readonly rejects: (statement: SqlBatchStatement) => boolean,
   ) {}
 
+  read(statement: Parameters<SqlExecutor["read"]>[0]): Promise<SqlResult> {
+    return this.delegate.read(statement);
+  }
+
+  readBatch(statements: Parameters<SqlExecutor["readBatch"]>[0]): Promise<readonly SqlResult[]> {
+    return this.delegate.readBatch(statements);
+  }
+
   async execute(statement: SqlStatement): Promise<SqlResult> {
     return this.delegate.execute(statement);
   }
@@ -166,6 +174,20 @@ function insertStagedStorageImage(database: DatabaseSync, mediaId: string): void
     NOW,
   );
 }
+
+describe("storage item filters", () => {
+  it.each([
+    ["deposit", undefined, ["item-deposit", "item-open"]],
+    ["withdraw", undefined, ["item-open"]],
+    ["deposit", "DEPOSIT", ["item-deposit"]],
+    ["withdraw", "DEPOSIT", []],
+  ] as const)("filters %s items with search %s in SQLite", async (stock, search, expected) => {
+    const { store } = createHarness();
+    const result = await store.listItems({ storage_id: "storage-1", stock, search, limit: 50 });
+    expect(result.data.map(({ id }) => id)).toEqual(expected);
+    expect(result.next_cursor).toBeNull();
+  });
+});
 
 describe("storage structure bounds", () => {
   it("accepts the maximum storage and rejects max plus one without audit", async () => {

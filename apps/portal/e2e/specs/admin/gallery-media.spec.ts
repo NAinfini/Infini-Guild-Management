@@ -12,8 +12,7 @@ import { confirmDialog, dialogTitled, expectNoDialog, expectToast, field } from 
  * media_id 分别读取 /view 与 /full——任一取不回来就是半成功，
  * 这种状态在界面上和成功一模一样。
  *
- * 素材都在用例内部现造，并按 id 记进 createdIds 由 afterEach 统一清掉：
- * 删除类用例会把自己的素材删光，清理时按 404 也算清干净。
+ * 素材都在用例内部现造；系统测试 run 按真实主键登记，统一清理并核验数据库与媒体指纹。
  */
 
 const GALLERY = { method: "GET", path: /^\/api\/gallery$/ } as const;
@@ -38,20 +37,12 @@ type StoredItem = {
 };
 
 let stamp: number;
-let createdIds: string[];
 
 test.beforeEach(async ({ page }) => {
   stamp = Date.now();
-  createdIds = [];
 
   await page.goto("/gallery");
   await expect(page.locator(".gallery-filters").getByRole("button", { name: "Add Media", exact: true })).toBeVisible();
-});
-
-test.afterEach(async ({ api }) => {
-  if (createdIds.length === 0) return;
-  const response = await api.post("/api/gallery/batch-delete", { data: { ids: createdIds } });
-  expect(response.status(), "清理本用例画廊条目必须成功").toBe(200);
 });
 
 async function createVideo(api: APIRequestContext, name: string): Promise<Fixture> {
@@ -62,7 +53,6 @@ async function createVideo(api: APIRequestContext, name: string): Promise<Fixtur
     }),
     `创建视频 ${title}`,
   ) as { id: string };
-  createdIds.push(created.id);
   return { id: created.id, title };
 }
 
@@ -80,7 +70,6 @@ async function uploadImage(api: APIRequestContext, name: string): Promise<Fixtur
   ) as { data: Array<{ id: string }> };
   const id = uploaded.data[0]?.id;
   expect(id, "上传接口必须回一条图片记录").toBeTruthy();
-  createdIds.push(id as string);
   return { id: id as string, title };
 }
 
@@ -113,7 +102,7 @@ function uploadImagesButton(modal: Locator): Locator {
 async function searchThisRun(page: Page, flow: Flow, expected: number): Promise<void> {
   await flow.act(
     () => field(page, "Search gallery title, description or uploader").fill(String(stamp)),
-    GALLERY,
+    { ...GALLERY, query: { search: String(stamp) } },
   );
   await expect(items(page), `本用例造了 ${expected} 件素材，列表里就该有这么多`).toHaveCount(expected);
 }
@@ -164,7 +153,6 @@ test("添加视频：标题、说明与链接落到服务端，弹窗关闭且�
   await field(modal, "Gallery video description").fill(description);
 
   const created = await flow.click(submit, CREATE_VIDEO) as StoredItem;
-  createdIds.push(created.id);
   expect(created.type).toBe("video");
   expect(created.url, "链接要原样存下来，转 embed 是渲染时的事").toBe(url);
   expect(created.title).toBe(title);
@@ -222,7 +210,6 @@ test("图片上传：标题和说明随图提交，库里有行、R2 里也要�
   const uploaded = await flow.click(uploadButton, UPLOAD_IMAGES) as { data: StoredItem[] };
   expect(uploaded.data, "上传接口必须回一条记录").toHaveLength(1);
   const item = uploaded.data[0] as StoredItem;
-  createdIds.push(item.id);
   expect(item.title, "队列里填的标题要跟着这张图一起提交").toBe(title);
   expect(item.description, "队列里填的说明要跟着这张图一起提交").toBe(description);
   expect(item.media_id, "图片条目必须关联统一媒体 id").toMatch(/^[A-Za-z0-9_-]{21}$/);

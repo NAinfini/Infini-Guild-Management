@@ -89,19 +89,55 @@ html:not([data-input-modality="pointer"]) :focus-visible {
 /* Router and bootstrap fallback screens. */
 /* main.tsx establishes theme variables and dismisses the splash before this renders. */
 .main-bootstrap-error {
-  min-height: 100vh;
+  height: 100%;
+  overflow: auto;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--status-danger) 6%, var(--surface-base));
-  color: var(--status-danger);
-  padding: 24px;
+  background: var(--splash-bg) var(--splash-scene) center / cover no-repeat;
+  color: var(--text-primary);
+  padding: var(--space-xl);
   font-family: var(--font-body);
   text-align: center;
 }
 
+.main-bootstrap-error > div {
+  max-inline-size: 32rem;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background: var(--surface-base);
+  box-shadow: var(--shadow-lg);
+}
+
+@media (max-width: 767px) {
+  .main-bootstrap-error { background-image: var(--splash-mobile-scene); }
+}
+
+.main-bootstrap-error h1 {
+  margin: 0;
+  font-size: var(--text-h1);
+  font-weight: var(--fw-strong);
+}
+
 /* Body copy uses the neutral foreground to meet text contrast requirements. */
 .main-bootstrap-error p {
+  margin: var(--space-sm) 0 var(--space-xl);
   color: var(--text-primary);
+}
+
+.main-bootstrap-error button {
+  min-height: max(var(--control-hit-area), var(--control-height-regular));
+  padding: var(--space-xs) var(--space-lg);
+  border-radius: var(--radius-control);
+  background: var(--brand-fill);
+  color: var(--brand-on-fill);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+
+.main-bootstrap-error button:hover {
+  background: var(--brand-fill-hover);
+  color: var(--brand-on-fill-hover);
 }
 
 /* ── EmptyState ── */

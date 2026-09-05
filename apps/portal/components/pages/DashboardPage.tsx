@@ -1,7 +1,7 @@
 import type { Event } from "@guild/shared";
 import { Button } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -29,7 +29,6 @@ import {
   roundDashboardNow,
   summarizeDashboardAttention,
 } from "../dashboard/dashboard-page-data";
-import { DashboardPanelSkeleton } from "../dashboard/DashboardPagePanels";
 import {
   type DashboardLastWarMvp,
   type DashboardUpcomingEventRow,
@@ -134,10 +133,6 @@ export function DashboardPage() {
     );
   }, [dashboardEvents, mySignupEventIds, now, upcomingEvents]);
 
-  const attentionSummary = useMemo(
-    () => summarizeDashboardAttention([...featuredEventRows, ...upcomingEventRows]),
-    [featuredEventRows, upcomingEventRows],
-  );
   const attentionRows = useMemo(
     () => orderDashboardUpcomingRows([...featuredEventRows, ...upcomingEventRows])
       .filter((row) => getDashboardAttentionKinds(row).length > 0),
@@ -154,54 +149,20 @@ export function DashboardPage() {
         label: t("pulse.events"),
         value: eventsQuery.data.active_events_count,
       });
-      if (!isExternalView) {
+      if (user && !isExternalView) {
         items.push({ id: "signups", label: t("pulse.signups"), value: mySignupEvents.length });
       }
       items.push({ id: "attention", label: t("pulse.attention"), value: attentionCount });
-      items.push(
-        {
-          id: "starting-soon",
-          label: t("attention.startsSoon.title"),
-          value: attentionSummary.startsSoon,
-        },
-        {
-          id: "conflicts",
-          label: t("attention.conflicts.title"),
-          value: attentionSummary.conflicts,
-        },
-        {
-          id: "at-capacity",
-          label: t("attention.full.title"),
-          value: attentionSummary.full,
-        },
-        {
-          id: "role-gaps",
-          label: t("attention.quotaShortfalls.title"),
-          value: attentionSummary.quotaShortfalls,
-        },
-      );
     }
-    if (guildWarEnabled && warsQuery.data) {
-      items.push({ id: "wars", label: t("pulse.wars"), value: recentWars.length });
-    }
-    if (announcementsEnabled && latestAnnouncement) {
-      items.push({ id: "bulletin", label: t("pulse.bulletin"), value: latestAnnouncement.title });
-    }
-
     return items;
   }, [
-    announcementsEnabled,
     attentionCount,
-    attentionSummary,
     eventsEnabled,
     eventsQuery.data,
-    guildWarEnabled,
     isExternalView,
-    latestAnnouncement,
     mySignupEvents.length,
-    recentWars.length,
     t,
-    warsQuery.data,
+    user,
   ]);
 
   const openAllEvents = useCallback(
@@ -235,8 +196,8 @@ export function DashboardPage() {
     t("common:loadErrorRetry"),
   );
 
-  const mySignupsCard = eventsEnabled && !isExternalView ? (
-    eventsQuery.isLoading ? <DashboardPanelSkeleton variant="signups" /> : (
+  const mySignupsCard = eventsEnabled && user && !isExternalView ? (
+    eventsQuery.isLoading ? <LoadingIndicator /> : (
       <MySignupsCard
         mySignupEvents={mySignupEvents}
         now={now}
@@ -247,7 +208,7 @@ export function DashboardPage() {
   ) : null;
 
   const upcomingEventsCard = eventsEnabled ? (
-    eventsQuery.isLoading ? <DashboardPanelSkeleton variant="events" /> : (
+    eventsQuery.isLoading ? <LoadingIndicator /> : (
       <UpcomingEventsCard
         upcomingEventsCount={eventsQuery.data?.active_events_count ?? 0}
         featuredRows={featuredEventRows}
@@ -259,7 +220,7 @@ export function DashboardPage() {
   ) : null;
 
   const lastWarCard = guildWarEnabled ? (
-    warsQuery.isLoading ? <DashboardPanelSkeleton variant="war" /> : (
+    warsQuery.isLoading ? <LoadingIndicator /> : (
       <LastWarCard
         recentWars={recentWars}
         warMvps={recentWarMvps}
@@ -309,10 +270,7 @@ export function DashboardPage() {
           }}
         >
           {announcementsQuery.isLoading ? (
-            <span className="dashboard-bulletin-card__loading" aria-busy="true">
-              <Skeleton className="dashboard-bulletin-card__title-skeleton" />
-              <Skeleton className="dashboard-bulletin-card__meta-skeleton" />
-            </span>
+            <LoadingIndicator />
           ) : (
             <>
               <strong className="dashboard-bulletin-card__title">{latestAnnouncement?.title ?? t("command.bulletin.empty")}</strong>
@@ -327,8 +285,8 @@ export function DashboardPage() {
     </Card>
   ) : null;
 
-  const hasWorkspaceAside = Boolean(latestAnnouncementCard || eventsEnabled || lastWarCard);
-  const hasWorkspaceMain = Boolean(mySignupsCard || upcomingEventsCard);
+  const hasWorkspaceAside = Boolean(eventsEnabled || latestAnnouncementCard || lastWarCard);
+  const hasWorkspaceMain = Boolean(eventsEnabled || mySignupsCard || upcomingEventsCard);
 
   return (
     <PageLayout className="dashboard-page">
@@ -361,7 +319,6 @@ export function DashboardPage() {
             ) : null}
             {hasWorkspaceAside ? (
               <div className="dashboard-workspace__aside">
-                {latestAnnouncementCard ? <div className="dashboard-workspace__announcement">{latestAnnouncementCard}</div> : null}
                 {eventsEnabled ? (
                   <div className="dashboard-workspace__attention">
                     <DashboardAttentionCard
@@ -370,6 +327,7 @@ export function DashboardPage() {
                     />
                   </div>
                 ) : null}
+                {latestAnnouncementCard ? <div className="dashboard-workspace__announcement">{latestAnnouncementCard}</div> : null}
                 {lastWarCard ? <div className="dashboard-workspace__war">{lastWarCard}</div> : null}
               </div>
             ) : null}
@@ -385,34 +343,20 @@ function DashboardGuildPulse({ items }: { items: readonly DashboardPulseItem[] }
 
   if (items.length === 0) return null;
 
-  const renderGroup = (duplicate: boolean) => (
-    <ul
-      className="dashboard-pulse__group"
-      aria-hidden={duplicate || undefined}
-      data-duplicate={duplicate || undefined}
-    >
-      {items.map((item) => (
-        <li key={`${duplicate ? "duplicate-" : ""}${item.id}`} className="dashboard-pulse__item">
-          <span>{item.label}</span>
-          <strong>{item.value}</strong>
-        </li>
-      ))}
-    </ul>
-  );
-
   return (
     <Card
       className="dashboard-pulse gap-0 py-0"
       role="region"
       aria-label={t("pulse.ariaLabel")}
-      data-moving={items.length > 1 || undefined}
     >
-      <div className="dashboard-pulse__viewport">
-        <div className="dashboard-pulse__track">
-          {renderGroup(false)}
-          {items.length > 1 ? renderGroup(true) : null}
-        </div>
-      </div>
+      <ul className="dashboard-pulse__list">
+        {items.map((item) => (
+          <li key={item.id} className="dashboard-pulse__item">
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

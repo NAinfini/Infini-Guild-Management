@@ -1,5 +1,5 @@
 import { Card } from "@portal/components/ui/card";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { formatEventTime, formatLocaleDate } from "@portal/utils/datetime";
 import { useTranslation } from "react-i18next";
 import {
@@ -40,18 +40,15 @@ export function DashboardAttentionCard({
     <Card className="dashboard-attention gap-0 py-0">
       <div className="dashboard-attention__heading">
         <h2>{t("attention.title")}</h2>
-        {loading ? <Skeleton className="dashboard-attention__count-skeleton" /> : (
+        {!loading ? (
           <span className={items.length > 0 ? "dashboard-attention__count dashboard-attention__count--active" : "dashboard-attention__count"}>
             {t("attention.eventCount", { count: items.length })}
           </span>
-        )}
+        ) : null}
       </div>
       <div className="dashboard-attention__list">
         {loading ? (
-          <div className="dashboard-attention__skeletons">
-            <Skeleton className="dashboard-attention__row-skeleton" />
-            <Skeleton className="dashboard-attention__row-skeleton" />
-          </div>
+          <LoadingIndicator />
         ) : items.length > 0 ? items.map(({ row, kinds }) => (
           <article key={row.item.id} className="dashboard-attention__item">
             <div className="dashboard-attention__event">

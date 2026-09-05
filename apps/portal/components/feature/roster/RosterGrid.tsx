@@ -1,9 +1,9 @@
-import type { MemberProfile, User, UserBadge } from "@guild/shared";
+import type { MemberProfile, MemberSummary, UserBadge } from "@guild/shared";
 import type { FocusEvent, PointerEvent } from "react";
 import { MemberCard } from "../../shared/MemberCard";
 import { resolveMediaUrl } from "../../../utils/media";
 
-type RosterEntry = { user: User; profile: MemberProfile; badges?: UserBadge[] };
+type RosterEntry = { user: MemberSummary; profile: MemberProfile; badges?: UserBadge[] };
 
 type Props = {
   rows: RosterEntry[];

@@ -1,4 +1,6 @@
-import type { AdminRole } from "@guild/shared";
+import type { AdminRole, MemberManagementStats } from "@guild/shared";
+import type { OnChangeFn, PaginationState, SortingState } from "@tanstack/react-table";
+import type { MemberStatusFilter } from "../../../types/admin";
 import type { DataTableColumnDef } from "@portal/components/shared/data-table-features";
 import type { AdminUserPendingAction } from "../../../hooks/useAdminMutations";
 import type { UsersListResponse } from "../../../services/UserService";
@@ -34,6 +36,14 @@ export type AdminUsersSectionProps = {
   onOpenMemberDetail: (userId: string) => void;
   onSelectionChange: (keys: string[]) => void;
   roles: AdminRole[];
+  memberStats: MemberManagementStats | null;
+  totalRows: number;
+  pagination: PaginationState;
+  onPaginationChange: OnChangeFn<PaginationState>;
+  sorting: SortingState;
+  onSortingChange: OnChangeFn<SortingState>;
+  statusFilter: MemberStatusFilter;
+  onStatusFilterChange: (value: MemberStatusFilter) => void;
   memberSearch: string;
   onMemberSearchChange: (value: string) => void;
 };

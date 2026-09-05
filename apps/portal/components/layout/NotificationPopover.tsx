@@ -1,6 +1,7 @@
 import type {
   InboxNotification,
   InboxNotificationListResponse,
+  InboxNotificationUnreadCountResponse,
   ImportantNoticeActive,
   User,
 } from "@guild/shared";
@@ -15,7 +16,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type PointerEvent as ReactPointerEvent, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
@@ -32,11 +33,12 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@portal/components/ui/popover";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { queryKeys } from "../../api/query-keys";
 import {
   fetchActiveImportantNotices,
   fetchInboxNotifications,
+  fetchInboxUnreadCount,
   markInboxNotificationsRead,
   markImportantNoticesRead,
 } from "../../services/NotificationService";
@@ -67,7 +69,7 @@ function patchReadState(
   unreadReduction: number,
 ): InboxNotificationCache | undefined {
   if (!current) return current;
-  const shouldRead = (item: InboxNotification) => ids === null || ids.includes(item.id);
+  const shouldRead = (item: InboxNotification) => item.read_at === null && (ids === null || ids.includes(item.id));
   return {
     ...current,
     pages: current.pages.map((page) => ({
@@ -83,11 +85,8 @@ function countUnreadNotifications(
   ids: readonly string[] | null,
 ): number {
   if (ids === null) return 0;
-  const unreadIds = new Set<string>();
-  for (const item of flattenInboxNotifications(current)) {
-    if (item.read_at === null && ids.includes(item.id)) unreadIds.add(item.id);
-  }
-  return unreadIds.size;
+  return flattenInboxNotifications(current)
+    .filter((item) => item.read_at === null && ids.includes(item.id)).length;
 }
 
 function patchImportantNoticeReadState(
@@ -110,24 +109,36 @@ export function NotificationPopover({ user }: { user: User | null }) {
   const [opened, setOpened] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState<ImportantNoticeActive | null>(null);
   const isPhone = useMediaQuery("(max-width: 47.99em)");
-  const wasOpenedRef = useRef(false);
   const readInFlightIdsRef = useRef(new Set<string>());
   const inboxUserId = user?.id ?? "anonymous";
   const dateFnsLocale = i18n.language === "zh" ? zhCN : undefined;
   const inboxQueryKey = queryKeys.notifications.inbox(user?.id);
+  const unreadCountQueryKey = queryKeys.notifications.unreadCount(user?.id);
   const importantNoticesQueryKey = queryKeys.importantNotices.active(user?.id);
 
-  const inboxQuery = useInfiniteQuery({
-    queryKey: inboxQueryKey,
-    queryFn: ({ pageParam }) => fetchInboxNotifications({ limit: 50, cursor: pageParam ?? null }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  const unreadCountQuery = useQuery({
+    queryKey: unreadCountQueryKey,
+    queryFn: fetchInboxUnreadCount,
     enabled: Boolean(user),
     staleTime: 15_000,
     refetchInterval: () => opened && document.visibilityState === "visible" ? 30_000 : false,
     refetchIntervalInBackground: false,
   });
-  const { isStale: inboxIsStale, refetch: refetchInbox } = inboxQuery;
+  const inboxUnreadCount = unreadCountQuery.data?.unread_count ?? 0;
+  const inboxQuery = useInfiniteQuery({
+    queryKey: inboxQueryKey,
+    queryFn: async ({ pageParam, signal }) => {
+      const page = await fetchInboxNotifications({ limit: 50, cursor: pageParam ?? null });
+      if (!signal.aborted) queryClient.setQueryData(unreadCountQueryKey, { unread_count: page.unread_count });
+      return page;
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    enabled: Boolean(user) && opened,
+    staleTime: 15_000,
+    refetchInterval: () => opened && document.visibilityState === "visible" ? 30_000 : false,
+    refetchIntervalInBackground: false,
+  });
   const importantNoticesQuery = useQuery({
     queryKey: importantNoticesQueryKey,
     queryFn: fetchActiveImportantNotices,
@@ -136,7 +147,12 @@ export function NotificationPopover({ user }: { user: User | null }) {
     refetchInterval: () => opened && document.visibilityState === "visible" ? 30_000 : false,
     refetchIntervalInBackground: false,
   });
-  const { isStale: importantNoticesAreStale, refetch: refetchImportantNotices } = importantNoticesQuery;
+  const handleOpenChange = (open: boolean) => {
+    setOpened(open);
+    if (!open || !user) return;
+    if (unreadCountQuery.isStale) void unreadCountQuery.refetch();
+    if (importantNoticesQuery.isStale) void importantNoticesQuery.refetch();
+  };
 
   const invalidateInbox = useCallback(
     () => queryClient.invalidateQueries({ queryKey: queryKeys.notifications.user(inboxUserId) }),
@@ -152,13 +168,21 @@ export function NotificationPopover({ user }: { user: User | null }) {
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.notifications.user(inboxUserId) });
       const previous = queryClient.getQueryData<InboxNotificationCache>(inboxQueryKey);
+      const previousUnreadCount = queryClient.getQueryData<InboxNotificationUnreadCountResponse>(unreadCountQueryKey);
       const ids = input.all ? null : (input.ids ?? []);
       const unreadReduction = countUnreadNotifications(previous, ids);
       queryClient.setQueryData<InboxNotificationCache>(inboxQueryKey, (current) => patchReadState(current, ids, unreadReduction));
-      return { previous };
+      queryClient.setQueryData<InboxNotificationUnreadCountResponse>(unreadCountQueryKey, (current) => current && ({
+        unread_count: ids === null ? 0 : Math.max(0, current.unread_count - unreadReduction),
+      }));
+      return { previous, previousUnreadCount };
+    },
+    onSuccess: ({ unread_count }) => {
+      queryClient.setQueryData<InboxNotificationUnreadCountResponse>(unreadCountQueryKey, { unread_count });
     },
     onError: (_error, _input, context) => {
       queryClient.setQueryData(inboxQueryKey, context?.previous);
+      queryClient.setQueryData(unreadCountQueryKey, context?.previousUnreadCount);
     },
     onSettled: () => { void invalidateInbox(); },
   });
@@ -202,7 +226,7 @@ export function NotificationPopover({ user }: { user: User | null }) {
       .filter((item) => item.read_at === null)
       .map((item) => item.id);
     ids.forEach((id) => readInFlightIdsRef.current.add(id));
-    if (ids.length > 0) {
+    if (inboxUnreadCount > 0 || ids.length > 0) {
       markReadMutation.mutate({ all: true }, {
         onSettled: () => { ids.forEach((id) => readInFlightIdsRef.current.delete(id)); },
       });
@@ -216,22 +240,11 @@ export function NotificationPopover({ user }: { user: User | null }) {
         onSettled: () => { noticeIds.forEach((id) => readInFlightIdsRef.current.delete(id)); },
       });
     }
-  }, [importantNoticesQuery.data, inboxQuery.data, markImportantNoticesReadMutation, markReadMutation]);
+  }, [importantNoticesQuery.data, inboxQuery.data, inboxUnreadCount, markImportantNoticesReadMutation, markReadMutation]);
 
   const markPointerItemRead = useCallback((item: InboxNotification, event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType === "mouse") markItemRead(item);
   }, [markItemRead]);
-
-  useEffect(() => {
-    const justOpened = opened && !wasOpenedRef.current;
-    wasOpenedRef.current = opened;
-    if (justOpened && user && inboxIsStale) {
-      void refetchInbox();
-    }
-    if (justOpened && user && importantNoticesAreStale) {
-      void refetchImportantNotices();
-    }
-  }, [importantNoticesAreStale, inboxIsStale, opened, refetchImportantNotices, refetchInbox, user?.id]);
 
   const openItem = useCallback((item: InboxNotification) => {
     markItemRead(item);
@@ -256,7 +269,7 @@ export function NotificationPopover({ user }: { user: User | null }) {
   const items = flattenInboxNotifications(inboxQuery.data);
   const importantNotices = importantNoticesQuery.data ?? [];
   const importantNoticeUnreadCount = importantNotices.filter((notice) => notice.read_at === null).length;
-  const unreadCount = (inboxQuery.data?.pages[0]?.unread_count ?? 0) + importantNoticeUnreadCount;
+  const unreadCount = inboxUnreadCount + importantNoticeUnreadCount;
   const triggerLabel = unreadCount > 0 ? t("label.notificationsUnread", { count: unreadCount }) : t("label.notifications");
 
   const triggerGlyph = (
@@ -280,9 +293,7 @@ export function NotificationPopover({ user }: { user: User | null }) {
   );
 
   const noticeListBody = importantNoticesQuery.isLoading && importantNotices.length === 0 ? (
-    <div className={styles.loading} role="status" aria-label={t("message.loading")}>
-      <Skeleton className={styles.skeleton} />
-    </div>
+    <LoadingIndicator />
   ) : importantNoticesQuery.isError && importantNotices.length === 0 ? (
     <div className={styles.error} role="alert">
       <p>{t("notification.noticesLoadError")}</p>
@@ -335,10 +346,7 @@ export function NotificationPopover({ user }: { user: User | null }) {
   );
 
   const activityListBody = inboxQuery.isLoading && items.length === 0 ? (
-    <div className={styles.loading} role="status" aria-label={t("message.loading")}>
-      <Skeleton className={styles.skeleton} />
-      <Skeleton className={styles.skeleton} />
-    </div>
+    <LoadingIndicator />
   ) : inboxQuery.isError && items.length === 0 ? (
     <div className={styles.error} role="alert">
       <p>{t("notification.activityLoadError")}</p>
@@ -448,11 +456,11 @@ export function NotificationPopover({ user }: { user: User | null }) {
           aria-label={triggerLabel}
           aria-expanded={opened}
           aria-controls="notification-inbox-drawer"
-          onClick={() => setOpened((current) => !current)}
+          onClick={() => handleOpenChange(!opened)}
         >
           {triggerGlyph}
         </Button>
-        <Drawer open={opened} onOpenChange={setOpened} swipeDirection="down">
+        <Drawer open={opened} onOpenChange={handleOpenChange} swipeDirection="down">
           <DrawerContent id="notification-inbox-drawer" className={styles.drawerContent}>
             <DrawerHeader className={styles.drawerHeader}>
               <div className={styles.drawerTitleGroup}>
@@ -480,7 +488,7 @@ export function NotificationPopover({ user }: { user: User | null }) {
 
   return (
     <>
-      <Popover open={opened} onOpenChange={setOpened}>
+      <Popover open={opened} onOpenChange={handleOpenChange}>
         <PopoverTrigger
           type="button"
           className={`${styles.trigger} app-header-icon-btn`}

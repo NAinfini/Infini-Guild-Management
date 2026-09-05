@@ -48,7 +48,6 @@ const row = {
     role_name: "Member",
     role_color: null,
     role_level: 10,
-    permissions: {},
     is_active: true,
     deleted_at: null,
     created_at: "2026-07-29T00:00:00.000Z",
@@ -146,6 +145,14 @@ function renderUsers(
     onOpenMemberDetail: vi.fn(),
     onSelectionChange: vi.fn(),
     roles,
+    memberStats: { total: 1, active: 1, inactive: 0, management_access: 0, directory_total: 1 },
+    totalRows: 1,
+    pagination: { pageIndex: 0, pageSize: 20 },
+    onPaginationChange: vi.fn(),
+    sorting: [],
+    onSortingChange: vi.fn(),
+    statusFilter: "all",
+    onStatusFilterChange: vi.fn(),
     memberSearch: "",
     onMemberSearchChange: vi.fn(),
     ...overrides,
@@ -170,6 +177,37 @@ function renderUsers(
 }
 
 describe("AdminUsersSection accessibility", () => {
+  it("renders server totals independently of the visible page and assignable roles", () => {
+    const { rerenderUsers } = renderUsers({
+      userRows: [row],
+      roles: [],
+      memberStats: { total: 1000, active: 800, inactive: 200, management_access: 37, directory_total: 1000 },
+    });
+    const managementStat = () => screen.getByText("member.stat.managementAccess").parentElement!;
+    expect(within(managementStat()).getByText("37")).toBeInTheDocument();
+    expect(within(screen.getByText("member.stat.total").parentElement!).getByText("1000")).toBeInTheDocument();
+    rerenderUsers({ memberStats: { total: 1000, active: 800, inactive: 200, management_access: 36, directory_total: 1000 } });
+    expect(within(managementStat()).getByText("36")).toBeInTheDocument();
+  });
+
+  it("does not invent management counts before aggregate data arrives", () => {
+    renderUsers({ memberStats: null });
+    expect(screen.queryByText("member.stat.managementAccess")).not.toBeInTheDocument();
+  });
+  it.each([
+    { canEditUsers: false, canAssignUserRoles: true, roles },
+    { canEditUsers: true, canAssignUserRoles: false, roles },
+    { canEditUsers: true, canAssignUserRoles: true, roles: [] },
+  ])("offers creation only with both permissions and an available assignable role", async (overrides) => {
+    renderUsers(overrides);
+    expect(screen.queryByRole("button", { name: "member.create.button" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "member.action.menu" })[0]!);
+    await waitFor(() => expect(document.querySelector("[data-admin-user-action-menu]")).not.toBeNull());
+    const menu = document.querySelector("[data-admin-user-action-menu]") as HTMLElement;
+    expect(within(menu).queryByRole("menuitem", { name: "member.context.createMember", hidden: true })).not.toBeInTheDocument();
+  });
+
   it("keeps search and creation visible while account status uses the shared filter menu", async () => {
     const user = userEvent.setup();
     renderUsers();
@@ -186,38 +224,20 @@ describe("AdminUsersSection accessibility", () => {
     expect(filters.getByRole("radio", { name: "member.status.inactive" })).toBeInTheDocument();
   });
 
-  it("returns to the first page when the member search changes", async () => {
+  it("emits server pagination changes and keeps the search mounted during a page request", async () => {
     const user = userEvent.setup();
-    const userRows = Array.from({ length: 21 }, (_, index) => {
-      const number = index + 1;
-      return {
-        ...row,
-        user: {
-          ...row.user,
-          id: `user-${number}`,
-          display_name: `User ${number}`,
-        },
-        profile: {
-          ...row.profile,
-          user_id: `user-${number}`,
-        },
-      } as AdminUserRow;
-    });
-    const { rerenderUsers } = renderUsers({ userRows });
-
+    const onPaginationChange = vi.fn();
+    const { rerenderUsers } = renderUsers({ totalRows: 1000, onPaginationChange });
+    const search = screen.getByRole("textbox", { name: "member.search.aria" });
     await user.click(screen.getAllByRole("button", { name: "pagination.next" })[0]!);
-    expect(await screen.findByRole("row", { name: "member.aria.row User 21" })).toBeInTheDocument();
-
-    rerenderUsers({
-      memberSearch: "User 1",
-      userRows: [userRows[0]!],
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole("row", { name: "member.aria.row User 1" })).toBeInTheDocument();
-    });
+    expect(onPaginationChange).toHaveBeenCalled();
+    const update = onPaginationChange.mock.calls.at(-1)![0] as (state: { pageIndex: number; pageSize: number }) => { pageIndex: number; pageSize: number };
+    expect(update({ pageIndex: 0, pageSize: 20 })).toEqual({ pageIndex: 1, pageSize: 20 });
+    rerenderUsers({ usersLoading: true, totalRows: 0, userRows: [], pagination: { pageIndex: 1, pageSize: 20 } });
+    expect(screen.getByRole("textbox", { name: "member.search.aria" })).toBe(search);
+    rerenderUsers({ memberSearch: "Alice", userRows: [row], pagination: { pageIndex: 0, pageSize: 20 } });
+    expect(screen.getByRole("row", { name: "member.aria.row Alice" })).toBeInTheDocument();
   });
-
   it("uses Enabled and Disabled terminology in both admin locales", () => {
     const load = (language: "en" | "zh") => JSON.parse(readFileSync(
       resolve(process.cwd(), `apps/portal/i18n/${language}/admin.json`),
@@ -408,8 +428,9 @@ describe("AdminUsersSection accessibility", () => {
       } as AdminUserRow;
     });
 
-    renderUsers({
-      userRows,
+    const { rerenderUsers, props } = renderUsers({
+      userRows: userRows.slice(0, 20),
+      totalRows: 22,
       selectedUserIds: ["user-1", "user-2", "user-3", "user-22"],
       onBatchDelete,
     });
@@ -418,7 +439,12 @@ describe("AdminUsersSection accessibility", () => {
     await user.click(within(await screen.findByRole("dialog")).getByRole("radio", {
       name: "member.status.active",
     }));
-    await waitFor(() => {
+    expect(props.onStatusFilterChange).toHaveBeenCalledWith("active");
+    rerenderUsers({
+      userRows: userRows.filter((entry) => entry.user.is_active).slice(0, 20),
+      statusFilter: "active",
+      totalRows: 21,
+    });    await waitFor(() => {
       expect(screen.queryByRole("row", { name: "member.aria.row User 3" })).not.toBeInTheDocument();
       expect(screen.queryByRole("row", { name: "member.aria.row User 22" })).not.toBeInTheDocument();
     });

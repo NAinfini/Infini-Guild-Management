@@ -123,7 +123,6 @@
   --motion-overlay: 180ms cubic-bezier(.2, .8, .2, 1);
   --motion-panel: 240ms cubic-bezier(.2, .8, .2, 1);
   --motion-route-progress: 1.05s cubic-bezier(.2, .8, .2, 1);
-  --motion-guild-pulse: 32s linear;
   --transition-fast: var(--motion-state);
   --transition-normal: var(--motion-overlay);
   --transition-smooth: var(--motion-panel);
@@ -177,13 +176,24 @@
   }
 }
 
-/* 位移归零，颜色反馈照常。见上面 --motion-lift 的说明。 */
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --motion-lift: 0px;
-    --motion-press: 1;
-    --motion-sink: 0px;
-  }
+/* 系统偏好与本机选项在启动入口和 ThemeProvider 解析为同一动效状态。 */
+:root[data-motion="reduced"] {
+  --motion-lift: 0px;
+  --motion-press: 1;
+  --motion-sink: 0px;
+  scroll-behavior: auto;
+}
+
+/* 保留动画结束事件，让对话框等控件可以正常完成退出。 */
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0ms !important;
+  transition-delay: 0ms !important;
+  scroll-behavior: auto !important;
 }
 
 html[data-locale="zh"] {

@@ -241,7 +241,7 @@ describe("MediaService uploads", () => {
     );
   });
 
-  it("reserves and stages one batch while writing immutable objects sequentially", async () => {
+  it("reserves and stages one ordered batch with at most four immutable object writes in flight", async () => {
     const reserveUploads = vi.fn().mockResolvedValue(undefined);
     const markStaged = vi.fn().mockResolvedValue(undefined);
     const markDeleting = vi.fn().mockResolvedValue(undefined);
@@ -280,7 +280,11 @@ describe("MediaService uploads", () => {
     expect(reserveUploads.mock.calls[0]?.[0]).toHaveLength(3);
     expect(reserveUploads.mock.calls[0]?.[1]).toBe("request-media-upload");
     expect(putIfAbsent).toHaveBeenCalledTimes(6);
-    expect(maxActive).toBe(1);
+    expect(maxActive).toBe(4);
+    expect(ids).toEqual(reserveUploads.mock.calls[0]?.[0].map(({ id }: { id: string }) => id));
+    expect(putIfAbsent.mock.calls.map(([key]) => key)).toEqual(
+      reserveUploads.mock.calls[0]?.[0].flatMap(({ variants }: { variants: { objectKey: string }[] }) => variants.map(({ objectKey }) => objectKey)),
+    );
     expect(markStaged).toHaveBeenCalledOnce();
     expect(markStaged).toHaveBeenCalledWith(ids, NOW);
     expect(markDeleting).not.toHaveBeenCalled();
@@ -310,6 +314,40 @@ describe("MediaService uploads", () => {
     expect(markDeleting).toHaveBeenCalledWith(reservations.map(({ id }) => id), NOW);
   });
 
+  it("stops dispatch after a failure and waits for every started write before marking deletion", async () => {
+    const reserveUploads = vi.fn().mockResolvedValue(undefined);
+    const markStaged = vi.fn().mockResolvedValue(undefined);
+    const markDeleting = vi.fn().mockResolvedValue(undefined);
+    const completions: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
+    let fourStarted!: () => void;
+    const started = new Promise<void>((resolve) => { fourStarted = resolve; });
+    const putIfAbsent = vi.fn((key: string, input: Parameters<BlobStore["putIfAbsent"]>[1]) => new Promise<BlobMetadata>((resolve, reject) => {
+      completions.push({
+        resolve: () => resolve({ key, size: input.size, contentType: input.contentType, sha256: input.sha256, etag: input.sha256, lastModified: NOW }),
+        reject,
+      });
+      if (completions.length === 4) fourStarted();
+    }));
+    const service = new MediaService({ reserveUploads, markStaged, markDeleting } as unknown as MediaStore, { putIfAbsent } as unknown as BlobStore);
+    const operation = service.uploadImages(authenticatedContext(), "gallery_image", Array.from({ length: 3 }, () => ({ full: minimalWebP(), view: minimalWebP() })), 1024);
+    await started;
+    completions[0]!.reject(new Error("first write failed"));
+    await Promise.resolve();
+    completions[1]!.resolve();
+    await Promise.resolve();
+    expect(putIfAbsent).toHaveBeenCalledTimes(4);
+    expect(markDeleting).not.toHaveBeenCalled();
+    expect(markStaged).not.toHaveBeenCalled();
+    completions[2]!.resolve();
+    await Promise.resolve();
+    expect(markDeleting).not.toHaveBeenCalled();
+    completions[3]!.resolve();
+    await expect(operation).rejects.toMatchObject({ code: "UPSTREAM_ERROR", status: 503 });
+    expect(putIfAbsent).toHaveBeenCalledTimes(4);
+    expect(markDeleting).toHaveBeenCalledOnce();
+    expect(markStaged).not.toHaveBeenCalled();
+  });
+
   it("preserves both the upload and cleanup errors when marking reservations for deletion fails", async () => {
     const uploadError = new Error("injected write failure");
     const cleanupError = new Error("injected cleanup failure");
@@ -337,7 +375,10 @@ describe("MediaService uploads", () => {
     expect(thrown).toMatchObject({ code: "UPSTREAM_ERROR", status: 503 });
     const cause = (thrown as { cause?: unknown }).cause;
     expect(cause).toBeInstanceOf(AggregateError);
-    expect((cause as AggregateError).errors).toEqual([uploadError, cleanupError]);
+    expect((cause as AggregateError).errors[0]).toMatchObject({
+      name: "AggregateError", errors: [uploadError, uploadError],
+    });
+    expect((cause as AggregateError).errors[1]).toBe(cleanupError);
   });
 });
 
@@ -349,12 +390,12 @@ describe("MediaService garbage collection", () => {
       { mediaId: "media-3", claimToken: "claim-3", objectKeys: ["media/3"] },
     ];
     const claimGarbage = vi.fn().mockResolvedValue(claims);
-    const finalizeDeletion = vi.fn().mockResolvedValue(undefined);
+    const finalizeDeletions = vi.fn().mockResolvedValue(["media-1", "media-3"]);
     const deleteObjects = vi.fn(async (keys: readonly string[]) => {
       if (keys.includes("media/2")) throw new Error("injected object deletion failure");
     });
     const service = new MediaService(
-      { claimGarbage, finalizeDeletion } as unknown as MediaStore,
+      { claimGarbage, finalizeDeletions } as unknown as MediaStore,
       { delete: deleteObjects } as unknown as BlobStore,
     );
 
@@ -366,8 +407,26 @@ describe("MediaService garbage collection", () => {
 
     expect(claimGarbage).toHaveBeenCalledWith(NOW, 10);
     expect(deleteObjects).toHaveBeenCalledTimes(3);
-    expect(finalizeDeletion).toHaveBeenCalledTimes(2);
-    expect(finalizeDeletion.mock.calls.map(([mediaId]) => mediaId)).toEqual(["media-1", "media-3"]);
+    expect(finalizeDeletions).toHaveBeenCalledOnce();
+    expect(finalizeDeletions).toHaveBeenCalledWith([
+      { mediaId: "media-1", claimToken: "claim-1", audit: {} },
+      { mediaId: "media-3", claimToken: "claim-3", audit: {} },
+    ]);
+  });
+
+  it("reports expired claims and batch commit failures without counting uncommitted deletions", async () => {
+    const claims = [
+      { mediaId: "media-1", claimToken: "claim-1", objectKeys: ["media/1"] },
+      { mediaId: "media-2", claimToken: "claim-2", objectKeys: ["media/2"] },
+    ];
+    const finalizeDeletions = vi.fn().mockResolvedValueOnce(["media-1"]).mockRejectedValueOnce(new Error("audit rejected"));
+    const service = new MediaService({
+      claimGarbage: vi.fn().mockResolvedValue(claims), finalizeDeletions,
+    } as unknown as MediaStore, { delete: vi.fn().mockResolvedValue(undefined) } as unknown as BlobStore);
+    await expect(service.collectGarbage(anonymousContext(), NOW, () => ({} as never)))
+      .rejects.toThrow("deleted 1 item(s) and failed 1: media-2");
+    await expect(service.collectGarbage(anonymousContext(), NOW, () => ({} as never)))
+      .rejects.toThrow("deleted 0 item(s) and failed 2: media-1, media-2");
   });
 });
 

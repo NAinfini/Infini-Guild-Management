@@ -2,15 +2,6 @@
   gap: var(--space-md);
 }
 
-.audit-log-skeletons {
-  display: grid;
-  gap: var(--space-sm);
-}
-
-.audit-log-skeleton {
-  min-block-size: 4rem;
-}
-
 .audit-log-empty {
   margin: 0;
   padding-block: var(--space-2xl);
@@ -457,7 +448,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .audit-log-row__description,
   .audit-log-row__chevron {
     transition: none;

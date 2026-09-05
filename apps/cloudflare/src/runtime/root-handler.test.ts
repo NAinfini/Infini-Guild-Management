@@ -40,7 +40,7 @@ function fixture(options: Readonly<{
       permissions: [],
     })
     : createAuthorizationContext(null);
-  const execute = vi.fn(async () => {
+  const read = vi.fn(async () => {
     if (options.schema === "missing") throw new Error("no such table: app_migrations");
     return {
       rows: options.schema === "wrong"
@@ -48,7 +48,12 @@ function fixture(options: Readonly<{
         : APPLICATION_MIGRATIONS.map(({ id, ordinal, checksum }) => [id, ordinal, checksum]),
     };
   });
-  const sql = { execute, batch: vi.fn(async () => []) };
+  const sql = {
+    read,
+    readBatch: vi.fn(async () => []),
+    execute: vi.fn(async () => { throw new Error("Unexpected SQL write"); }),
+    batch: vi.fn(async () => []),
+  };
   const apiFetch = vi.fn(async (request: Request) => {
     const pathname = new URL(request.url).pathname;
     if (pathname === "/api/media/public") {
@@ -133,7 +138,7 @@ function fixture(options: Readonly<{
     assetFetch,
     compose,
     environment,
-    execute,
+    read,
     getPublic,
     handler: createCloudflareHandler(compose),
     notificationFetch,
@@ -163,7 +168,7 @@ describe("Cloudflare root handler", () => {
     const runtime = fixture();
 
     expect(runtime.compose).not.toHaveBeenCalled();
-    expect(runtime.execute).not.toHaveBeenCalled();
+    expect(runtime.read).not.toHaveBeenCalled();
     expect(runtime.assetFetch).not.toHaveBeenCalled();
   });
 
@@ -189,7 +194,7 @@ describe("Cloudflare root handler", () => {
     expect(redirect.status).toBe(308);
     expect(redirect.headers.get("Location")).toBe("https://guild.test/dashboard?tab=events");
     expect(redirected.compose).not.toHaveBeenCalled();
-    expect(redirected.execute).not.toHaveBeenCalled();
+    expect(redirected.read).not.toHaveBeenCalled();
 
     const secured = fixture();
     const response = await secured.handler.fetch(
@@ -222,7 +227,8 @@ describe("Cloudflare root handler", () => {
     expect(responses.map(({ status }) => status)).toEqual([503, 503, 200, 503, 503]);
     expect(responses[0]?.headers.get("Strict-Transport-Security")).toBe("max-age=31536000; includeSubDomains");
     const maintenancePage = await responses[0]?.text();
-    expect(maintenancePage).toContain("class=\"maintenance-scene\"");
+    expect(responses[0]?.headers.get("Content-Language")).toBe("zh-CN");
+    expect(maintenancePage).toContain('aria-labelledby="maintenance-title"');
     expect(maintenancePage).toContain("&lt;database&gt; &amp; media update");
     expect(maintenancePage).toContain("2026-08-30T12:00:00.000Z");
     await expect(responses[1]?.json()).resolves.toEqual(expect.objectContaining({
@@ -238,7 +244,7 @@ describe("Cloudflare root handler", () => {
     expect(await responses[3]?.text()).toBe("");
     expect(responses[4]?.headers.get("Retry-After")).toBe("300");
     expect(runtime.compose).not.toHaveBeenCalled();
-    expect(runtime.execute).not.toHaveBeenCalled();
+    expect(runtime.read).not.toHaveBeenCalled();
     expect(runtime.assetFetch).not.toHaveBeenCalled();
     expect(runtime.apiFetch).not.toHaveBeenCalled();
     expect(runtime.websocketLimit).not.toHaveBeenCalled();
@@ -254,7 +260,7 @@ describe("Cloudflare root handler", () => {
     );
     expect(unavailable.status).toBe(503);
     expect(invalid.compose).not.toHaveBeenCalled();
-    expect(invalid.execute).not.toHaveBeenCalled();
+    expect(invalid.read).not.toHaveBeenCalled();
 
     const disabled = fixture({ maintenanceMode: "off" });
     const available = await disabled.handler.fetch(
@@ -264,7 +270,7 @@ describe("Cloudflare root handler", () => {
     );
     expect(available.status).toBe(200);
     expect(disabled.compose).toHaveBeenCalledOnce();
-    expect(disabled.execute).toHaveBeenCalledOnce();
+    expect(disabled.read).toHaveBeenCalledOnce();
     expect(disabled.apiFetch).toHaveBeenCalledOnce();
   });
 
@@ -300,7 +306,7 @@ describe("Cloudflare root handler", () => {
     await expect(response.json()).resolves.toEqual({ source: "shared-api" });
     expect(runtime.apiFetch).toHaveBeenCalledWith(request);
     expect(runtime.compose).toHaveBeenCalledWith(runtime.environment, expect.any(Function));
-    expect(runtime.execute).toHaveBeenCalledOnce();
+    expect(runtime.read).toHaveBeenCalledOnce();
     expect(runtime.assetFetch).not.toHaveBeenCalled();
   });
 
@@ -311,7 +317,7 @@ describe("Cloudflare root handler", () => {
 
     expect(response.status).toBe(200);
     expect(runtime.apiFetch).toHaveBeenCalledWith(request);
-    expect(runtime.execute).not.toHaveBeenCalled();
+    expect(runtime.read).not.toHaveBeenCalled();
   });
 
   it("serves the branded SPA fallback through the ASSETS binding", async () => {
@@ -498,7 +504,7 @@ describe("Cloudflare root handler", () => {
     );
 
     expect(runtime.compose).not.toHaveBeenCalled();
-    expect(runtime.execute).not.toHaveBeenCalled();
+    expect(runtime.read).not.toHaveBeenCalled();
     expect(runtime.runSchedule).not.toHaveBeenCalled();
     expect(execution.pending).toHaveLength(0);
   });

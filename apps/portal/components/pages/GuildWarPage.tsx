@@ -10,7 +10,7 @@ import { buildEChartsTheme } from "../../theme/echarts";
 import { useTheme } from "../../providers/ThemeProvider";
 import { useSearch } from "@tanstack/react-router";
 import { useNavigate } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
@@ -23,12 +23,11 @@ import { useGuildWarMutations } from "../../hooks/guild-war/useGuildWarMutations
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { GuildWarService, isApiRequestError } from "../../services/GuildWarService";
-import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { queryKeys } from "../../api/query-keys";
+import { useMemberPlanning } from "../../hooks/data/useMemberDirectory";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { useGuildWarStore } from "../../stores/guildWar";
 import { useAuthStore } from "../../stores/auth";
-import { viewerIdentity } from "../../session-storage";
 import { PageLayout } from "../layout/PageLayout";
 import { PageSubnav } from "../shared/PageSubnav";
 import { useGuildWarActiveController } from "../feature/guild-war/useGuildWarActiveController";
@@ -148,7 +147,6 @@ export function GuildWarPage() {
 
   const isExternalView = useExternalView();
   const sessionUserId = useAuthStore((state) => state.user?.id);
-  const publicMemberProjection = isExternalView || !sessionUserId;
   const { canManage: canManagePermission } = useEffectivePermissions();
   const {
     canManageActive,
@@ -308,14 +306,18 @@ export function GuildWarPage() {
     showError,
   });
 
-  const usersQuery = useQuery({
-    queryKey: queryKeys.users.directory(
-      viewerIdentity(sessionUserId),
-      publicMemberProjection ? "public" : "internal",
-    ),
-    queryFn: () => fetchAllUsersListWithOptions({ externalView: publicMemberProjection }),
+  const activeMemberIds = useMemo(() => {
+    const activeData = activeQuery.data;
+    if (!activeData) return [];
+    return [...new Set([
+      ...activeData.teams.flatMap((team) => team.members.map((member) => member.user_id)),
+      ...activeData.pool.map((member) => member.userId),
+      ...(activeData.participants?.map((participant) => participant.user_id) ?? []),
+    ])];
+  }, [activeQuery.data]);
+  const memberPlanningQuery = useMemberPlanning(activeMemberIds, {
+    currentUserId: sessionUserId,
     enabled: activeTab === "active",
-    staleTime: 10 * 60_000,
   });
 
   const guildWarMutations = useGuildWarMutations({
@@ -330,7 +332,7 @@ export function GuildWarPage() {
 
   const guildWarDrag = useGuildWarDragController({
     activeData: activeQuery.data,
-    usersData: usersQuery.data?.data,
+    usersData: memberPlanningQuery.data?.data,
     canManageActive,
     canRemoveParticipants,
     selectedEventId: activeSelectedEventId,
@@ -399,7 +401,7 @@ export function GuildWarPage() {
   }, [activeQuery.data, t]);
 
   const currentTabLoadError = activeTab === "active"
-    ? warEventsQuery.isError || concludedEventIdsQuery.isError || usersQuery.isError || activeQuery.isError
+    ? warEventsQuery.isError || concludedEventIdsQuery.isError || memberPlanningQuery.isError || activeQuery.isError
     : historyQuery.isError || (activeTab === "history" && historyDetailQuery.isError && !historyDetailMissing);
   useLoadWarningToast(
     currentTabLoadError,
@@ -444,7 +446,8 @@ export function GuildWarPage() {
               sensors={sensors}
               concludeWarDisabled={concludeWarDisabled}
               concludeWarDisabledReason={concludeWarDisabledReason}
-              usersData={usersQuery.data?.data ?? []}
+              usersData={memberPlanningQuery.data?.data ?? []}
+              currentUserId={sessionUserId}
             />
           </div>
         ) : null}

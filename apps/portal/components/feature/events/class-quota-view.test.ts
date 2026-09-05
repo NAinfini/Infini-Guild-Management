@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event, MemberProfile, MemberSummary } from "@guild/shared";
 import { groupMembersByClassQuota, summariseEventClassQuotas } from "./class-quota-view";
 
-function member(id: string, classes: string[]): { user: User; profile: MemberProfile } {
+function member(id: string, classes: string[]): { user: MemberSummary; profile: MemberProfile } {
   return {
-    user: { id, display_name: id } as unknown as User,
+    user: { id, display_name: id } as unknown as MemberSummary,
     profile: { classes } as unknown as MemberProfile,
   };
 }
@@ -29,7 +29,7 @@ describe("groupMembersByClassQuota", () => {
 
   /* 走 summariseEventClassQuotas 而不是直接调算法：配额行到格子的映射本身就是这个
      文件的职责，绕过去测就漏掉了它。 */
-  function summarise(members: { user: User; profile: MemberProfile }[]) {
+  function summarise(members: { user: MemberSummary; profile: MemberProfile }[]) {
     const summary = summariseEventClassQuotas(event, members);
     if (!summary) throw new Error("fixture has quotas, so the summary must not be null");
     return summary;

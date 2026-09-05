@@ -19,7 +19,21 @@ vi.mock("@portal/components/shared/MediaGallery", () => ({
   buildMediaGalleryLabels: () => ({}),
 }));
 
-function renderContent(attachments: string[] = []) {
+function renderContent({
+  attachments = [],
+  participants = [],
+  capacity = 10,
+  memberIdentitiesUnavailable = false,
+  currentUserId,
+  onJoin,
+}: {
+  attachments?: string[];
+  participants?: Array<{ id: string; event_id: string; user_id: string; joined_at: string }>;
+  capacity?: number;
+  memberIdentitiesUnavailable?: boolean;
+  currentUserId?: string;
+  onJoin?: (eventId: string) => void;
+} = {}) {
   return render(
     <>
       <EventDetailContent
@@ -30,13 +44,17 @@ function renderContent(attachments: string[] = []) {
           start_at: "2099-03-12T16:00:00.000Z",
           end_at: "2099-03-12T18:00:00.000Z",
           description: "Bring supplies.",
-          capacity: 10,
+          capacity,
           attachments,
           class_quotas: [],
+          participants,
         } as never}
         members={[]}
         allUsers={[]}
         canManage={false}
+        currentUserId={currentUserId}
+        onJoin={onJoin}
+        memberIdentitiesUnavailable={memberIdentitiesUnavailable}
         onAddParticipant={() => {}}
         onRemoveParticipant={() => {}}
       />
@@ -53,7 +71,7 @@ describe("EventDetailContent", () => {
   });
 
   it("keeps every attachment in the gallery instead of selecting a cover item", () => {
-    renderContent(["media-a", "media-b"]);
+    renderContent({ attachments: ["media-a", "media-b"] });
 
     expect(screen.getByTestId("media-gallery")).toHaveTextContent("media-a,media-b");
   });
@@ -64,6 +82,25 @@ describe("EventDetailContent", () => {
     expect(screen.getByText("field.startsAt")).toBeVisible();
     expect(screen.getByText("field.endsAt")).toBeVisible();
     expect(screen.getAllByRole("time")).toHaveLength(2);
+  });
+
+  it("uses server participants for capacity while member identities are unavailable", () => {
+    renderContent({
+      capacity: 1,
+      participants: [{
+        id: "participant-1",
+        event_id: "event-1",
+        user_id: "member-1",
+        joined_at: "2099-03-01T00:00:00.000Z",
+      }],
+      memberIdentitiesUnavailable: true,
+      currentUserId: "viewer-1",
+      onJoin: vi.fn(),
+    });
+
+    expect(screen.getByText("Members (1 / 1)")).toBeVisible();
+    expect(screen.getByRole("button", { name: "button.full" })).toBeDisabled();
+    expect(screen.queryByText("detail.noMembers")).not.toBeInTheDocument();
   });
 
 });

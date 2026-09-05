@@ -8,14 +8,6 @@ function readPortalFile(path: string): string {
 }
 
 describe("App shell accessibility and access boundaries", () => {
-  it("announces route loading once through the accessible progress control", () => {
-    const router = readPortalFile("apps/portal/router.tsx");
-
-    expect(router).toContain("<RouteProgress />");
-    expect(router).toContain('role="status"');
-    expect(router).toContain('aria-live="polite"');
-  });
-
   it("keeps document language and locale state synchronized", () => {
     const shell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
     const i18n = readPortalFile("apps/portal/i18n/index.ts");

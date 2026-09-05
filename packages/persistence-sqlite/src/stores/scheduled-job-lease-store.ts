@@ -91,7 +91,7 @@ export class SqliteScheduledJobLeaseStore implements ScheduledJobLeaseStore {
   async readCursor(jobName: ScheduledJobName, leaseToken: string): Promise<string | null | undefined> {
     assertJobName(jobName);
     assertLeaseToken(leaseToken);
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "get",
       sql: "SELECT cursor_value FROM scheduled_job_leases WHERE job_name = ? AND lease_token = ?",
       params: [jobName, leaseToken],

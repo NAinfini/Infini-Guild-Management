@@ -5,8 +5,9 @@ import {
   type AvailabilityDayKey,
   type AvailabilityWindow,
   type MemberAvailability,
+  type MemberAvailabilitySummary,
   type MemberProfile,
-  type User,
+  type MemberSummary,
 } from "@guild/shared";
 import { wrapWeekMinute } from "./datetime";
 
@@ -148,8 +149,32 @@ export type AvailabilityHeatData = {
   memberCount: number;
 };
 
+export function buildAvailabilityHeatDataFromSummary(
+  summary: MemberAvailabilitySummary | undefined,
+): AvailabilityHeatData {
+  const hourlyByDay = new Map<number, number[]>();
+  const dayPeakByDay = new Map<number, number>();
+  const daysWithAny = new Set<number>();
+  let maxCount = 0;
+  for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+    const counts = [...(summary?.hourly_counts[dayIndex] ?? createEmptyHourlyCounts())];
+    const peak = counts.reduce((currentMax, value) => Math.max(currentMax, value), 0);
+    hourlyByDay.set(dayIndex, counts);
+    dayPeakByDay.set(dayIndex, peak);
+    if (peak > 0) daysWithAny.add(dayIndex);
+    maxCount = Math.max(maxCount, peak);
+  }
+  return {
+    hourlyByDay,
+    dayPeakByDay,
+    daysWithAny,
+    maxCount,
+    memberCount: summary?.member_count ?? 0,
+  };
+}
+
 type AvailabilityMemberEntry = {
-  user: Pick<User, "is_active" | "deleted_at">;
+  user: Pick<MemberSummary, "is_active" | "deleted_at">;
   profile: Pick<MemberProfile, "availability">;
 };
 

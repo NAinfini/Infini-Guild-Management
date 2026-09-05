@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@portal/components/ui/select";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArchiveIcon } from "@portal/components/icons";
@@ -78,7 +78,7 @@ export function AuditArchiveExplorer({
 
         {opened ? (
           <div className="grid gap-3 border-t border-border pt-3">
-            {monthsLoading ? <Skeleton className="h-9 w-full" /> : null}
+            {monthsLoading ? <LoadingIndicator /> : null}
             {monthsError ? <AdminLoadError onRetry={onRetryMonths} /> : null}
 
             {!monthsLoading && !monthsError && months.length === 0 ? (

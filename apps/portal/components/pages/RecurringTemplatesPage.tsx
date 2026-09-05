@@ -1,6 +1,6 @@
 import { Button } from "@portal/components/ui/button";
 import { Card, CardContent } from "@portal/components/ui/card";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { useAppError } from "../../hooks/useAppError";
@@ -34,7 +34,7 @@ export function RecurringTemplatesPage() {
       className="events-page"
       toolbar={<EventsWorkspaceSubnav value="recurring" canManageTemplates={canManageTemplates} />}
     >
-      <Suspense fallback={<div className="event-route-loading"><Skeleton className="h-10" /><Skeleton className="h-30" /></div>}>
+      <Suspense fallback={<LoadingIndicator />}>
         {controller.error ? (
           <Card className="events-page__error-card"><CardContent>
             <EmptyState

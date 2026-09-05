@@ -1,4 +1,4 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event, MemberDirectoryEntry } from "@guild/shared";
 import { Button } from "@portal/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { UserMinusIcon } from "@portal/components/icons";
@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { EventMemberIdentity } from "./EventMemberIdentity";
 import { groupMembersByClassQuota, summariseEventClassQuotas } from "./class-quota-view";
 
-type MemberEntry = { user: User; profile: MemberProfile };
+type MemberEntry = MemberDirectoryEntry;
 
 type EventDetailMemberRosterProps = {
   event: Pick<Event, "class_quotas">;

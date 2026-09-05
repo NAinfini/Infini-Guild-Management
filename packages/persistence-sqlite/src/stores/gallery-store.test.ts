@@ -1,11 +1,17 @@
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vitest";
-import { MAX_SQL_BATCH_STATEMENTS, createAuthorizationContext, createRequestContext } from "@guild/kernel";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { MAX_SQL_BATCH_STATEMENTS, createAuthorizationContext, createRequestContext, type BlobStore } from "@guild/kernel";
 import { createAuditEvent } from "@guild/server/modules/audit";
-import type { GalleryRecord } from "@guild/server/modules/gallery";
+import { GalleryService, type GalleryRecord } from "@guild/server/modules/gallery";
+import { MediaService } from "@guild/server/modules/media";
+import { SystemTestService } from "@guild/server/modules/system-test";
 import { applyAppMigrations } from "../testing/app-migrations.js";
 import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
+import { SqliteAuditStore } from "./audit-store.js";
 import { SqliteGalleryStore } from "./gallery-store.js";
+import { SqliteMediaStore } from "./media-store.js";
+import { SqliteSystemTestArtifactCleaner } from "./system-test-artifact-cleaner.js";
+import { SqliteSystemTestStore } from "./system-test-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const OWNER = "owner-1";
@@ -14,6 +20,74 @@ const databases: DatabaseSync[] = [];
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
+});
+
+describe("gallery upload system-test cleanup", () => {
+  it.each([1, 50])("registers and cleans %i uploaded images without touching ordinary content or another run", async (count) => {
+    const { database, executor, store } = fixture();
+    const objects = new Set<string>();
+    const blobs = {
+      putIfAbsent: vi.fn<BlobStore["putIfAbsent"]>(async (key, input) => {
+        await new Response(input.body).arrayBuffer();
+        objects.add(key);
+        return { key, size: input.size, contentType: input.contentType, sha256: input.sha256, etag: input.sha256, lastModified: NOW };
+      }),
+      delete: vi.fn<BlobStore["delete"]>(async (keys) => {
+        for (const key of typeof keys === "string" ? [keys] : keys) objects.delete(key);
+      }),
+    } as unknown as BlobStore;
+    const gallery = new GalleryService(store, new MediaService(new SqliteMediaStore(executor), blobs),
+      { publish: vi.fn() }, { defer: vi.fn() });
+    const runStore = new SqliteSystemTestStore(executor);
+    const runs = new SystemTestService(runStore, new SqliteSystemTestArtifactCleaner(executor), blobs);
+    const owner = requestContext(["gallery.upload", "admin.status.view"]);
+    const image = Uint8Array.from(atob("UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=="), (value) => value.charCodeAt(0));
+    const upload = (context: ReturnType<typeof requestContext>, size: number) => gallery.uploadImages(
+      context,
+      Array.from({ length: size }, () => ({ full: image, view: image })),
+      Array.from({ length: size }, (_, index) => ({ title: `Gallery image ${index}`, description: null })),
+      10_000,
+      100,
+    );
+    const ordinary = (await upload(owner, 1)).data[0]!;
+    const other = requestContext(["gallery.upload", "admin.status.view"]);
+    const otherRun = await runs.createRun(other);
+    await runs.beginRequest(other, otherRun.runId);
+    const otherImage = (await upload(other, 1)).data[0]!;
+    await runs.endRequest(other.requestId);
+    const { runId } = await runs.createRun(owner);
+    await runs.beginRequest(owner, runId);
+    const { data } = await upload(owner, count);
+    await runs.endRequest(owner.requestId);
+
+    const registered = await runStore.listArtifacts(runId, 200);
+    expect(registered.filter(({ type }) => type === "gallery_item").map(({ key }) => key).sort())
+      .toEqual(data.map(({ id }) => id).sort());
+    expect(registered.filter(({ type }) => type === "media_asset").map(({ key }) => key).sort())
+      .toEqual(data.map(({ media_id }) => media_id).sort());
+    const subjectId = data.map(({ id }) => id).join(",");
+    const audit = await new SqliteAuditStore(executor).list({
+      cursor: null, limit: 100, subjectType: "gallery_item", subjectId,
+    });
+    expect(audit.data).toHaveLength(1);
+    expect(audit.data[0]).toMatchObject({ request_id: owner.requestId, subject: { id: subjectId }, action: "upload_images" });
+
+    let cleanup = await runs.cleanupRun(owner, runId);
+    for (let remaining = registered.length; !cleanup.ok && remaining > 0; remaining -= 1) {
+      expect(cleanup.status).toBe("cleaning");
+      cleanup = await runs.cleanupRun(owner, runId);
+    }
+    expect(cleanup).toMatchObject({ ok: true, status: "completed" });
+    await runs.finalizeRun(owner, runId);
+    expect(await runStore.getRun(runId)).toBeNull();
+    expect((await runStore.getRun(otherRun.runId))?.status).toBe("running");
+    for (const item of data) expect(await store.get(item.id, OWNER)).toBeNull();
+    for (const item of [ordinary, otherImage]) expect(await store.get(item.id, OWNER)).toMatchObject({ id: item.id });
+    const retainedMedia = [ordinary.media_id, otherImage.media_id].sort();
+    expect(database.prepare("SELECT id FROM media_assets ORDER BY id").all().map((row) => row.id)).toEqual(retainedMedia);
+    expect(database.prepare("SELECT media_id FROM media_links ORDER BY media_id").all().map((row) => row.media_id)).toEqual(retainedMedia);
+    expect([...objects].sort()).toEqual(retainedMedia.flatMap((id) => [`media/${id}/full.webp`, `media/${id}/view.webp`]).sort());
+  });
 });
 
 describe("SqliteGalleryStore quota claims", () => {
@@ -289,7 +363,7 @@ function audit(entityId: string) {
   });
 }
 
-function requestContext() {
+function requestContext(permissions: readonly string[] = []) {
   return createRequestContext({
     requestId: crypto.randomUUID(),
     authorization: createAuthorizationContext({
@@ -297,7 +371,7 @@ function requestContext() {
       sessionId: "session-1",
       roleId: "member",
       roleLevel: 100,
-      permissions: [],
+      permissions,
     }),
     now: NOW,
   });

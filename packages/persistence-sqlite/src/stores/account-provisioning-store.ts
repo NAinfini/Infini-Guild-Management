@@ -298,7 +298,7 @@ export class SqliteAccountProvisioningStore implements AccountProvisioningStore 
   }
 
   private async loginNameExists(normalizedLoginName: string): Promise<boolean> {
-    const row = await this.executor.execute({
+    const row = await this.executor.read({
       method: "get",
       sql: "SELECT 1 FROM user_credentials WHERE login_name COLLATE NOCASE = ? LIMIT 1",
       params: [normalizedLoginName],

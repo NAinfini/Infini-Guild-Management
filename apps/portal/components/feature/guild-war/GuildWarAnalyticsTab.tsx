@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@portal/components/ui/select";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Slider } from "@portal/components/ui/slider";
 import { Switch } from "@portal/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
@@ -355,12 +355,7 @@ export function GuildWarAnalyticsTab({
       </div>
 
       {isLoading && !hasCachedAnalytics ? (
-        <div className="gwa-loading" aria-busy="true">
-          <Skeleton className="gwa-loading__chart" />
-          {Array.from({ length: 3 }).map((_, index) => (
-            <Skeleton key={index} className="gwa-loading__line" />
-          ))}
-        </div>
+        <LoadingIndicator />
       ) : null}
 
       {isBlockingError ? (

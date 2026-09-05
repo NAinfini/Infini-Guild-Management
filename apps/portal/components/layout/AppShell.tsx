@@ -15,15 +15,15 @@ import { usePreferencesStore } from "../../stores/preferences";
 import { useSiteConfigStore } from "../../stores/site-config";
 import {
   installSessionSynchronization,
+  logoutSession,
   revalidateSessionSnapshot,
-  transitionSession,
 } from "../../session-transition";
 import { isExternalViewSearch } from "../../utils/external-view";
 import { notifyWarning } from "../../utils/notifications";
 import { currentReturnTo } from "../../utils/auth-navigation";
 import { AppErrorOverlay } from "../shared/AppErrorOverlay";
-import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { VisualThemeScene } from "../shared/VisualThemeArtwork";
+import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { BottomNav } from "./BottomNav";
 import {
   AppSidebar,
@@ -45,7 +45,6 @@ import {
   useAdminContextNavigationModel,
 } from "./AdminContextNavigation";
 import { useAppShellPushNotifications } from "./useAppShellPushNotifications";
-import { resolveVisualPageScene } from "./resolve-visual-scene";
 import "./AppShell.css";
 function normalizeViewingAs(role: string | null, isExternalView: boolean): string {
   if (isExternalView) {
@@ -163,13 +162,15 @@ function AppShellContent() {
 
   const expirePushSession = useCallback(() => {
     if (!useAuthStore.getState().user || window.location.pathname === "/login") return;
-    transitionSession(queryClient, null);
-    void navigate({
-      to: "/login",
-      search: {
-        reason: "expired",
-        returnTo: currentReturnTo(),
-      },
+    // The socket may belong to an earlier login; only the current cookie can expire this session.
+    void revalidateSessionSnapshot(queryClient).then((session) => {
+      if (session || useAuthStore.getState().user) return;
+      void navigate({
+        to: "/login",
+        search: { reason: "expired", returnTo: currentReturnTo() },
+      });
+    }).catch(() => {
+      notifyWarning(sessionRefreshFailureMessageRef.current("admin:message.sessionRefreshFailed"));
     });
   }, [navigate, queryClient]);
 
@@ -218,9 +219,8 @@ function AppShellContent() {
   });
 
   const logoutMutation = useMutation({
-    mutationFn: requestLogout,
-    onSettled: () => {
-      transitionSession(queryClient, null);
+    mutationFn: () => logoutSession(queryClient, requestLogout),
+    onMutate: () => {
       void navigate({ to: "/login" });
     },
   });
@@ -299,13 +299,6 @@ function AppShellContent() {
   const sidebarNavGroups = adminNavigation.isAdminContext ? adminNavigation.sidebarGroups : portalSidebarGroups;
   const selectedNavKey = adminNavigation.isAdminContext ? adminNavigation.activeTab : activeRoute.to;
   const activeNavigationRoute = adminNavigation.isAdminContext ? adminNavigation.activeRoute : activeRoute;
-  const visualScene = resolveVisualPageScene({
-    baseScene: activeRoute.visualScene,
-    pathname,
-    searchStr,
-    adminTab: adminNavigation.activeTab,
-    isExternalView,
-  });
   const activePageTitle = t(activeNavigationRoute.labelKey);
   const activePageIcon = activeNavigationRoute.icon;
   const previousPathnameRef = useRef(pathname);
@@ -392,20 +385,11 @@ function AppShellContent() {
       <a href="#main-content" className="app-skip-link">{t("nav.skipToContent", "Skip to content")}</a>
       <div
         className="app-shell-root"
-        data-visual-scene={visualScene}
         data-compact-navigation={usesCompactNavigation || undefined}
         style={{ "--app-sidebar-width": `${sidebarWidth}px` } as CSSProperties}
       >
+        <VisualThemeScene variant={`workspace-${activeRoute.workspaceScene}`} className="app-workspace-scene" loading="eager" />
         <AppErrorOverlay />
-
-        {visualScene ? (
-          <VisualThemeScene
-            className="app-shell__scene"
-            variant={visualScene}
-            loading="eager"
-            fetchPriority="low"
-          />
-        ) : null}
 
         {!usesCompactNavigation ? (
           <AppSidebar
@@ -437,7 +421,6 @@ function AppShellContent() {
           isHeaderCompact={isHeaderCompact}
           activePageTitle={activePageTitle}
           activePageIcon={activePageIcon}
-          visualScene={visualScene}
           user={user}
           onLogout={logout}
           onLoginClick={() => void navigate({ to: "/login" })}
@@ -446,7 +429,7 @@ function AppShellContent() {
         <main
           id="main-content"
           tabIndex={-1}
-          className={`app-content ${visualScene ? "app-content--with-scene" : ""} ${usesCompactNavigation ? "app-content-mobile" : ""}`}
+          className={`app-content${usesCompactNavigation ? " app-content-mobile" : ""}`}
         >
           <div className="app-main">
             {isExternalView ? (

@@ -10,7 +10,7 @@ export class SqliteSiteConfigStore implements SiteConfigStore {
   constructor(private readonly sql: SqlExecutor) {}
 
   async get(): Promise<SiteConfigRecord> {
-    const row = oneRow(await this.sql.execute({ method: "get", sql: selectSiteConfig() }));
+    const row = oneRow(await this.sql.read({ method: "get", sql: selectSiteConfig() }));
     if (!row) throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Site configuration is missing" });
     return mapSiteConfig(row);
   }

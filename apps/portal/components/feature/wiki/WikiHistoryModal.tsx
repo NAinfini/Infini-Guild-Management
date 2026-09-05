@@ -19,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
 import { XIcon } from "../../icons";
 import { EmptyState } from "../../shared/EmptyState";
 import { TipTapEditor } from "../../shared/TipTapEditor";
-import { Skeleton } from "../../ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 
 const CONTEXT_PREVIEW_LINES = 2;
 
@@ -133,12 +133,7 @@ export function WikiHistoryModal({ opened, onClose, article }: WikiHistoryModalP
   );
 
   const renderLoading = () => (
-    <div className="wiki-history-loading" role="status">
-      <Skeleton className="h-5 w-2/3" />
-      <Skeleton className="h-20 w-full" />
-      <Skeleton className="h-20 w-full" />
-      <span className="sr-only">{t("common:message.loading")}</span>
-    </div>
+    <LoadingIndicator />
   );
 
   const renderError = (retry: () => unknown) => (

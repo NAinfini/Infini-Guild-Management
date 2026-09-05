@@ -61,7 +61,7 @@ export class SqliteBlobManifestStore implements BlobManifestStore {
   ): Promise<readonly BlobManifestDescriptor[]> {
     const select = phase === "audit" ? AUDIT_MANIFEST_SELECT : MEDIA_MANIFEST_SELECT;
     const objectKey = phase === "audit" ? "archives.object_key" : "variants.object_key";
-    return allRows(await this.sql.execute({
+    return allRows(await this.sql.read({
       method: "all",
       columns: COLUMNS,
       sql: `${select}
@@ -81,7 +81,7 @@ export class SqliteBlobManifestStore implements BlobManifestStore {
       throw new RangeError("Blob manifest lookup supports between 1 and 50 unique keys");
     }
     objectKeys.forEach(assertBlobKey);
-    return allRows(await this.sql.execute({
+    return allRows(await this.sql.read({
       method: "all",
       columns: COLUMNS,
       sql: `WITH requested(object_key) AS (SELECT value FROM json_each(?))

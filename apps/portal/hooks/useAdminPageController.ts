@@ -18,6 +18,10 @@ import { useLoadWarningToast } from "./useLoadWarningToast";
 import { useAdminData } from "./data/useAdminData";
 import { useSiteConfigMutations } from "./useSiteConfigMutations";
 import { useClassCatalog } from "./data/useClassData";
+import { useDebouncedSearch } from "./useDebouncedSearch";
+import type { PaginationState, SortingState } from "@tanstack/react-table";
+import type { MemberListSort } from "@guild/shared";
+import type { MemberStatusFilter } from "../types/admin";
 import { resolveClassCatalogItem } from "../utils/class-catalog";
 import { formatDateTime } from "../utils/datetime";
 import {
@@ -31,9 +35,6 @@ export const BATCH_SELECTION_LIMIT = 50;
 const ROLE_METADATA_PERMISSIONS = [
   "admin.roles.view",
   "admin.roles.manage",
-  "admin.invite.manage",
-  "admin.users.edit",
-  "admin.users.role",
 ] as const;
 
 export function useAdminPageController() {
@@ -45,7 +46,24 @@ export function useAdminPageController() {
   const { member: memberSearchParam, tab: tabSearchParam } = useSearch({ strict: false }) as { member?: string; tab?: string };
   const navigate = useNavigate();
   const requestedTab = resolveAdminContextTab(tabSearchParam);
-  const [memberSearch, setMemberSearch] = useState("");
+  const { search: memberSearch, setSearch: setMemberSearch, debouncedSearch: debouncedMemberSearch } = useDebouncedSearch();
+  const [memberPagination, setMemberPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
+  const [memberSorting, setMemberSorting] = useState<SortingState>([]);
+  const [memberStatusFilter, setMemberStatusFilter] = useState<MemberStatusFilter>("all");
+  const memberSortIds: Record<string, MemberListSort> = { display_name: "display_name", power: "power", class: "class", role: "role", lastLogin: "last_login_at", active: "is_active" };
+  const memberList = {
+    page: memberPagination.pageIndex + 1,
+    limit: memberPagination.pageSize,
+    includeTotal: true,
+    searchScope: "management" as const,
+    search: debouncedMemberSearch.trim(),
+    active: memberStatusFilter === "all" ? undefined : memberStatusFilter === "active",
+    sort: memberSortIds[memberSorting[0]?.id ?? ""] ?? "created_at",
+    direction: memberSorting[0]?.desc ? "desc" as const : "asc" as const,
+  };
+  useEffect(() => {
+    setMemberPagination((current) => current.pageIndex === 0 ? current : { ...current, pageIndex: 0 });
+  }, [debouncedMemberSearch, memberStatusFilter, memberSorting]);
 
   const handleTabChange = useCallback((value: string | null) => {
     if (!value || !isAdminContextTab(value)) return;
@@ -118,6 +136,7 @@ export function useAdminPageController() {
     auditActorId: auditFilter.actorId,
     inviteVisibility: inviteController.invite.visibility,
     inviteSearch: inviteController.debouncedInviteSearch,
+    memberList,
   });
 
   const inviteRows = useMemo(() => {
@@ -132,6 +151,10 @@ export function useAdminPageController() {
   const inviteTotal = inviteLinksQuery.data?.pages.at(-1)?.total ?? 0;
 
   const userRowsRaw = usersQuery.data?.data ?? [];
+  useEffect(() => {
+    const pages = usersQuery.data?.total_pages;
+    if (pages && memberPagination.pageIndex >= pages) setMemberPagination((current) => ({ ...current, pageIndex: pages - 1 }));
+  }, [memberPagination.pageIndex, usersQuery.data?.total_pages]);
   const userMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const row of userRowsRaw) {
@@ -178,8 +201,8 @@ export function useAdminPageController() {
     createMemberModalOpen,
     createMemberModalHandlers,
     memberMediaController,
+    memberDetailQuery,
   } = useAdminMemberDetail({
-    usersData: usersQuery.data?.data,
     memberSearchParam,
     currentUserId: user?.id,
     showError,
@@ -191,25 +214,12 @@ export function useAdminPageController() {
     isAdmin: canViewStatus,
   });
 
-  const userRows = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    if (!q) return userRowsRaw;
-    return userRowsRaw.filter((row) => {
-      return (
-        row.user.display_name.toLowerCase().includes(q) ||
-        (row.profile.notes ?? "").toLowerCase().includes(q) ||
-        row.user.role_name.toLowerCase().includes(q) ||
-        row.profile.classes.some((cls) =>
-          cls.toLowerCase().includes(q)
-          || resolveClassCatalogItem(cls, classCatalog).label.toLowerCase().includes(q)
-        )
-      );
-    });
-  }, [classCatalog, userRowsRaw, memberSearch]);
+  const userRows = userRowsRaw;
 
+  const roleCatalog = canReadRoleMetadata && rolesQuery.isSuccess ? rolesQuery.data : null;
   const assignableRoles = useMemo(
-    () => (rolesQuery.data ?? []).filter((role) => isRoleAssignableToUser(role, user)),
-    [rolesQuery.data, user],
+    () => roleCatalog?.filter((role) => isRoleAssignableToUser(role, user)) ?? [],
+    [roleCatalog, user],
   );
   const auditRows = useMemo(() => {
     const rows = new Map<string, NonNullable<typeof auditLogQuery.data>["pages"][number]["data"][number]>();
@@ -361,7 +371,7 @@ export function useAdminPageController() {
 
   usePageHeaderActions(null);
   useLoadWarningToast(
-    usersQuery.isError ||
+    usersQuery.isError || memberDetailQuery.isError ||
       inviteLinksQuery.isError ||
       inviteStatsQuery.isError ||
       auditLogQuery.isError ||
@@ -402,7 +412,15 @@ export function useAdminPageController() {
     memberDetailIsDirty,
     memberMediaController,
     memberSearch,
+    memberPagination,
+    setMemberPagination,
+    memberSorting,
+    setMemberSorting,
+    memberStatusFilter,
+    setMemberStatusFilter,
+    memberDetailQuery,
     rolesQuery,
+    roleCatalog,
     assignableRoles,
     selectedMemberDetail,
     setAuditDateFrom,

@@ -101,28 +101,33 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         </span>
                       </div>
                     </div>
-                    {item.quotaSummary ? (
-                      <div className="upcoming-event-row__quota">
-                        <EventQuotaBar
-                          summary={item.quotaSummary}
-                          event={item.item}
-                          participantCount={item.participantCount}
-                        />
+                    <div
+                      className="upcoming-event-row__details"
+                      data-has-quota={item.quotaSummary ? "true" : undefined}
+                    >
+                      {item.quotaSummary ? (
+                        <div className="upcoming-event-row__quota">
+                          <EventQuotaBar
+                            summary={item.quotaSummary}
+                            event={item.item}
+                            participantCount={item.participantCount}
+                          />
+                        </div>
+                      ) : null}
+                      <div className="upcoming-event-row__people">
+                        <div className="upcoming-event-row__avatars">
+                          <MemberAvatarStack members={item.members} totalCount={item.participantCount} />
+                        </div>
+                        <span
+                          className="upcoming-event-row__capacity"
+                          aria-label={t("card.upcomingEvents.capacity", {
+                            current: signedUpCount,
+                            capacity: capacity > 0 ? capacity : "∞",
+                          })}
+                        >
+                          {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}
+                        </span>
                       </div>
-                    ) : null}
-                    <div className="upcoming-event-row__people">
-                      <div className="upcoming-event-row__avatars">
-                        <MemberAvatarStack members={item.members} totalCount={item.participantCount} />
-                      </div>
-                      <span
-                        className="upcoming-event-row__capacity"
-                        aria-label={t("card.upcomingEvents.capacity", {
-                          current: signedUpCount,
-                          capacity: capacity > 0 ? capacity : "∞",
-                        })}
-                      >
-                        {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}
-                      </span>
                     </div>
                     <Button
                       size="xs"

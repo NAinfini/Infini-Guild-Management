@@ -17,12 +17,33 @@ const PUBLIC_ROUTES = [
   "/login",
 ] as const;
 
+test("慢速路由切换保留当前内容，并显示顶部进度", async ({ page }) => {
+  await page.goto("/settings");
+  await expect(page.locator(".settings-page")).toBeVisible();
+  let release!: () => void;
+  const ready = new Promise<void>((resolve) => { release = resolve; });
+  let requested = false;
+  const pattern = /\/assets\/EventsPage-[^/]+\.js$/;
+  await page.route(pattern, async (route) => { requested = true; await ready; await route.continue(); });
+  try {
+    await page.locator(".app-nav-groups").getByRole("button", { name: "Events", exact: true }).click();
+    await expect.poll(() => requested).toBe(true);
+    await expect(page.locator(".settings-page")).toBeVisible();
+    await expect(page.locator('.route-progress[data-active="true"]')).toBeVisible();
+    await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(page.locator(".events-page")).toBeVisible();
+  await expect(page.locator('.route-progress[data-active="true"]')).toHaveCount(0);
+  await page.unroute(pattern);
+});
+
 for (const route of PUBLIC_ROUTES) {
   test(`游客可以打开 ${route}`, async ({ page }) => {
     await page.goto(route);
     await expect(page.locator("#root")).not.toBeEmpty();
-    // 路由级 loading 占位必须让位给真实内容，否则等于页面卡在加载态。
-    await expect(page.locator(".route-loading")).toHaveCount(0);
+    await expect(page.locator('.route-progress[data-active="true"]')).toHaveCount(0);
   });
 }
 

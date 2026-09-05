@@ -1,4 +1,4 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event, MemberDirectoryEntry } from "@guild/shared";
 import { Badge } from "@portal/components/ui/badge";
 import { Card } from "@portal/components/ui/card";
 import {
@@ -43,7 +43,7 @@ function formatLocalDate(startAt: string, locale: string, now: Date): string {
   });
 }
 
-type MemberEntry = { user: User; profile: MemberProfile };
+type MemberEntry = MemberDirectoryEntry;
 
 type EventStatusIndicatorProps = {
   children: React.ReactNode;

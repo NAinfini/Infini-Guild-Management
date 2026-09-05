@@ -14,6 +14,9 @@ const JOB_LEASE_MS = 10 * 60_000;
 const JOB_LEASE_RENEWAL_MS = Math.floor(JOB_LEASE_MS / 3);
 const SESSION_ABSOLUTE_TTL_MS = 90 * 24 * 60 * 60_000;
 const MAX_BATCHES_PER_RUN = 1;
+// Four 10-item GC batches use at most 43 D1 statements, including coordination
+// and backlog inspection, leaving room within the Free invocation query limit.
+const MAX_MEDIA_BATCHES_PER_RUN = 4;
 const MAX_RUN_DURATION_MS = 25_000;
 
 export const SCHEDULER_SYSTEM_ACTOR_ID = "system:scheduler";
@@ -68,6 +71,7 @@ export type SchedulerAuditFactory = (input: AuditEventInput) => AuditEventWrite;
 export type ScheduledJobBatchResult = Readonly<{
   processed: number;
   hasMore: boolean;
+  warning?: string;
 }>;
 
 export interface RecurrenceMaterializationJob {
@@ -207,6 +211,7 @@ type CompletedScheduledJobOutcome = Readonly<{
   hasMore: boolean;
   batches: number;
   backlog: ScheduledJobBacklog;
+  warning?: string;
 }>;
 
 type LeaseHeldScheduledJobOutcome = Readonly<{
@@ -278,6 +283,9 @@ function assertBatchResult(result: ScheduledJobBatchResult, maximum: number, nam
     throw new RangeError(`${name} processed outside its configured batch limit`);
   }
   if (typeof result.hasMore !== "boolean") throw new TypeError(`${name} must report whether work remains`);
+  if (result.warning !== undefined && (!result.warning.trim() || result.warning.length > 500)) {
+    throw new TypeError(`${name} returned an invalid warning`);
+  }
 }
 
 function unknownBacklog(
@@ -411,7 +419,11 @@ export class ScheduledJobCoordinator {
       } catch (error) {
         backlog = unknownBacklog("inspection-failed", errorMessage(error));
       }
-      result = { ...drained, backlog };
+      result = {
+        ...drained,
+        hasMore: name === "media-gc" && backlog.status === "known" ? backlog.pendingCount > 0 : drained.hasMore,
+        backlog,
+      };
     } catch (error) {
       failure = error;
     }
@@ -420,14 +432,14 @@ export class ScheduledJobCoordinator {
     } catch (error) {
       failure = failure === undefined
         ? error
-        : new AggregateError([failure, error], `${name} failed while renewing its lease`);
+        : new AggregateError([failure, error], `${errorMessage(failure)}; lease renewal failed: ${errorMessage(error)}`);
     }
     try {
       await this.dependencies.leases.release(name, leaseToken);
     } catch (error) {
       failure = failure === undefined
         ? error
-        : new AggregateError([failure, error], `${name} failed and its lease could not be released`);
+        : new AggregateError([failure, error], `${errorMessage(failure)}; lease release failed: ${errorMessage(error)}`);
     }
     if (failure !== undefined) throw failure;
     if (!result) throw new Error(`${name} completed without a result`);
@@ -438,6 +450,7 @@ export class ScheduledJobCoordinator {
       hasMore: result.hasMore,
       batches: result.batches,
       backlog: result.backlog,
+      ...(result.warning ? { warning: result.warning } : {}),
     };
   }
 
@@ -527,13 +540,26 @@ export class ScheduledJobCoordinator {
     let processed = 0;
     let hasMore = true;
     let batches = 0;
-    while (hasMore && batches < MAX_BATCHES_PER_RUN) {
+    const warnings: string[] = [];
+    const maxBatches = name === "media-gc" ? MAX_MEDIA_BATCHES_PER_RUN : MAX_BATCHES_PER_RUN;
+    while (hasMore && batches < maxBatches) {
       if (batches > 0 && this.monotonicNow() - startedAt >= MAX_RUN_DURATION_MS) break;
-      const execution = await this.runLeased(name, nowDate, audit, cursor);
+      let execution: Awaited<ReturnType<ScheduledJobCoordinator["runLeased"]>>;
+      try {
+        if (batches > 0) {
+          await heartbeat.renewNow();
+          if (this.monotonicNow() - startedAt >= MAX_RUN_DURATION_MS) break;
+        }
+        execution = await this.runLeased(name, nowDate, audit, cursor);
+      } catch (error) {
+        if (batches === 0) throw error;
+        throw new Error(`${name} stopped after ${processed} item(s) in ${batches} completed batch(es): ${errorMessage(error)}`, { cause: error });
+      }
       assertBatchResult(execution, this.maximumFor(name), name);
       processed += execution.processed;
       hasMore = execution.hasMore;
       batches += 1;
+      if (execution.warning) warnings.push(execution.warning);
       if (name === "recurrence-materialization") {
         if (!("nextTemplateCursor" in execution)) {
           throw new TypeError("Recurrence materialization must return its next keyset cursor");
@@ -547,9 +573,8 @@ export class ScheduledJobCoordinator {
           throw new Error("Recurrence materialization lease was lost before saving its cursor");
         }
       }
-      if (hasMore && batches < MAX_BATCHES_PER_RUN) await heartbeat.renewNow();
     }
-    return { processed, hasMore, batches };
+    return { processed, hasMore, batches, ...(warnings.length > 0 ? { warning: warnings.join("; ").slice(0, 500) } : {}) };
   }
 
   private maximumFor(name: ScheduledJobName): number {

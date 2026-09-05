@@ -8,8 +8,8 @@ import {
   resolveVisualThemeId,
   VISUAL_ACCESS_SCENE_IDS,
   VISUAL_COLOR_MODES,
-  VISUAL_PAGE_SCENE_IDS,
   VISUAL_STATUS_SCENE_IDS,
+  VISUAL_WORKSPACE_SCENE_IDS,
   VISUAL_THEMES,
   type VisualThemeAsset,
 } from "./themes";
@@ -45,28 +45,24 @@ describe("visual theme catalog", () => {
   it("ships every configured asset at its declared dimensions", async () => {
     for (const theme of Object.values(VISUAL_THEMES)) {
       const assets = [
+        ...VISUAL_WORKSPACE_SCENE_IDS.flatMap((id) => [theme.scenes.workspace[id].desktop, theme.scenes.workspace[id].mobile]),
         theme.scenes.landing.desktop,
         theme.scenes.landing.mobile,
         ...VISUAL_ACCESS_SCENE_IDS.flatMap((id) => [theme.scenes.access[id].desktop, theme.scenes.access[id].mobile]),
         ...VISUAL_STATUS_SCENE_IDS.flatMap((id) => [theme.scenes.status[id].desktop, theme.scenes.status[id].mobile]),
-        theme.scenes.navigation,
-        ...VISUAL_PAGE_SCENE_IDS.map((id) => theme.scenes.routes[id]),
       ];
       for (const asset of assets) await expectShippedAsset(asset);
     }
   });
 
-  it("keeps route and color-mode scenes distinct", () => {
+  it("keeps every color-mode scene distinct", () => {
     const theme = VISUAL_THEMES.forged;
-    for (const mode of VISUAL_COLOR_MODES) {
-      const routes = VISUAL_PAGE_SCENE_IDS.map((id) => theme.scenes.routes[id].sources[mode].src);
-      expect(new Set(routes).size).toBe(VISUAL_PAGE_SCENE_IDS.length);
-    }
     const assets = [
+      ...VISUAL_WORKSPACE_SCENE_IDS.flatMap((id) => [theme.scenes.workspace[id].desktop, theme.scenes.workspace[id].mobile]),
       theme.scenes.landing.desktop,
       theme.scenes.landing.mobile,
-      theme.scenes.navigation,
-      ...VISUAL_PAGE_SCENE_IDS.map((id) => theme.scenes.routes[id]),
+      ...VISUAL_ACCESS_SCENE_IDS.flatMap((id) => [theme.scenes.access[id].desktop, theme.scenes.access[id].mobile]),
+      ...VISUAL_STATUS_SCENE_IDS.flatMap((id) => [theme.scenes.status[id].desktop, theme.scenes.status[id].mobile]),
     ];
     for (const asset of assets) expect(asset.sources.dark.src).not.toBe(asset.sources.light.src);
   });

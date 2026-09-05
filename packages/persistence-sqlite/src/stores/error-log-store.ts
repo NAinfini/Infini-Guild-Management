@@ -40,7 +40,7 @@ export class SqliteErrorLogStore implements ErrorLogStore {
   async list(query: Readonly<{ source: ErrorLogSource | null; page: number; limit: number }>) {
     const where = query.source === null ? "" : "WHERE source = ?";
     const params: SqlValue[] = query.source === null ? [] : [query.source];
-    const [countResult, listResult] = await this.sql.batch([
+    const [countResult, listResult] = await this.sql.readBatch([
       {
         method: "get",
         columns: ["total"],

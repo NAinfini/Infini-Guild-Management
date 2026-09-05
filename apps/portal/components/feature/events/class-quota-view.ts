@@ -1,12 +1,12 @@
-import type { ClassTag, Event, EventClassQuotaInput, MemberProfile, User } from "@guild/shared";
+import type { ClassTag, Event, EventClassQuotaInput, MemberDirectoryEntry } from "@guild/shared";
 import { summariseClassQuotas, type ClassQuotaSlot, type ClassQuotaSummary } from "@guild/shared/utils/class-quota";
 
-type MemberEntry = { user: User; profile: MemberProfile };
+type MemberEntry = MemberDirectoryEntry;
 
 /* 概览只用得上 id 和职业。仪表盘的报名人是从活动条的精简载荷拼出来的，没有完整的
-   User/MemberProfile，卡这么宽只会逼调用方造假数据填字段。分组那边要把整条成员原样
+   MemberSummary/MemberProfile，卡这么宽只会逼调用方造假数据填字段。分组那边要把整条成员原样
    还给名单，所以它继续收完整的 MemberEntry。 */
-type QuotaMemberEntry = { user: Pick<User, "id">; profile: Pick<MemberProfile, "classes"> };
+type QuotaMemberEntry = Pick<MemberDirectoryEntry, "user" | "profile">;
 
 /**
  * 把一个活动和它的报名名单折成配额概览。没配额就返回 null，让调用方整行不渲染

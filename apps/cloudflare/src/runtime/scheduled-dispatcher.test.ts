@@ -5,6 +5,29 @@ import {
 } from "./scheduled-dispatcher.js";
 
 describe("dispatchCloudflareScheduledJobs", () => {
+  it("logs committed work with a broadcast warning at warning severity", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const outcome = {
+        name: "announcement-publish", status: "completed", processed: 50, hasMore: false, batches: 1,
+        backlog: { status: "known", pendingCount: 0, countPrecision: "exact", oldestPendingAt: null },
+        warning: "Database changes committed; live refresh failed: push unavailable",
+      };
+      const pending: Promise<unknown>[] = [];
+      dispatchCloudflareScheduledJobs(
+        { cron: CLOUDFLARE_SCHEDULED_CRONS["quarter-hourly"] },
+        { waitUntil: (promise) => pending.push(promise) },
+        { runSchedule: vi.fn().mockResolvedValue([outcome]) },
+      );
+      await Promise.all(pending);
+      expect(warn).toHaveBeenCalledWith("Cloudflare scheduled job completed with warning", {
+        schedule: "quarter-hourly", ...outcome,
+      });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("routes only the five staggered cron expressions into the shared coordinator", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const runSchedule = vi.fn().mockResolvedValue([{

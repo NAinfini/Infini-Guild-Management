@@ -1,9 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import type { MemberProfile, User } from "@guild/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "../api/query-keys";
 import { useProfileMutations } from "./useProfileMutations";
+import { useAuthStore } from "../stores/auth";
+import { transitionSession } from "../session-transition";
+import { deferred } from "../testing/deferred";
 
 const serviceMocks = vi.hoisted(() => ({
   changeMyPassword: vi.fn(),
@@ -12,25 +16,10 @@ const serviceMocks = vi.hoisted(() => ({
   deleteProfileImage: vi.fn(),
   updateOwnProfile: vi.fn(),
 }));
-const setProfileMock = vi.hoisted(() => vi.fn());
-const setSessionMock = vi.hoisted(() => vi.fn());
 const notifySuccessMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/UserService", () => serviceMocks);
 vi.mock("../services/AuthService", () => ({ logout: vi.fn() }));
-vi.mock("../stores/auth", () => ({
-  useAuthStore: (selector: (state: {
-    user: { id: string };
-    sessionScope: "normal";
-    setSession: typeof setSessionMock;
-    setProfile: typeof setProfileMock;
-  }) => unknown) => selector({
-    user: { id: "user-1" },
-    sessionScope: "normal",
-    setSession: setSessionMock,
-    setProfile: setProfileMock,
-  }),
-}));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -38,7 +27,6 @@ vi.mock("react-i18next", () => ({
 vi.mock("./useAppError", () => ({
   useAppError: () => ({ showError: vi.fn() }),
 }));
-vi.mock("../session-transition", () => ({ transitionSession: vi.fn() }));
 vi.mock("../utils/notifications", () => ({ notifySuccess: notifySuccessMock }));
 
 type MutationParams = Parameters<typeof useProfileMutations>[0];
@@ -52,8 +40,7 @@ function createWrapper(queryClient: QueryClient) {
 describe("useProfileMutations", () => {
   beforeEach(() => {
     for (const mock of Object.values(serviceMocks)) mock.mockReset();
-    setProfileMock.mockReset();
-    setSessionMock.mockReset();
+    useAuthStore.getState().setSession({ id: "user-1" } as User, { user_id: "user-1" } as MemberProfile, "normal");
     notifySuccessMock.mockReset();
   });
 
@@ -202,5 +189,36 @@ describe("useProfileMutations", () => {
         profile_revision_token: "profile-v2",
       },
     });
+  });
+
+  it("does not restore a previous user or cache after a profile save completes late", async () => {
+    const pending = deferred<{ profile: MemberProfile; profileRevisionToken: string }>();
+    serviceMocks.updateOwnProfile.mockReturnValueOnce(pending.promise);
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const form = {
+      displayName: "Old member", bio: "", titleHtml: "", power: 0,
+      classList: [], videoList: [], imageList: [], availabilityData: null,
+      profileRevisionToken: "profile-v1", acceptServerProfile: vi.fn(),
+    } as unknown as MutationParams["form"];
+    const { result } = renderHook(() => useProfileMutations({
+      form,
+      imageUploader: { upload: vi.fn() } as unknown as MutationParams["imageUploader"],
+      audioUploader: { upload: vi.fn() } as unknown as MutationParams["audioUploader"],
+    }), { wrapper: createWrapper(queryClient) });
+    act(() => result.current.saveProfile());
+    await waitFor(() => expect(serviceMocks.updateOwnProfile).toHaveBeenCalledOnce());
+    act(() => transitionSession(queryClient, {
+      user: { id: "user-2" } as User,
+      profile: { user_id: "user-2" } as MemberProfile,
+      session_scope: "normal",
+    }, { broadcast: false }));
+    queryClient.setQueryData(["new-session"], "keep");
+    pending.resolve({ profile: { user_id: "user-1" } as MemberProfile, profileRevisionToken: "profile-v2" });
+    await waitFor(() => expect(result.current.saveProfileMutation.isSuccess).toBe(true));
+    expect(useAuthStore.getState().user?.id).toBe("user-2");
+    expect(queryClient.getQueryData(["new-session"])).toBe("keep");
+    expect(queryClient.getQueryData(queryKeys.myProfile.detail("user-1"))).toBeUndefined();
+    expect(form.acceptServerProfile).not.toHaveBeenCalled();
+    expect(notifySuccessMock).not.toHaveBeenCalled();
   });
 });

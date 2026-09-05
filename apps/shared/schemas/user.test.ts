@@ -6,6 +6,7 @@ import {
   availabilityToWindows,
   memberAvailabilitySchema,
   memberProfileSchema,
+  memberSummarySchema,
   type MemberAvailability,
   updateProfileSchema,
   userSchema,
@@ -183,6 +184,28 @@ describe("adminUpdateProfileSchema", () => {
 });
 
 describe("userSchema role metadata", () => {
+  it("keeps member summaries separate from authenticated permission records", () => {
+    const member = {
+      id: "user-1",
+      display_name: "Member",
+      role: "raider",
+      role_name: "Raider",
+      role_color: null,
+      role_level: 200,
+      is_active: true,
+      deleted_at: null,
+      created_at: "2026-08-05T00:00:00.000Z",
+      updated_at: "2026-08-05T00:00:00.000Z",
+      last_login_at: null,
+    };
+    const permissions = Object.fromEntries(PERMISSIONS.map((permission) => [permission, true]));
+
+    expect(memberSummarySchema.parse(member)).toEqual(member);
+    expect(memberSummarySchema.parse({ ...member, permissions })).not.toHaveProperty("permissions");
+    expect(userSchema.safeParse(member).success).toBe(false);
+    expect(userSchema.parse({ ...member, permissions }).permissions).toEqual(permissions);
+  });
+
   it("requires the D1 role name, color, and level", () => {
     const base = {
       id: "user-1",

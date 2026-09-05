@@ -26,7 +26,7 @@ export async function assertOwnedStagedMedia(
   if (mediaIds.length < 1 || mediaIds.length !== input.mediaIds.length || mediaIds.length > input.maxItems) {
     throw validation(`Media batch must contain 1 to ${input.maxItems} unique assets`);
   }
-  const result = await sql.execute({
+  const result = await sql.read({
     method: "get",
     sql: `SELECT COUNT(*)
       FROM media_assets AS assets
@@ -59,7 +59,7 @@ export async function assertMediaAttachments(
   }
   if (mediaIds.length === 0) return mediaIds;
 
-  const result = await sql.execute({
+  const result = await sql.read({
     method: "all",
     sql: `SELECT
         assets.id,

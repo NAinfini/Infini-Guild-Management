@@ -1,6 +1,7 @@
 import {
   inboxNotificationListResponseSchema,
   inboxNotificationMutationResponseSchema,
+  inboxNotificationUnreadCountResponseSchema,
   markInboxNotificationsReadSchema,
   notificationPreferencesSchema,
   updateNotificationPreferencesSchema,
@@ -21,12 +22,16 @@ const listQuerySchema = z.object({
 }).strict();
 
 type NotificationInboxHttpService = Pick<NotificationInboxService,
-  "list" | "markRead" | "getPreferences" | "updatePreferences">;
+  "getUnreadCount" | "list" | "markRead" | "getPreferences" | "updatePreferences">;
 
 export function createNotificationInboxRoutes(
   dependencies: Readonly<{ service: NotificationInboxHttpService }>,
 ): Hono<HttpEnv> {
   const routes = new Hono<HttpEnv>();
+
+  routes.get("/unread-count", async (context) => context.json(inboxNotificationUnreadCountResponseSchema.parse(
+    await dependencies.service.getUnreadCount(requestContext(context)),
+  )));
 
   routes.get("/", async (context) => {
     const query = parseQuery(context.req.raw, listQuerySchema, "Invalid notification query");

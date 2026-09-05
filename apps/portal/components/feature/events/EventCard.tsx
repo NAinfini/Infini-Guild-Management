@@ -1,4 +1,4 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event, MemberDirectoryEntry } from "@guild/shared";
 import { Button } from "@portal/components/ui/button";
 import {
   DropdownMenu,
@@ -28,7 +28,7 @@ import { EventCardView } from "./EventCardView";
 import { getParticipantActionDisabledReasonKey } from "./participant-action";
 import { eventHasBehavior } from "@portal/utils/game-rules";
 
-type MemberEntry = { user: User; profile: MemberProfile };
+type MemberEntry = MemberDirectoryEntry;
 
 type EventCardProps = {
   event: Event;

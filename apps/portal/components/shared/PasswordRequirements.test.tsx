@@ -7,7 +7,7 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 describe("PasswordRequirements", () => {
   it("shows every rule separately and updates each check as the password changes", () => {
     const { rerender, container } = render(<PasswordRequirements id="rules" password="" confirmation="" />);
-    expect(screen.getAllByRole("listitem")).toHaveLength(6);
+    expect(screen.getAllByRole("listitem")).toHaveLength(5);
     expect(container.querySelectorAll('[data-met="true"]')).toHaveLength(0);
 
     rerender(<PasswordRequirements id="rules" password="violet7!" confirmation="different" />);
@@ -17,6 +17,6 @@ describe("PasswordRequirements", () => {
     expect(container.querySelector('[data-password-rule="match"]')).toHaveAttribute("data-met", "false");
 
     rerender(<PasswordRequirements id="rules" password="Violets!" confirmation="Violets!" />);
-    expect(container.querySelectorAll('[data-met="true"]')).toHaveLength(6);
+    expect(container.querySelectorAll('[data-met="true"]')).toHaveLength(5);
   });
 });

@@ -1,6 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
@@ -69,7 +69,7 @@ export function StorageManagePage() {
     >
       <div className="storage-manage-page__workspace">
         {treeQuery.isLoading ? (
-          <Skeleton className="storage-loading storage-loading--manage" />
+          <LoadingIndicator />
         ) : treeBlockingError ? (
           <EmptyState
             status="error"

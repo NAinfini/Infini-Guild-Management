@@ -24,7 +24,7 @@ const PROFILE: MemberProfile = {
 };
 
 describe("new password policy", () => {
-  it("requires a meaningful length and rejects common passwords", () => {
+  it("requires 8–128 characters and character composition without a common-password check", () => {
     expect(() => assertPasswordPolicy("Correct horse battery staple!")).not.toThrow();
     expect(() => assertPasswordPolicy("Violet7!")).not.toThrow();
     expect(() => assertPasswordPolicy("short12")).toThrow(/between 8 and 128/);
@@ -32,7 +32,7 @@ describe("new password policy", () => {
     expect(() => assertPasswordPolicy("violet7!")).toThrow(/uppercase/);
     expect(() => assertPasswordPolicy("VIOLET7!")).toThrow(/lowercase/);
     expect(() => assertPasswordPolicy("Violet7 ")).toThrow(/special/);
-    expect(() => assertPasswordPolicy("Password1!")).toThrow(/too common/);
+    expect(() => assertPasswordPolicy("Password1!")).not.toThrow();
   });
 });
 

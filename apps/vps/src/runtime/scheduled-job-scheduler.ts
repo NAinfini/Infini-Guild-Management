@@ -53,6 +53,7 @@ export class VpsScheduledJobScheduler {
     this.onOutcome = options.onOutcome ?? ((outcome, schedule) => {
       const details = { schedule, ...outcome };
       if (outcome.status === "failed") console.error("VPS scheduled job failed", details);
+      else if (outcome.status === "completed" && outcome.warning) console.warn("VPS scheduled job completed with warning", details);
       else if (outcome.backlog.status === "unknown") console.warn("VPS scheduled job backlog is unknown", details);
       else console.info("VPS scheduled job completed", details);
     });

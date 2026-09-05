@@ -199,7 +199,8 @@ describe("audit boundary", () => {
     };
     const service = new AuditService(store);
     const query = {
-      subjectType: "event" as const,
+      subjectType: "gallery_item" as const,
+      subjectId: Array.from({ length: 50 }, (_, index) => String(index).padStart(21, "0")).join(","),
       startAt: "2026-08-01T00:00:00.000Z",
       endAt: "2026-08-09T00:00:00.000Z",
     };
@@ -218,7 +219,8 @@ describe("audit boundary", () => {
         changes: [],
         context: [
           { field: "format", value: { type: "code", value: "csv" } },
-          { field: "subject_type", value: { type: "code", value: "event" } },
+          { field: "subject_type", value: { type: "code", value: "gallery_item" } },
+          { field: "subject_id", value: { type: "reference", value: { id: query.subjectId, label: null } } },
           { field: "start_at", value: { type: "datetime", value: "2026-08-01T00:00:00.000Z" } },
           { field: "end_at", value: { type: "datetime", value: "2026-08-09T00:00:00.000Z" } },
         ],

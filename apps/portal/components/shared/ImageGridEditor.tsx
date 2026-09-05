@@ -1,9 +1,11 @@
 import { IMAGE_FILE_ACCEPT } from "@guild/shared";
 import { Button } from "@portal/components/ui/button";
-import { AnimatePresence, Reorder, useDragControls } from "motion/react";
+import { useReducedMotionPreference } from "@portal/hooks/useReducedMotionPreference";
+import { AnimatePresence, Reorder, useDragControls, useMotionValue } from "motion/react";
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -39,11 +41,6 @@ export interface ImageGridEditorProps {
   "aria-label"?: string;
 }
 
-function useMotionAllowed(): boolean {
-  if (typeof window === "undefined") return true;
-  return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 function DraggableImageCell({
   item,
   imageSize,
@@ -65,6 +62,11 @@ function DraggableImageCell({
 }) {
   const dragControls = useDragControls();
   const [isDragging, setIsDragging] = useState(false);
+  const dragX = useMotionValue(0);
+
+  useEffect(() => {
+    if (!motionAllowed) dragX.jump(0);
+  }, [dragX, motionAllowed]);
 
   const cellStyle: CSSProperties = {
     position: "relative",
@@ -114,11 +116,18 @@ function DraggableImageCell({
       aria-label={item.alt ?? item.id}
       dragControls={dragControls}
       dragListener={!disabled}
+      dragMomentum={motionAllowed}
       onDragStart={() => setIsDragging(true)}
-      onDragEnd={() => setIsDragging(false)}
-      layout={motionAllowed ? "position" : undefined}
+      onDragEnd={() => {
+        setIsDragging(false);
+        // Reorder 的松手回弹独立于 MotionConfig，需要直接结束位移。
+        if (!motionAllowed) dragX.jump(0);
+      }}
+      layout="position"
+      transition={motionAllowed ? undefined : { duration: 0 }}
       style={{
         ...cellStyle,
+        x: dragX,
         zIndex: isDragging ? 10 : 1,
       }}
       whileDrag={motionAllowed ? {
@@ -208,7 +217,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
     ref,
   ) {
     const { t } = useTranslation("common");
-    const motionAllowed = useMotionAllowed();
+    const motionAllowed = !useReducedMotionPreference();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     if (loading) return <>{loadingContent}</>;

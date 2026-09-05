@@ -10,7 +10,9 @@ import {
   TooltipProvider,
 } from "@portal/components/ui/tooltip";
 
-import { usePreferencesStore } from "../stores/preferences";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useReducedMotionPreference } from "../hooks/useReducedMotionPreference";
+import { DARK_MODE_MEDIA_QUERY, resolveThemeMode, usePreferencesStore, type ThemeMode } from "../stores/preferences";
 
 const KEYBOARD_FOCUS_KEYS = new Set([
   "Tab",
@@ -32,7 +34,7 @@ type Accent = "teal" | "indigo" | "violet" | "orange";
 
 interface ThemeContextValue {
   theme: Theme;
-  setTheme: (theme: Theme) => void;
+  setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
   accent: Accent;
   setAccent: (accent: Accent) => void;
@@ -47,7 +49,10 @@ export function useTheme(): ThemeContextValue {
 }
 
 export function PortalThemeProvider({ children }: { children: ReactNode }) {
-  const theme = usePreferencesStore((state) => state.themeMode);
+  const themeMode = usePreferencesStore((state) => state.themeMode);
+  const systemDark = useMediaQuery(DARK_MODE_MEDIA_QUERY);
+  const theme = resolveThemeMode(themeMode, systemDark);
+  const reducedMotion = useReducedMotionPreference();
   const setTheme = usePreferencesStore((state) => state.setThemeMode);
   const accent = usePreferencesStore((state) => state.accent);
   const setAccent = usePreferencesStore((state) => state.setAccent);
@@ -59,7 +64,8 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.accent = accent;
-  }, [theme, accent]);
+    document.documentElement.dataset.motion = reducedMotion ? "reduced" : "full";
+  }, [theme, accent, reducedMotion]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -93,7 +99,7 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
 
   return (
     <ThemeContext.Provider value={contextValue}>
-      <MotionConfig reducedMotion="user">
+      <MotionConfig reducedMotion={reducedMotion ? "always" : "never"} transition={reducedMotion ? { duration: 0 } : undefined}>
         <Toaster timeout={5000} limit={4}>
           <TooltipProvider
             delay={TOOLTIP_OPEN_DELAY_MS}

@@ -133,6 +133,52 @@
   flex-wrap: wrap;
 }
 
+.profile-account__password-card {
+  container-type: inline-size;
+}
+
+.profile-account__password-body {
+  align-content: start;
+}
+
+.profile-account__password-fields {
+  align-items: start;
+}
+
+.profile-account__password-card [data-slot="input"] {
+  block-size: var(--control-hit-area);
+  min-block-size: var(--control-hit-area);
+  border-radius: var(--radius-control);
+  box-shadow: none;
+}
+
+.profile-account__password-card [data-slot="input"][aria-invalid="true"] {
+  border-color: var(--status-danger);
+  box-shadow: none;
+}
+
+.profile-account__password-card [data-slot="input"]:focus-visible {
+  border-color: var(--brand-fill);
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.profile-account__password-card .relative > [data-slot="button"] {
+  inline-size: var(--control-hit-area);
+  min-inline-size: var(--control-hit-area);
+  block-size: var(--control-hit-area);
+  min-block-size: var(--control-hit-area);
+}
+
+.profile-account__password-actions {
+  margin-block-start: var(--space-xs);
+}
+
+.profile-account__password-actions [data-slot="button"] {
+  min-block-size: var(--control-hit-area);
+}
+
 .profile-account__email {
   display: grid;
   gap: var(--space-md);

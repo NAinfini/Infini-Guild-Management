@@ -35,7 +35,7 @@ type AdminUserActionMenuProps = {
   contextHasProtectedTarget: boolean;
   anyActiveInContext: boolean;
   anyInactiveInContext: boolean;
-  canEditUsers: boolean;
+  canCreateMember: boolean;
   canAssignUserRoles: boolean;
   canActivateUsers: boolean;
   canDeleteUsers: boolean;
@@ -69,7 +69,7 @@ export function AdminUserActionMenu({
   contextHasProtectedTarget,
   anyActiveInContext,
   anyInactiveInContext,
-  canEditUsers,
+  canCreateMember,
   canAssignUserRoles,
   canActivateUsers,
   canDeleteUsers,
@@ -217,7 +217,7 @@ export function AdminUserActionMenu({
           </>
         ) : null}
         <DropdownMenuSeparator />
-        {canEditUsers ? (
+        {canCreateMember ? (
           <AdminUserMenuItem onClick={onOpenCreateMember}>
             <UserPlusIcon size={14} />
             {t("member.context.createMember")}

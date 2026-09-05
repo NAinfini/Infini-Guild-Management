@@ -1,3 +1,6 @@
+// A gallery upload audit identifies at most 50 nanoids (21 characters each) separated by commas.
+export const AUDIT_SUBJECT_ID_MAX_LENGTH = 50 * 21 + 49;
+
 export const AUDIT_ENTITY_TYPES = [
   "analytics_settings",
   "announcement",

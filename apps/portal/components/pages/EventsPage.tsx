@@ -1,7 +1,7 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event } from "@guild/shared";
 import { Button } from "@portal/components/ui/button";
 import { Card, CardContent } from "@portal/components/ui/card";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback } from "react";
 import { useTranslation } from "react-i18next";
@@ -33,10 +33,6 @@ const LazyEventCardsView = lazy(() =>
 const LazyEventCalendarView = lazy(() =>
   import("../feature/events/EventCalendarView").then((mod) => ({ default: mod.EventCalendarView })),
 );
-
-function asMemberEntries(value: Array<{ user: User; profile: MemberProfile }>) {
-  return value;
-}
 
 export function EventsPage() {
   const { t } = useTranslation("events");
@@ -112,10 +108,13 @@ export function EventsPage() {
     notifySuccess(t("message.mentionsCopied"));
   }, [filtering.eventMembersMap, t]);
 
-  const hasLoadError = filtering.eventsQuery.isError || filtering.usersQuery.isError || filtering.previewDetailsQuery.isError;
+  const hasLoadError = filtering.eventsQuery.isError
+    || filtering.memberDirectory.isError
+    || filtering.availabilitySummaryError
+    || filtering.previewDetailsQuery.isError;
   useLoadWarningToast(hasLoadError, t("common:loadErrorRetry"));
   const eventsUnavailable = filtering.eventsQuery.isError && filtering.sortedEvents.length === 0;
-  const members = asMemberEntries(filtering.usersQuery.data?.data ?? []);
+  const members = filtering.users;
 
   return (
     <PageLayout
@@ -123,7 +122,7 @@ export function EventsPage() {
       toolbar={(
         <div className="events-page__toolbar-stack">
           <EventsWorkspaceSubnav value="events" canManageTemplates={canManageTemplates} />
-          <Suspense fallback={<Skeleton className="h-10" />}>
+          <Suspense fallback={<LoadingIndicator />}>
             <LazyEventsFiltersCard
               searchQuery={filtering.searchQuery}
               eventType={filtering.eventType}
@@ -144,7 +143,7 @@ export function EventsPage() {
         </div>
       )}
     >
-      <Suspense fallback={<Skeleton className="h-55" />}>
+      <Suspense fallback={<LoadingIndicator />}>
         {eventsUnavailable ? (
           <Card className="events-page__error-card">
             <CardContent>

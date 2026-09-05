@@ -21,6 +21,11 @@ const BATCH_REQUEST = {
   path: /^\/api\/storage\/transactions\/batch$/,
 } as const;
 
+const MEMBER_DIRECTORY_REQUEST = {
+  method: "GET",
+  path: /^\/api\/users\/directory$/,
+} as const;
+
 let storageId: string;
 let itemA: { id: string; name: string };
 let itemB: { id: string; name: string };
@@ -112,8 +117,11 @@ async function expectSummary(page: Page, selected: number, units: number) {
 }
 
 async function startBatch(page: Page, flow: import("../../support/test").Flow) {
-  // 开批量只切前端状态，一个请求都不该发。
-  await flow.clickWithoutApi(page.getByRole("button", { name: "Batch operation", exact: true }));
+  // 成员目录只在真正打开批量选择器时按需取第一页；之后的数量与方向交互仍必须完全留在前端。
+  await flow.click(
+    page.getByRole("button", { name: "Batch operation", exact: true }),
+    MEMBER_DIRECTORY_REQUEST,
+  );
   await expect(page.locator(bar)).toBeVisible();
 }
 
@@ -194,6 +202,15 @@ test("复核抽屉：领取人必须显式选择，逐项移除和清空都会�
   await expect(drawer.getByRole("button", { name: "Submit 2 items", exact: true })).toBeDisabled();
 
   // 选了人之后才解锁提交。
+  // 每条用例是新页面，此处首次搜索该成员；等结果返回后再打开下拉。
+  const memberSearch = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === "GET"
+      && url.pathname === "/api/users/directory"
+      && url.searchParams.get("search") === "member_01";
+  });
+  await drawer.getByRole("searchbox", { name: "Search members", exact: true }).fill("member_01");
+  expect((await memberSearch).ok(), "领取人搜索请求必须成功").toBe(true);
   await selectOption(drawer, "Member", "member_01");
   await expect(drawer.getByText("Select the member associated with this batch before submitting.", { exact: true }))
     .toHaveCount(0);
@@ -217,6 +234,14 @@ test("批量入库完整链路：两件物品的服务端库存各自按量增�
 
   await page.getByRole("button", { name: "Review batch", exact: true }).click();
   const drawer = dialogTitled(page, "Review batch");
+  const memberSearch = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === "GET"
+      && url.pathname === "/api/users/directory"
+      && url.searchParams.get("search") === "member_01";
+  });
+  await drawer.getByRole("searchbox", { name: "Search members", exact: true }).fill("member_01");
+  expect((await memberSearch).ok(), "领取人搜索请求必须成功").toBe(true);
   await selectOption(drawer, "Member", "member_01");
   await drawer.getByLabel("Note", { exact: true }).fill("e2e batch");
 

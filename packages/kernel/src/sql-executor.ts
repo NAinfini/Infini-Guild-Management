@@ -13,12 +13,17 @@ export type SqlStatement = Readonly<{
   columns?: readonly string[];
 }>;
 
+export type SqlReadStatement = Omit<SqlStatement, "method"> & Readonly<{
+  method: Exclude<SqlMethod, "run">;
+}>;
+
+export type SqlReadBatchStatement = SqlReadStatement & Readonly<{
+  columns: readonly string[];
+}>;
+
 export type SqlBatchStatement =
   | (Omit<SqlStatement, "method" | "columns"> & Readonly<{ method: "run"; columns?: never }>)
-  | (Omit<SqlStatement, "method" | "columns"> & Readonly<{
-    method: Exclude<SqlMethod, "run">;
-    columns: readonly string[];
-  }>);
+  | SqlReadBatchStatement;
 
 export type SqlResult = Readonly<{
   rows: SqlRows;
@@ -26,13 +31,19 @@ export type SqlResult = Readonly<{
 }>;
 
 export interface SqlExecutor {
+  /** A single query expression, without a terminating semicolon. */
+  read(statement: SqlReadStatement): Promise<SqlResult>;
+  /** Query expressions evaluated together against one database snapshot. */
+  readBatch(statements: readonly SqlReadBatchStatement[]): Promise<readonly SqlResult[]>;
+  /** Write lane, including result-producing mutations. */
   execute(statement: SqlStatement): Promise<SqlResult>;
+  /** Atomic write lane; reads here observe earlier mutations in the batch. */
   batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]>;
 }
 
 /*
- * 词法上的首个 SQL 关键字（跳过前导注释与空语句）。执行器靠它做两件事：
- * 拒绝绕过 batch() 的事务控制语句，以及把纯 SELECT 路由到只读通道。
+ * 词法上的首个 SQL 关键字只用于拒绝绕过 batch() 的事务控制语句，
+ * 不用于猜测一条 SQL 是否只读；读写意图由调用方显式选择。
  */
 export function firstSqlToken(sql: string): string | undefined {
   let remaining = sql;
@@ -43,7 +54,7 @@ export function firstSqlToken(sql: string): string | undefined {
       continue;
     }
     if (remaining.startsWith("--")) {
-      const newline = remaining.search(/[\r\n]/);
+      const newline = remaining.indexOf("\n");
       if (newline < 0) return undefined;
       remaining = remaining.slice(newline + 1);
       continue;
@@ -93,6 +104,53 @@ export function assertSqlBatch(statements: readonly SqlBatchStatement[]): void {
     throw new RangeError(`SQL batches support at most ${MAX_SQL_BATCH_STATEMENTS} statements`);
   }
   statements.forEach(assertSqlBatchStatement);
+}
+
+/** SQLite's query grammar rejects DML/DDL; this boundary prevents escaping the subquery. */
+export function prepareSqlReadStatement(statement: SqlReadStatement): SqlReadStatement {
+  assertSqlStatement(statement);
+  if ((statement.method as SqlMethod) === "run") throw new TypeError("SQL reads cannot use the run method");
+  assertQueryExpression(statement.sql);
+  return { ...statement, sql: `SELECT * FROM (${statement.sql}\n)` };
+}
+
+export function prepareSqlReadBatch(statements: readonly SqlReadBatchStatement[]): readonly SqlReadBatchStatement[] {
+  assertSqlBatch(statements);
+  return statements.map((statement) => ({ ...prepareSqlReadStatement(statement), columns: statement.columns }));
+}
+
+function assertQueryExpression(sql: string): void {
+  const invalid = () => new TypeError("SQL reads require one complete query expression without a semicolon");
+  let depth = 0;
+  for (let index = 0; index < sql.length; index += 1) {
+    const character = sql[index]!;
+    if (character === "'" || character === '"' || character === "`" || character === "[") {
+      const close = character === "[" ? "]" : character;
+      let closed = false;
+      while (++index < sql.length) {
+        if (sql[index] !== close) continue;
+        if (close !== "]" && sql[index + 1] === close) { index += 1; continue; }
+        closed = true;
+        break;
+      }
+      if (!closed) throw invalid();
+    } else if (character === "-" && sql[index + 1] === "-") {
+      index += 2;
+      // SQLite ends a line comment only at LF; treating CR as an end lets quoted SQL escape.
+      while (index < sql.length && sql[index] !== "\n") index += 1;
+    } else if (character === "/" && sql[index + 1] === "*") {
+      const end = sql.indexOf("*/", index + 2);
+      if (end < 0) throw invalid();
+      index = end + 1;
+    } else if (character === ";" || character === "\0") {
+      throw invalid();
+    } else if (character === "(") {
+      depth += 1;
+    } else if (character === ")" && --depth < 0) {
+      throw invalid();
+    }
+  }
+  if (depth !== 0) throw invalid();
 }
 
 export function assertSqlResultColumns(statement: SqlStatement, columns: readonly string[]): void {

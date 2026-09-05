@@ -6,7 +6,7 @@ import { LanguageIcon } from "@portal/components/icons";
 import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
 import { Button } from "@portal/components/ui/button";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Switch } from "@portal/components/ui/switch";
 
 import { PageLayout } from "../layout/PageLayout";
@@ -96,17 +96,18 @@ const NOTIFICATION_OPTIONS: NotificationPreferenceKey[] = [
 
 export function SettingsPage() {
   const { t } = useTranslation("settings");
-  const { locale, setLocale } = usePreferencesStore();
+  const { locale, setLocale, themeMode, motionPreference, setMotionPreference } = usePreferencesStore();
   const { theme: currentTheme, setTheme, accent, setAccent } = useTheme();
   const userId = useAuthStore((state) => state.user?.id);
   const isExternalView = useExternalView();
+  const showNotificationPreferences = Boolean(userId) && !isExternalView;
   const queryClient = useQueryClient();
   const { showError } = useAppError();
 
   const notificationPreferencesQuery = useQuery({
     queryKey: queryKeys.notifications.preferences(userId),
     queryFn: fetchNotificationPreferences,
-    enabled: Boolean(userId) && !isExternalView,
+    enabled: showNotificationPreferences,
   });
   const notificationPreferencesMutation = useMutation({
     mutationFn: ({ key, enabled }: { key: NotificationPreferenceKey; enabled: boolean }) =>
@@ -129,7 +130,7 @@ export function SettingsPage() {
 
   return (
     <PageLayout>
-      <div className="settings-page">
+      <div className={showNotificationPreferences ? "settings-page" : "settings-page settings-page--compact"}>
         <fieldset className="settings-section settings-section--appearance">
           <legend className="settings-section__legend">{t("section.appearance")}</legend>
           <div className="settings-section__content">
@@ -137,10 +138,17 @@ export function SettingsPage() {
               <p id="settings-theme-label" className="settings-field-label">{t("field.theme")}</p>
               <RadioGroup
                 aria-labelledby="settings-theme-label"
-                value={currentTheme}
+                value={themeMode}
                 onValueChange={(nextTheme) => setTheme(nextTheme)}
-                className="settings-choice-grid settings-choice-grid--binary"
+                className="settings-choice-grid settings-choice-grid--theme"
               >
+                <OptionCard
+                  value="system"
+                  label={t("theme.system")}
+                  description={t("theme.system.desc")}
+                  visual={<SurfaceSample theme={currentTheme} />}
+                  visualKind="sample"
+                />
                 <OptionCard
                   value="light"
                   label={t("theme.light")}
@@ -179,52 +187,21 @@ export function SettingsPage() {
               </RadioGroup>
             </div>
 
-            {userId && !isExternalView ? (
-              <div className="settings-field-group">
-                <p id="settings-notifications-label" className="settings-field-label">
-                  {t("field.notifications")}
-                </p>
-                <p className="settings-field-description">{t("notification.description")}</p>
-                {notificationPreferencesQuery.isLoading ? (
-                  <div className="settings-notification-list" aria-busy="true">
-                    {NOTIFICATION_OPTIONS.map((key) => <Skeleton key={key} className="settings-notification-skeleton" />)}
-                  </div>
-                ) : notificationPreferencesBlockingError ? (
-                  <Button type="button" variant="outline" onClick={() => { void notificationPreferencesQuery.refetch(); }}>
-                    {t("notification.retry")}
-                  </Button>
-                ) : (
-                  <>
-                    {notificationPreferencesRefreshError ? (
-                      <Alert variant="destructive">
-                        <AlertTitle>{t("common:loadError")}</AlertTitle>
-                        <AlertDescription>
-                          <span>{t("common:loadErrorRetry")}</span>
-                          <Button size="sm" variant="outline" loading={notificationPreferencesQuery.isFetching} onClick={() => { void notificationPreferencesQuery.refetch(); }}>
-                            {t("notification.retry")}
-                          </Button>
-                        </AlertDescription>
-                      </Alert>
-                    ) : null}
-                    <div className="settings-notification-list" aria-labelledby="settings-notifications-label">
-                      {NOTIFICATION_OPTIONS.map((key) => (
-                        <label key={key} className="settings-notification-row">
-                          <span>
-                            <strong>{t(`notification.${key}.label`)}</strong>
-                            <small>{t(`notification.${key}.description`)}</small>
-                          </span>
-                          <Switch
-                            checked={notificationPreferencesQuery.data?.[key] ?? true}
-                            disabled={notificationPreferencesMutation.isPending}
-                            onCheckedChange={(enabled) => notificationPreferencesMutation.mutate({ key, enabled })}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : null}
+            <div className="settings-field-group">
+              <p className="settings-field-label">{t("field.motion")}</p>
+              <label className="settings-toggle-row">
+                <span>
+                  <strong id="settings-reduce-motion-label">{t("motion.reduce")}</strong>
+                  <small id="settings-reduce-motion-description">{t("motion.reduce.desc")}</small>
+                </span>
+                <Switch
+                  aria-labelledby="settings-reduce-motion-label"
+                  aria-describedby="settings-reduce-motion-description"
+                  checked={motionPreference === "reduce"}
+                  onCheckedChange={(checked) => setMotionPreference(checked ? "reduce" : "system")}
+                />
+              </label>
+            </div>
           </div>
         </fieldset>
 
@@ -255,8 +232,54 @@ export function SettingsPage() {
                 />
               </RadioGroup>
             </div>
+
+            {showNotificationPreferences ? (
+              <div className="settings-field-group">
+                <p id="settings-notifications-label" className="settings-field-label">
+                  {t("field.notifications")}
+                </p>
+                <p className="settings-field-description">{t("notification.description")}</p>
+                {notificationPreferencesQuery.isLoading ? (
+                  <LoadingIndicator />
+                ) : notificationPreferencesBlockingError ? (
+                  <Button type="button" variant="outline" onClick={() => { void notificationPreferencesQuery.refetch(); }}>
+                    {t("notification.retry")}
+                  </Button>
+                ) : (
+                  <>
+                    {notificationPreferencesRefreshError ? (
+                      <Alert variant="destructive">
+                        <AlertTitle>{t("common:loadError")}</AlertTitle>
+                        <AlertDescription>
+                          <span>{t("common:loadErrorRetry")}</span>
+                          <Button size="sm" variant="outline" loading={notificationPreferencesQuery.isFetching} onClick={() => { void notificationPreferencesQuery.refetch(); }}>
+                            {t("notification.retry")}
+                          </Button>
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
+                    <div className="settings-notification-list" aria-labelledby="settings-notifications-label">
+                      {NOTIFICATION_OPTIONS.map((key) => (
+                        <label key={key} className="settings-toggle-row">
+                          <span>
+                            <strong>{t(`notification.${key}.label`)}</strong>
+                            <small>{t(`notification.${key}.description`)}</small>
+                          </span>
+                          <Switch
+                            checked={notificationPreferencesQuery.data?.[key] ?? true}
+                            disabled={notificationPreferencesMutation.isPending}
+                            onCheckedChange={(enabled) => notificationPreferencesMutation.mutate({ key, enabled })}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null}
           </div>
         </fieldset>
+
       </div>
     </PageLayout>
   );

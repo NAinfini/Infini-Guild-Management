@@ -11,7 +11,7 @@ describe("runtime locale switching", () => {
     await i18nReady;
 
     await setI18nLocale("zh");
-    expect(i18n.t("dashboard:title")).toBe("仪表盘");
+    expect(i18n.t("dashboard:title")).toBe("总览");
     expect(i18n.t("common:nav.events")).toBe("活动");
 
     await setI18nLocale("en");

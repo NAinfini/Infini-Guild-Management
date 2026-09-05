@@ -5,7 +5,12 @@ import type {
   MemberAvailability,
   MemberBadge,
   MemberProfile,
-  User,
+  MemberSummary,
+  MemberDirectoryEntry,
+  MemberPlanningEntry,
+  MemberListSort,
+  MemberManagementStats,
+  MemberAvailabilitySummary,
   UserBadge,
 } from "@guild/shared";
 import type { ClassVectorIconId } from "@guild/shared/constants/class-icons";
@@ -61,7 +66,7 @@ export type MemberRecord = Readonly<{
 }>;
 
 export type MemberWireRecord = Readonly<{
-  user: User;
+  user: MemberSummary;
   profile: MemberProfile;
   badges: readonly UserBadge[];
   edit_revisions?: Readonly<{
@@ -100,6 +105,10 @@ export type RosterQuery = Readonly<{
   search: string;
   roleId?: string;
   classId?: string;
+  classIds?: readonly string[];
+  sort?: MemberListSort;
+  direction?: "asc" | "desc";
+  searchScope?: "name" | "management";
   active?: boolean;
   includeTotal: boolean;
   projection: MemberProjection;
@@ -111,6 +120,15 @@ export type RosterPage = Readonly<{
   page: number;
   limit: number;
   totalPages: number;
+  stats?: MemberManagementStats;
+}>;
+
+export type MemberDirectoryQuery = Readonly<{
+  search: string;
+  limit: number;
+  cursor?: Readonly<{ displayName: string; userId: string }>;
+  ids?: readonly string[];
+  projection: MemberProjection;
 }>;
 
 export type MemberProfilePatch = Readonly<{
@@ -241,6 +259,9 @@ export interface MemberMediaPort {
 
 export interface MembersStore {
   listRoster(query: RosterQuery): Promise<RosterPage>;
+  listDirectory(query: MemberDirectoryQuery): Promise<Readonly<{ data: readonly MemberDirectoryEntry[]; hasMore: boolean }>>;
+  listPlanningMembers(userIds: readonly string[], projection: MemberProjection): Promise<readonly MemberPlanningEntry[]>;
+  getAvailabilitySummary(): Promise<MemberAvailabilitySummary>;
   getMember(userId: string, projection: MemberProjection): Promise<MemberRecord | null>;
   getMemberTarget(userId: string): Promise<MemberTarget | null>;
   getStats(): Promise<Readonly<{ activeMembers: number; totalMembers: number }>>;

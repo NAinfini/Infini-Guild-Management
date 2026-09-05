@@ -1,7 +1,10 @@
-import type { StorageItem, User } from "@guild/shared";
+import type { MemberDirectoryEntry } from "@guild/shared";
 import { TrashIcon, XIcon } from "@portal/components/icons";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
+import type { MemberDirectoryLoadError } from "@portal/hooks/data/useMemberDirectory";
+import { RetryableLoadError } from "@portal/components/shared/RetryableLoadError";
 import {
   Drawer,
   DrawerClose,
@@ -10,6 +13,7 @@ import {
   DrawerTitle,
 } from "@portal/components/ui/drawer";
 import { Label } from "@portal/components/ui/label";
+import { Input } from "@portal/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -30,27 +34,25 @@ import { useMediaQuery } from "@portal/hooks/useMediaQuery";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-export type StorageBatchDirection = "intake" | "distribute";
+import type { StorageBatchDirection, StorageBatchDraft } from "./storage-batch-draft";
 
-export type StorageBatchDraft = {
-  idempotencyKey: string;
-  type: StorageBatchDirection;
-  quantities: Record<string, number>;
-  itemSnapshots: Record<string, StorageItem>;
-  recipientUserId: string | null;
-  note: string;
-};
-
-type UserOption = { user: User };
+type UserOption = Pick<MemberDirectoryEntry, "user">;
 
 type StorageBatchPanelProps = {
   draft: StorageBatchDraft;
   users: UserOption[];
+  userSearch?: string;
+  usersHasMore?: boolean;
+  usersLoadingMore?: boolean;
+  usersLoading?: boolean;
+  userLoadError?: MemberDirectoryLoadError | null;
   currentUsername?: string;
   canManageStock: boolean;
   isSaving: boolean;
   onTypeChange: (type: StorageBatchDirection) => void;
   onRecipientChange: (userId: string | null) => void;
+  onUserSearchChange?: (value: string) => void;
+  onLoadMoreUsers?: () => void;
   onNoteChange: (note: string) => void;
   onQuantityChange: (itemId: string, quantity: number) => void;
   onClear: () => void;
@@ -61,11 +63,18 @@ type StorageBatchPanelProps = {
 export function StorageBatchPanel({
   draft,
   users,
+  userSearch = "",
+  usersHasMore = false,
+  usersLoadingMore = false,
+  usersLoading = false,
+  userLoadError = null,
   currentUsername,
   canManageStock,
   isSaving,
   onTypeChange,
   onRecipientChange,
+  onUserSearchChange,
+  onLoadMoreUsers,
   onNoteChange,
   onQuantityChange,
   onClear,
@@ -126,21 +135,46 @@ export function StorageBatchPanel({
       {canManageStock ? (
         <div className="storage-field">
           <Label>{t("field.member")}</Label>
-          <Select
-            value={draft.recipientUserId ?? undefined}
-            items={userOptions}
-            onValueChange={(value) => onRecipientChange(value ?? null)}
-            disabled={isSaving}
-          >
-            <SelectTrigger aria-label={t("field.member")} className="storage-field__control">
-              <SelectValue placeholder={t("empty.noUsers")} />
-            </SelectTrigger>
-            <SelectContent>
-              {userOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {onUserSearchChange ? (
+            <Input
+              type="search"
+              value={userSearch}
+              aria-label={t("filter.searchMembers")}
+              placeholder={t("filter.searchMembers")}
+              onChange={(event) => onUserSearchChange(event.currentTarget.value)}
+              disabled={isSaving}
+            />
+          ) : null}
+          {userLoadError ? (
+            <RetryableLoadError
+              pending={userLoadError.retrying}
+              onRetry={() => { void userLoadError.retry(); }}
+            />
+          ) : null}
+          {usersLoading && userOptions.length === 0 ? (
+            <LoadingIndicator />
+          ) : userLoadError && userOptions.length === 0 ? null : (
+            <Select
+              value={draft.recipientUserId ?? undefined}
+              items={userOptions}
+              onValueChange={(value) => onRecipientChange(value ?? null)}
+              disabled={isSaving}
+            >
+              <SelectTrigger aria-label={t("field.member")} className="storage-field__control">
+                <SelectValue placeholder={t("empty.noUsers")} />
+              </SelectTrigger>
+              <SelectContent>
+                {userOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {usersHasMore && onLoadMoreUsers && !userLoadError ? (
+            <Button size="sm" variant="ghost" loading={usersLoadingMore} onClick={onLoadMoreUsers}>
+              {t("action.loadMore")}
+            </Button>
+          ) : null}
           {!draft.recipientUserId ? (
             <span className="storage-field__error" role="alert">{t("validation.recipientRequired")}</span>
           ) : null}

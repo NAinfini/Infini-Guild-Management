@@ -4,6 +4,8 @@ export const queryKeys = {
     user: (userId: string) => ["notifications", "inbox", userId] as const,
     inbox: (userId: string | null | undefined) =>
       [...queryKeys.notifications.user(userId ?? "anonymous"), "recent"] as const,
+    unreadCount: (userId: string | null | undefined) =>
+      [...queryKeys.notifications.user(userId ?? "anonymous"), "unread-count"] as const,
     preferences: (userId: string | null | undefined) =>
       [...queryKeys.notifications.user(userId ?? "anonymous"), "preferences"] as const,
   },
@@ -20,8 +22,17 @@ export const queryKeys = {
   },
   users: {
     all: ["users"] as const,
-    directory: (viewerKey: string, projection: "public" | "internal") =>
-      [...queryKeys.users.all, "directory", viewerKey, projection] as const,
+    list: (viewerKey: string, projection: "public" | "internal", filters: object) =>
+      [...queryKeys.users.all, "list", viewerKey, projection, filters] as const,
+    detail: (viewerKey: string, projection: "public" | "internal", userId: string | null) =>
+      [...queryKeys.users.all, "detail", viewerKey, projection, userId] as const,
+    directory: (viewerKey: string, projection: "public" | "internal", search = "") =>
+      [...queryKeys.users.all, "directory", viewerKey, projection, search] as const,
+    identities: (viewerKey: string, projection: "public" | "internal", idsKey: string) =>
+      [...queryKeys.users.all, "identities", viewerKey, projection, idsKey] as const,
+    planning: (viewerKey: string, projection: "public" | "internal", idsKey: string) =>
+      [...queryKeys.users.all, "planning", viewerKey, projection, idsKey] as const,
+    availabilitySummary: (viewerKey: string) => [...queryKeys.users.all, "availability-summary", viewerKey] as const,
     stats: () => [...queryKeys.users.all, "stats"] as const,
   },
   absences: {

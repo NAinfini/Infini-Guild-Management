@@ -1,4 +1,4 @@
-import { PERMISSIONS, type CreateStorageTransactionPayload, type StorageItem, type User } from "@guild/shared";
+import { type CreateStorageTransactionPayload, type StorageItem, type MemberSummary } from "@guild/shared";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -24,14 +24,13 @@ const item: StorageItem = {
   updated_at: "2026-07-28T00:00:00.000Z",
 };
 
-const member: User = {
+const member: MemberSummary = {
   id: "user-1",
   display_name: "Member One",
   role: "member",
   role_name: "Member",
   role_color: null,
   role_level: 1,
-  permissions: Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])) as User["permissions"],
   is_active: true,
   deleted_at: null,
   created_at: "2026-07-28T00:00:00.000Z",
@@ -45,13 +44,19 @@ function renderModal(options: {
   initialItem?: StorageItem | null;
   itemsHasMore?: boolean;
   onLoadMoreItems?: () => void;
+  users?: Array<{ user: MemberSummary }>;
+  userLoadError?: {
+    kind: "directory" | "next-page" | "identities";
+    retry: () => Promise<unknown>;
+    retrying: boolean;
+  } | null;
 }) {
   const onSubmit = vi.fn<(itemId: string, payload: CreateStorageTransactionPayload) => void>();
   render(
     <StorageTransactionModal
       opened
       items={[item]}
-      users={[{ user: member }]}
+      users={options.users ?? [{ user: member }]}
       initialItem={options.initialItem === undefined ? item : options.initialItem}
       initialMode={options.mode ?? "intake"}
       canManageStock={options.canManageStock}
@@ -60,6 +65,7 @@ function renderModal(options: {
       itemSearch=""
       onItemSearchChange={vi.fn()}
       onLoadMoreItems={options.onLoadMoreItems ?? vi.fn()}
+      userLoadError={options.userLoadError}
       defaultRecipientUserId={member.id}
       isSaving={false}
       onClose={vi.fn()}
@@ -222,7 +228,23 @@ describe("StorageTransactionModal", () => {
     expect(loadMore).toHaveBeenCalledTimes(1);
   });
 
-  it("does not reset an in-progress entry when another item page arrives", async () => {
+  it("offers member retry instead of reporting no users after a directory failure", async () => {
+    const retry = vi.fn(async () => undefined);
+    renderModal({
+      canManageStock: true,
+      mode: "distribute",
+      users: [],
+      userLoadError: { kind: "directory", retry, retrying: false },
+    });
+
+    expect(screen.getByText("loadError")).toBeInTheDocument();
+    expect(screen.queryByText("empty.noUsers")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "field.member" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "action.retry" }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it("does not reset an in-progress entry when item or member search results change", async () => {
     const user = userEvent.setup();
     const commonProps = {
       opened: true,
@@ -256,7 +278,7 @@ describe("StorageTransactionModal", () => {
     expect(screen.getByRole("textbox", { name: "field.quantity" })).toHaveValue("5");
 
     rerender(
-      <StorageTransactionModal {...commonProps} items={[]} />,
+      <StorageTransactionModal {...commonProps} items={[]} users={[]} />,
     );
 
     expect(screen.getByText("Crystal")).toBeInTheDocument();

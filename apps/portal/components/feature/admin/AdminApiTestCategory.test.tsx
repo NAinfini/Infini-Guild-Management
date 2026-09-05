@@ -38,10 +38,7 @@ describe("ApiTestCategory", () => {
     renderCategory();
 
     const disclosure = screen.getByRole("button", { name: "System: 0/1" });
-    const runButton = screen.getByRole("button", { name: "System" });
-
     expect(disclosure).toHaveAttribute("aria-expanded", "false");
-    expect(runButton).toHaveClass("api-cat__run-button");
     expect(screen.queryByText("Health Check")).not.toBeInTheDocument();
 
     disclosure.focus();

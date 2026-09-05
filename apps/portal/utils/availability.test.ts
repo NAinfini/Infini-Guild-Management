@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { buildAvailabilityHeatData, parseAvailabilityRanges } from "./availability";
+import { buildAvailabilityHeatData, buildAvailabilityHeatDataFromSummary, parseAvailabilityRanges } from "./availability";
 import type { MemberAvailability } from "@guild/shared";
 
 function availability(
@@ -69,5 +69,22 @@ describe("availability utils", () => {
     expect(heatData.daysWithAny.has(1)).toBe(true);
     expect(heatData.maxCount).toBe(2);
     expect(heatData.memberCount).toBe(2);
+  });
+
+  it("maps the fixed availability aggregate without member-profile rows", () => {
+    const hourlyCounts = Array.from({ length: 7 }, () => Array<number>(24).fill(0));
+    hourlyCounts[2]![8] = 3;
+    hourlyCounts[2]![9] = 5;
+
+    const heatData = buildAvailabilityHeatDataFromSummary({
+      hourly_counts: hourlyCounts,
+      member_count: 7,
+    });
+
+    expect(heatData.hourlyByDay.get(2)?.[9]).toBe(5);
+    expect(heatData.dayPeakByDay.get(2)).toBe(5);
+    expect(heatData.daysWithAny).toEqual(new Set([2]));
+    expect(heatData.maxCount).toBe(5);
+    expect(heatData.memberCount).toBe(7);
   });
 });

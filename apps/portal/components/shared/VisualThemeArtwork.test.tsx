@@ -2,7 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PortalThemeProvider } from "../../providers/ThemeProvider";
 import { usePreferencesStore } from "../../stores/preferences";
-import { ACTIVE_VISUAL_THEME } from "../../visual/themes";
+import { ACTIVE_VISUAL_THEME, VISUAL_WORKSPACE_SCENE_IDS } from "../../visual/themes";
 import { VisualThemeScene } from "./VisualThemeArtwork";
 
 beforeEach(() => {
@@ -10,6 +10,20 @@ beforeEach(() => {
 });
 
 describe("VisualThemeArtwork", () => {
+  it.each(VISUAL_WORKSPACE_SCENE_IDS)("provides responsive day and night artwork for workspace %s", (scene) => {
+    const assets = ACTIVE_VISUAL_THEME.scenes.workspace[scene];
+    const { container } = render(
+      <PortalThemeProvider><VisualThemeScene variant={`workspace-${scene}`} /></PortalThemeProvider>,
+    );
+    expect(container.querySelector("img")).toHaveAttribute("src", assets.desktop.sources.light.src);
+    expect(container.querySelector("source")).toHaveAttribute("srcset", assets.mobile.sources.light.src);
+    expect(container.querySelector("source")).toHaveAttribute("media", "(max-width: 767px)");
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    act(() => usePreferencesStore.setState({ themeMode: "dark" }));
+    expect(container.querySelector("img")).toHaveAttribute("src", assets.desktop.sources.dark.src);
+    expect(container.querySelector("source")).toHaveAttribute("srcset", assets.mobile.sources.dark.src);
+  });
+
   it("selects the active theme asset for landing and access variants", () => {
     const { container, rerender } = render(
       <PortalThemeProvider><VisualThemeScene /></PortalThemeProvider>,
@@ -32,16 +46,16 @@ describe("VisualThemeArtwork", () => {
     );
   });
 
-  it("switches a route scene to its dark asset when the color mode changes", () => {
+  it("switches a public scene to its dark asset when the color mode changes", () => {
     const { container } = render(
-      <PortalThemeProvider><VisualThemeScene variant="dashboard" /></PortalThemeProvider>,
+      <PortalThemeProvider><VisualThemeScene variant="access-register" /></PortalThemeProvider>,
     );
 
     act(() => usePreferencesStore.setState({ themeMode: "dark" }));
 
     expect(container.querySelector(".visual-theme-scene__environment")).toHaveAttribute(
       "src",
-      ACTIVE_VISUAL_THEME.scenes.routes.dashboard.sources.dark.src,
+      ACTIVE_VISUAL_THEME.scenes.access.register.desktop.sources.dark.src,
     );
     expect(container.querySelector(".visual-theme-scene")).toHaveAttribute(
       "data-visual-color-mode",

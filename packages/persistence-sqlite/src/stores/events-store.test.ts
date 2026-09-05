@@ -136,6 +136,14 @@ class RejectSnapshotExecutor implements SqlExecutor {
     private readonly rejects: (statement: SqlBatchStatement) => boolean,
   ) {}
 
+  read(statement: Parameters<SqlExecutor["read"]>[0]): Promise<SqlResult> {
+    return this.delegate.read(statement);
+  }
+
+  readBatch(statements: Parameters<SqlExecutor["readBatch"]>[0]): Promise<readonly SqlResult[]> {
+    return this.delegate.readBatch(statements);
+  }
+
   async execute(statement: SqlStatement): Promise<SqlResult> {
     return this.delegate.execute(statement);
   }
@@ -160,10 +168,12 @@ describe("SqliteEventMediaPort", () => {
   it("keeps the legal 100-event page below D1's parameter limit", async () => {
     let captured: SqlStatement | undefined;
     const executor: SqlExecutor = {
-      async execute(statement) {
+      async read(statement) {
         captured = statement;
         return { rows: [] };
       },
+      async readBatch() { return []; },
+      async execute() { throw new Error("Unexpected SQL write"); },
       async batch() {
         return [];
       },

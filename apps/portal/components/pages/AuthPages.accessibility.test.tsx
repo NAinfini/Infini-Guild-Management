@@ -254,6 +254,35 @@ describe("Auth page semantics", () => {
     }));
   });
 
+  it("localizes empty registration names instead of rendering schema messages", async () => {
+    const user = userEvent.setup();
+    renderRegister();
+
+    await user.click(screen.getByRole("button", { name: "button.register" }));
+
+    expect(await screen.findByText("validation.loginNameRequired")).toBeInTheDocument();
+    expect(screen.getByText("validation.displayNameRequired")).toBeInTheDocument();
+    expect(screen.queryByText(/Too small|expected string/)).not.toBeInTheDocument();
+    expect(mocks.mutation.mutate).not.toHaveBeenCalled();
+  });
+
+  it.each(["login", "register"])("localizes %s server validation without exposing error text", (mode) => {
+    if (mode === "login") renderLogin();
+    else renderRegister();
+
+    act(() => {
+      mocks.mutationOptions[0]?.onError?.({
+        status: 400,
+        errorCode: "VALIDATION_ERROR",
+        message: "Invalid request payload",
+        details: { fieldErrors: { login_name: ["Too small: expected string to have >=1 characters"] } },
+      });
+    });
+
+    expect(screen.getByText("validation.loginNameRequired")).toBeInTheDocument();
+    expect(screen.queryByText(/Too small|Invalid request payload/)).not.toBeInTheDocument();
+  });
+
   it("keeps typed invite retry behavior on a semantic button", async () => {
     const user = userEvent.setup();
     mocks.params = {};

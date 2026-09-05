@@ -133,7 +133,8 @@ export class GalleryService {
     }));
     const audit = createAuditEvent(context, {
       subjectType: "gallery_item",
-      subjectId: context.requestId,
+      // The frozen cleanup trigger resolves this ID list; nanoid excludes commas and JSON delimiters.
+      subjectId: records.map(({ id }) => id).join(","),
       subjectLabel: "image",
       action: "upload_images",
       context: [

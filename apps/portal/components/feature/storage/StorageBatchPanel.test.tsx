@@ -3,7 +3,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { StorageBatchPanel, type StorageBatchDraft } from "./StorageBatchPanel";
+import { StorageBatchPanel } from "./StorageBatchPanel";
+import type { StorageBatchDraft } from "./storage-batch-draft";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -132,5 +133,23 @@ describe("StorageBatchPanel", () => {
     );
 
     expect(screen.getByRole("button", { name: "action.reviewBatch" })).toBeDisabled();
+  });
+
+  it("keeps the attributed draft and offers retry when member identities fail", async () => {
+    const user = userEvent.setup();
+    const retry = vi.fn(async () => undefined);
+    renderPanel({
+      canManageStock: true,
+      userLoadError: { kind: "identities", retry, retrying: false },
+    });
+
+    await user.click(screen.getByRole("button", { name: "action.reviewBatch" }));
+
+    expect(await screen.findByText("loadError")).toBeInTheDocument();
+    expect(screen.queryByText("empty.noUsers")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "field.member" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "action.submitBatch" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "action.retry" }));
+    expect(retry).toHaveBeenCalledOnce();
   });
 });

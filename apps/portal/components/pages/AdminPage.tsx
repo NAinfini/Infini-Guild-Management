@@ -1,6 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useNavigate } from "@tanstack/react-router";
 import { Suspense, lazy, useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -140,29 +140,22 @@ export function AdminPage() {
     userColumns,
     userMap,
     userRows,
-    userRowsRaw,
     usersQuery,
+    memberPagination,
+    setMemberPagination,
+    memberSorting,
+    setMemberSorting,
+    memberStatusFilter,
+    setMemberStatusFilter,
   } = useAdminPageController();
   /* 骨架用的是同一套面板配方，加载中和加载完的外框才不会跳一下。 */
   const suspenseFallback = (
-    <div className="admin-panel">
-      <div className="admin-panel__body">
-        <div className="admin-suspense-skeleton">
-          <div className="admin-suspense-skeleton__head">
-            <Skeleton />
-            <Skeleton />
-          </div>
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton className="admin-suspense-skeleton__row" key={i} />)}
-        </div>
-      </div>
-    </div>
+    <LoadingIndicator />
   );
 
   const accessibleTabs = ADMIN_CONTEXT_ROUTES.filter((route) => tabAccess[route.tab]);
 
-  /* usersQuery 走的是 fetchAllUsersListWithOptions，会把所有分页取全，所以这里的
-     长度就是成员总数，不是当前页的行数。 */
-  const memberCount = usersQuery.data ? userRowsRaw.length : null;
+  const memberCount = usersQuery.data?.stats?.directory_total ?? null;
   const inviteStats = inviteStatsQuery.data ?? null;
   const roleCount = rolesQuery.data?.length ?? null;
   /* 已配置但无法由轻量探针主动验证的服务用黄色表达，不能冒充故障。 */
@@ -252,6 +245,14 @@ export function AdminPage() {
               onOpenMemberDetail={setMemberDetailId}
               onSelectionChange={applyUserSelection}
               roles={assignableRoles}
+              memberStats={usersQuery.data?.stats ?? null}
+              totalRows={usersQuery.data?.total ?? 0}
+              pagination={memberPagination}
+              onPaginationChange={setMemberPagination}
+              sorting={memberSorting}
+              onSortingChange={setMemberSorting}
+              statusFilter={memberStatusFilter}
+              onStatusFilterChange={setMemberStatusFilter}
               memberSearch={memberSearch}
               onMemberSearchChange={setMemberSearch}
               onSingleRoleChange={changeUserRole}
@@ -404,7 +405,6 @@ export function AdminPage() {
             <ErrorBoundary>
             <Suspense fallback={suspenseFallback}>
               <LazyAdminBadgesSection
-                userRows={userRowsRaw}
                 controller={badgesController}
               />
             </Suspense>
@@ -495,7 +495,7 @@ export function AdminPage() {
       </Suspense>
       <Suspense fallback={null}>
         <LazyCreateMemberModal
-          opened={createMemberModalOpen}
+          opened={createMemberModalOpen && canEditUsers && canAssignUserRoles}
           onClose={createMemberModalHandlers.close}
           onCreateMember={createMember}
           creating={createMemberMutation.isPending}

@@ -1,5 +1,5 @@
 import type { AuditService } from "@guild/server/modules/audit";
-import { AUDIT_ENTITY_TYPES } from "@guild/shared/constants/audit";
+import { AUDIT_ENTITY_TYPES, AUDIT_SUBJECT_ID_MAX_LENGTH } from "@guild/shared/constants/audit";
 import { Hono } from "hono";
 import { z } from "zod";
 import { jsonWithEtag } from "../../core/etag.js";
@@ -16,7 +16,7 @@ const auditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().trim().min(1).max(512).optional(),
   entity_type: z.enum(AUDIT_ENTITY_TYPES).optional(),
-  entity_id: z.string().trim().min(1).max(200).optional(),
+  entity_id: z.string().trim().min(1).max(AUDIT_SUBJECT_ID_MAX_LENGTH).optional(),
   actor_id: z.string().trim().min(1).max(200).optional(),
   search: z.string().trim().max(200).optional(),
   start_at: z.string().datetime().optional(),

@@ -7,7 +7,7 @@ export class SqliteAbsencePolicyReader implements AbsencePolicyReader {
   constructor(private readonly sql: SqlExecutor) {}
 
   async readAbsencePolicy(): Promise<AbsencePolicy> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "get",
       sql: `SELECT absence_max_span_days, absence_max_entries_per_user
         FROM site_config WHERE singleton = 1 LIMIT 1`,

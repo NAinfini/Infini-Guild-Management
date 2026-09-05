@@ -123,13 +123,17 @@ test("加人：下拉选中一个成员就落库，人数标题和名单一起�
   await expect(detail.getByText("No members have joined yet.", { exact: true })).toBeVisible();
 
   const picker = detail.getByPlaceholder("Select member to add");
+  const search = member.display_name.slice(0, -1);
+  await flow.act(() => picker.fill(search), {
+    method: "GET",
+    path: /^\/api\/users\/directory$/,
+    query: { search },
+  });
+  await expect(detail.locator(`datalist option[value="${member.display_name}"]`)).toHaveCount(1);
+
+  // 原生 datalist 的选项位于浏览器界面；候选加载后填入完整值才等同于选中。
   await flow.act(
-    async () => {
-      await picker.click();
-      /* Native datalist options are browser chrome and do not expose ARIA option nodes.
-         Entering an exact member value fires the product's selection path directly. */
-      await picker.fill(member.display_name);
-    },
+    () => picker.fill(member.display_name),
     ADD_PARTICIPANTS,
   );
 

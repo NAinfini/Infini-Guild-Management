@@ -115,7 +115,7 @@ describe("account provisioning boundary", () => {
       { createManagedUser },
     );
     const result = await value.createMember(
-      context({ permissions: [PERMISSION_ID.ADMIN_USERS_EDIT] }),
+      context({ permissions: [PERMISSION_ID.ADMIN_USERS_EDIT, PERMISSION_ID.ADMIN_USERS_ROLE] }),
       {
         loginName: "new-member",
         displayName: "New Member",
@@ -129,6 +129,46 @@ describe("account provisioning boundary", () => {
       expect.objectContaining({ notes: "Initial officer note" }),
       expect.anything(),
     );
+  });
+
+  it.each([PERMISSION_ID.ADMIN_USERS_EDIT, PERMISSION_ID.ADMIN_USERS_ROLE])(
+    "rejects member creation with only %s before provisioning or role lookup",
+    async (permission) => {
+      const findRole = vi.fn();
+      const createManagedUser = vi.fn();
+      const value = service({ findRole }, { createManagedUser });
+
+      await expect(value.createMember(context({ permissions: [permission] }), {
+        loginName: "new-member",
+        displayName: "New Member",
+        roleId: destination.id,
+      })).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+      expect(findRole).not.toHaveBeenCalled();
+      expect(createManagedUser).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps role hierarchy and unheld-permission guards when creating members", async () => {
+    const actor = context({
+      roleId: "manager",
+      roleLevel: 500,
+      permissions: [PERMISSION_ID.ADMIN_USERS_EDIT, PERMISSION_ID.ADMIN_USERS_ROLE],
+    });
+    for (const role of [
+      { ...destination, level: 501 },
+      { ...destination, level: 500 },
+      { ...destination, permissions: new Set<Permission>([PERMISSION_ID.ADMIN_ROLES_MANAGE]) },
+    ]) {
+      const createManagedUser = vi.fn();
+      const value = service({ findRole: vi.fn().mockResolvedValue(role) }, { createManagedUser });
+
+      await expect(value.createMember(actor, {
+        loginName: "new-member",
+        displayName: "New Member",
+        roleId: role.id,
+      })).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+      expect(createManagedUser).not.toHaveBeenCalled();
+    }
   });
 });
 

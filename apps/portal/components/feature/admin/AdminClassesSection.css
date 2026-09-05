@@ -274,7 +274,7 @@
   /* 图标格这里不用再压列数：auto-fill 本来就按容器宽算得出来。 */
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .admin-classes__icon-option {
     transition: none;
   }

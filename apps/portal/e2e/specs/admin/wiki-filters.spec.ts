@@ -2,6 +2,7 @@ import type { APIRequestContext, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
 import { field, selectFilterOption } from "../../support/ui";
+import { createWikiCategory as createCategory } from "../../support/wiki";
 
 const ARTICLES = { method: "GET", path: /^\/api\/wiki\/articles$/ } as const;
 
@@ -31,11 +32,6 @@ test.beforeEach(async ({ page, api }) => {
   await expect(page.locator(".wiki-catalog")).toBeVisible();
 });
 
-async function createCategory(api: APIRequestContext, name: string): Promise<{ id: string; name: string }> {
-  const data = await readJson(await api.post("/api/wiki/categories", { data: { name } }), `创建分类 ${name}`) as { id: string };
-  return { id: data.id, name };
-}
-
 async function createArticle(api: APIRequestContext, title: string, categoryId: string): Promise<Article> {
   const data = await readJson(
     await api.post("/api/wiki/articles", {
@@ -64,17 +60,21 @@ function article(page: Page, title: string) {
 }
 
 test("Wiki 搜索、分类和归档状态都由服务端结果驱动", async ({ page, flow }) => {
-  await flow.act(() => field(page, "Search wiki articles").fill(String(stamp)), ARTICLES);
+  await flow.act(() => field(page, "Search wiki articles").fill(String(stamp)), {
+    ...ARTICLES, query: { search: String(stamp) },
+  });
   await expect(article(page, alpha.title)).toBeVisible();
   await expect(article(page, archived.title)).toHaveCount(0);
 
-  await flow.act(() => page.getByRole("button", { name: categoryA.name, exact: true }).click(), ARTICLES);
+  await flow.act(() => page.getByRole("button", { name: categoryA.name, exact: true }).click(), {
+    ...ARTICLES, query: { search: String(stamp), category_id: categoryA.id },
+  });
   await expect(article(page, alpha.title)).toBeVisible();
   await expect(article(page, archived.title)).toHaveCount(0);
 
   await flow.act(
     () => selectFilterOption(page, page.locator(".wiki-page-toolbar"), "Article status", "Archived"),
-    ARTICLES,
+    { ...ARTICLES, query: { search: String(stamp), category_id: categoryA.id, archived: "true" } },
   );
   await expect(article(page, alpha.title)).toHaveCount(0);
   await expect(article(page, archived.title)).toHaveCount(0);

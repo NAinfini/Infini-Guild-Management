@@ -1,11 +1,11 @@
-import type { MemberProfile, User } from "@guild/shared";
+import type { MemberDirectoryEntry } from "@guild/shared";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { useClassCatalog } from "@portal/hooks/data/useClassData";
 import { resolveClassCatalogItem } from "@portal/utils/class-catalog";
 import { useTranslation } from "react-i18next";
 
-type MemberEntry = { user: User; profile: MemberProfile };
+type MemberEntry = MemberDirectoryEntry;
 
 // Shared identity row for attendee and raffle rosters. Class names remain
 // visible beside icons in profile order instead of relying on hover-only rings.

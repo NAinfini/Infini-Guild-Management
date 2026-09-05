@@ -3,6 +3,7 @@ import {
   createThrowawayMember,
   readAssignableRole,
   readAssignableRoles,
+  searchAdminMembers,
   uniqueTag,
 } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
@@ -60,7 +61,7 @@ async function openMembers(page: Page, tag: string): Promise<void> {
   await page.goto("/admin");
   await expect(searchBox(page)).toBeVisible();
   await page.waitForLoadState("networkidle");
-  await searchBox(page).fill(tag);
+  await searchAdminMembers(page, tag);
 }
 
 /**

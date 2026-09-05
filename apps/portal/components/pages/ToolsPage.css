@@ -388,7 +388,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .dice__icon-spin,
   .dice__stage--rolling,
   .dice__die--spinning,

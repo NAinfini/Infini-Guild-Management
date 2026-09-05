@@ -1,5 +1,5 @@
 import { Button } from "@portal/components/ui/button";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -185,16 +185,7 @@ export function MyProfilePage() {
       )}
     >
       {profileQuery.isLoading ? (
-        <div className="my-profile-loading">
-          <div className="my-profile-loading__fields">
-            <Skeleton className="my-profile-loading__heading" />
-            <Skeleton className="my-profile-loading__row" />
-            <Skeleton className="my-profile-loading__row" />
-            <Skeleton className="my-profile-loading__row" />
-            <Skeleton className="my-profile-loading__row" />
-          </div>
-          <Skeleton className="my-profile-loading__rail" />
-        </div>
+        <LoadingIndicator />
       ) : profileQuery.isError && !profileQuery.data ? (
         <EmptyState
           status="error"

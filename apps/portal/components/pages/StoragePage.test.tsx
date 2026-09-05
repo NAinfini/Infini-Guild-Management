@@ -66,6 +66,17 @@ vi.mock("../../hooks/useEffectivePermissions", () => ({
   }),
 }));
 
+vi.mock("../../hooks/data/useMemberDirectory", () => ({
+  useMemberDirectory: () => ({
+    entries: [],
+    hasMore: false,
+    isLoadingMore: false,
+    directoryQuery: { isLoading: false },
+    loadError: null,
+    loadMore: vi.fn(),
+  }),
+}));
+
 vi.mock("../../hooks/useBeforeUnloadPrompt", () => ({
   useBeforeUnloadPrompt: beforeUnloadPromptMock,
 }));

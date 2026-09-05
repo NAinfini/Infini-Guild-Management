@@ -26,7 +26,7 @@ import type {
 } from "@guild/shared";
 import { and, asc, eq } from "drizzle-orm";
 import type { AppDatabase } from "../database.js";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlRow, SqlValue } from "@guild/kernel";
+import type { SqlBatchStatement, SqlExecutor, SqlReadBatchStatement, SqlResult, SqlRow, SqlValue } from "@guild/kernel";
 import { storageBalances, storageCategories, storageItems, storageLedgerEntries, storages } from "../schema/storage.js";
 import { auditInsertStatement } from "./audit-statement.js";
 import { assertMediaAttachments, replaceMediaLinksStatements } from "./media-link-statements.js";
@@ -58,7 +58,7 @@ export class SqliteStorageMediaPort implements StorageMediaPort {
     const uniqueItemIds = [...new Set(itemIds)];
     if (uniqueItemIds.length === 0) return new Map();
     if (uniqueItemIds.length > 100) throw new RangeError("Storage media reads support at most 100 items");
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "all",
       sql: `SELECT entity_id, media_id
         FROM media_links
@@ -544,7 +544,7 @@ export class SqliteStorageStore implements StorageStore {
       params.push(cursor.name, cursor.name, cursor.id);
     }
     params.push(query.limit + 1);
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "all",
       sql: `SELECT
           item.id, item.storage_id, item.category_id, item.name, item.description,
@@ -568,7 +568,7 @@ export class SqliteStorageStore implements StorageStore {
   }
 
   async getItem(itemId: string): Promise<StorageItemRecord | null> {
-    const result = await this.sql.execute(storageItemSnapshotStatement(itemId));
+    const result = await this.sql.read(storageItemSnapshotStatement(itemId));
     return allRows(result).map(itemFromSqlRow)[0] ?? null;
   }
 
@@ -728,7 +728,7 @@ export class SqliteStorageStore implements StorageStore {
     const values = entries.map(() => "(?, ?, ?)").join(", ");
     const params: SqlValue[] = entries.flatMap((entry, position) => [position, entry.itemId, entry.quantity]);
     params.push(actorId, recipientUserId);
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "all",
       sql: `WITH requested(position, item_id, quantity) AS (VALUES ${values})
         SELECT
@@ -771,7 +771,7 @@ export class SqliteStorageStore implements StorageStore {
   }
 
   async findBatch(actorId: string, idempotencyKey: string): Promise<StoredStorageBatch | null> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "all",
         sql: `SELECT
           batch.id AS batch_id,
@@ -891,7 +891,7 @@ export class SqliteStorageStore implements StorageStore {
   async listLedger(query: StorageLedgerQuery): Promise<PaginatedResponse<StorageTransaction>> {
     const count = ledgerStatement(query, true);
     const page = ledgerStatement(query, false);
-    const results = await this.sql.batch([count, page]);
+    const results = await this.sql.readBatch([count, page]);
     const total = numberValue(getRow(results[0])?.[0]);
     const data = allRows(results[1]).map(transactionFromLedgerRow);
     return {
@@ -904,7 +904,7 @@ export class SqliteStorageStore implements StorageStore {
   }
 }
 
-function ledgerStatement(query: StorageLedgerQuery, count: boolean): SqlBatchStatement {
+function ledgerStatement(query: StorageLedgerQuery, count: boolean): SqlReadBatchStatement {
   const selectColumns = count
     ? "count(*) AS total"
     : `ledger.id AS transaction_id,
@@ -1104,7 +1104,7 @@ function itemRevisionGuard(itemId: string, expectedUpdatedAt: string): Readonly<
   };
 }
 
-function storageItemSnapshotStatement(itemId: string, updatedAt?: string): SqlBatchStatement {
+function storageItemSnapshotStatement(itemId: string, updatedAt?: string): SqlReadBatchStatement {
   const revisionGuard = updatedAt === undefined ? "" : " AND item.updated_at = ?";
   return {
     method: "all",
@@ -1140,7 +1140,7 @@ async function itemRevisionState(
   itemId: string,
   expectedUpdatedAt: string,
 ): Promise<ItemRevisionState> {
-  const result = await sql.execute({
+  const result = await sql.read({
     method: "get",
     columns: ["updated_at"],
     sql: "SELECT updated_at FROM storage_items WHERE id = ?",

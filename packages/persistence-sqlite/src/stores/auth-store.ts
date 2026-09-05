@@ -30,7 +30,7 @@ import type {
 } from "@guild/server/modules/auth";
 import type { AuditEventWrite } from "@guild/server/modules/audit";
 import type { AppDatabase } from "../database.js";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
+import type { SqlBatchStatement, SqlExecutor, SqlReadBatchStatement, SqlResult, SqlValue } from "@guild/kernel";
 import { inviteLinks, rolePermissions, roles, sessions, userCredentials, users } from "../schema/auth.js";
 import { auditInsertStatement } from "./audit-statement.js";
 import {
@@ -153,7 +153,7 @@ function returning(sql: string, params: readonly SqlValue[] = []): SqlBatchState
   return { method: "all", columns: ["affected"], sql: `${sql} RETURNING 1 AS affected`, params };
 }
 
-function roleSnapshotStatements(roleId: string, revisionToken?: string): SqlBatchStatement[] {
+function roleSnapshotStatements(roleId: string, revisionToken?: string): SqlReadBatchStatement[] {
   const revisionGuard = revisionToken === undefined ? "" : " AND revision_token = ?";
   return [
     {
@@ -412,15 +412,17 @@ export class SqliteAuthStore implements AuthStore {
   }
 
   async renewSession(tokenDigest: string, expiresAt: string): Promise<void> {
-    await this.db.update(sessions).set({ expiresAt }).where(eq(sessions.tokenDigest, tokenDigest));
+    await this.executor.execute(run("UPDATE sessions SET expires_at = ? WHERE token_digest = ?", [expiresAt, tokenDigest]));
   }
 
   async deleteSession(tokenDigest: string): Promise<void> {
-    await this.db.delete(sessions).where(eq(sessions.tokenDigest, tokenDigest));
+    await this.executor.execute(run("DELETE FROM sessions WHERE token_digest = ?", [tokenDigest]));
   }
 
   async deleteSessionsForUsers(userIds: readonly string[]): Promise<void> {
-    if (userIds.length > 0) await this.db.delete(sessions).where(inArray(sessions.userId, [...userIds]));
+    if (userIds.length > 0) {
+      await this.executor.execute(run(`DELETE FROM sessions WHERE user_id IN (${placeholders(userIds)})`, userIds));
+    }
   }
 
   async findActiveInvite(code: string, now: string): Promise<InviteRecord | null> {
@@ -891,9 +893,7 @@ export class SqliteAuthStore implements AuthStore {
   }
 
   async findRole(roleId: string): Promise<RoleRecord | null> {
-    return roleSnapshotFromResults(await Promise.all(
-      roleSnapshotStatements(roleId).map((statement) => this.executor.execute(statement)),
-    ));
+    return roleSnapshotFromResults(await this.executor.readBatch(roleSnapshotStatements(roleId)));
   }
 
   async createRole(input: Parameters<AuthStore["createRole"]>[0], audit: AuditEventWrite): ReturnType<AuthStore["createRole"]> {

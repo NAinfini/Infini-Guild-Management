@@ -64,6 +64,16 @@ test("库存全流程：存入加库存、取出减库存，UI 与服务端必�
   // 取出 3
   await card.getByRole("button", { name: "Withdraw", exact: true }).click();
   const withdrawModal = topDialog(page);
+  // 成员目录按页加载；整套测试创建的成员可能把领取人排到首屏之后。
+  // 新页面内首次搜索该成员，等响应后再打开下拉，避免加载骨架卸载已开的选项。
+  const memberSearch = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === "GET"
+      && url.pathname === "/api/users/directory"
+      && url.searchParams.get("search") === "member_01";
+  });
+  await withdrawModal.getByRole("searchbox", { name: "Search members", exact: true }).fill("member_01");
+  expect((await memberSearch).ok(), "领取人搜索请求必须成功").toBe(true);
   await selectOption(withdrawModal, "Member", "member_01");
   await withdrawModal.getByLabel("Quantity", { exact: true }).fill("3");
   await flow.click(

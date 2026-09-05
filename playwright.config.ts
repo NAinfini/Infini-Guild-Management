@@ -81,7 +81,7 @@ export default defineConfig<E2eOptions>({
   ],
 
   /*
-   * 每个槽位一个 apps/cloudflare Wrangler 实例：独立端口、独立 --persist-to
+   * 每个槽位一个 apps/cloudflare workerd 实例：独立端口、独立持久化目录
    * （D1 + R2 + DO + 限流都在里面）、独立 inspector 端口。
    *
    * 这里**不**负责 build：所有槽位共读同一份 Portal 与 Cloudflare Worker 产物，
@@ -89,29 +89,30 @@ export default defineConfig<E2eOptions>({
    * Playwright 前执行 `pnpm build:cloudflare`；直接敲 `playwright test` 时，
    * globalSetup 的时间戳比对会当场拒绝缺失或过期的任一产物。
    *
-   * 每轮启动前由 scripts/e2e/run-wrangler-slot.mjs 调 scripts/e2e/prepare-slot.mjs
-   * 精确删除本槽位状态，再离线应用 0000_core.sql 和 fixture seed。它把每槽
-   * Wrangler stdout/stderr 和退出状态持久化，配置与 CLI 都固定 local/remote:false。
-   * Wrangler 以 `--no-bundle` 运行已构建 Worker，禁止开发态 source watcher 在
-   * 非幂等请求中途重载运行时。reuseExistingServer 关掉：e2e 必须自己起自己的实例。复用别人留下的进程意味着
+   * 每轮启动前由 scripts/e2e/run-worker-slot.mjs 调 scripts/e2e/prepare-slot.mjs
+   * 精确删除本槽位状态，再由 Wrangler 离线应用 0000_core.sql 和 fixture seed。
+   * 官方 Miniflare 直接运行同一构建产物，绑定由 Wrangler 配置转换，不启用 dev
+   * 反向代理或 source watcher；配置始终 remote:false。每槽 stdout/stderr 和退出
+   * 状态都会持久化。reuseExistingServer 关掉：e2e 必须自己起自己的实例。复用别人留下的进程意味着
    * 复用别人留下的库，那是「上一轮的残留伪装成这一轮的数据」最常见的来源；
    * 端口被占就当场报错，比静默跑在错误的库上强。
    */
   webServer: Array.from({ length: E2E_SLOTS }, (_, slot) => {
     const origin = originForSlot(slot);
     return {
-      command: `node scripts/e2e/run-wrangler-slot.mjs ${slot}`,
+      command: `node scripts/e2e/run-worker-slot.mjs ${slot}`,
       env: {
         E2E_SLOT_PORT: String(E2E_PORT_BASE + slot),
         E2E_SLOT_INSPECTOR_PORT: String(E2E_INSPECTOR_PORT_BASE + slot),
         E2E_SLOT_ORIGIN: origin,
       },
-      name: `wrangler-slot-${slot}`,
+      name: `worker-slot-${slot}`,
       url: `${origin}/api/health`,
       ignoreHTTPSErrors: true,
       reuseExistingServer: false,
       timeout: 180_000,
-      stdout: "pipe" as const,
+      // Complete access logs are already retained per slot; surface errors here.
+      stdout: "ignore" as const,
       stderr: "pipe" as const,
     };
   }),

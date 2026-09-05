@@ -7,7 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert
 import { Button } from "@portal/components/ui/button";
 import { Label } from "@portal/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Switch } from "@portal/components/ui/switch";
 import { fetchImportantNoticeAudienceRoles } from "@portal/services/NotificationService";
 import type { Dispatch, SetStateAction } from "react";
@@ -106,7 +106,7 @@ export function AdminImportantNoticeDeliveryFields({
         </RadioGroup>
         {draft.audienceScope === "roles" ? (
           audienceRolesQuery.isLoading ? (
-            <Skeleton className="important-notices-admin__role-skeleton" />
+            <LoadingIndicator />
           ) : audienceRolesQuery.isError ? (
             <Alert variant="destructive">
               <AlertTitle>{t("importantNotices.audience.loadError")}</AlertTitle>

@@ -92,6 +92,7 @@ export function CreateMemberModal({
   const [roleId, setRoleId] = useState("");
   const [result, setResult] = useState<CreateMemberResult | null>(null);
   const roleOptions = roles.map((role) => ({ value: role.id, label: role.name }));
+  const hasAssignableRole = roles.some((role) => role.id === roleId);
 
   const resetForm = () => {
     setLoginName("");
@@ -109,7 +110,7 @@ export function CreateMemberModal({
   const handleCreate = async () => {
     const trimmedLoginName = loginName.trim();
     const trimmedDisplayName = displayName.trim();
-    if (!trimmedLoginName || !trimmedDisplayName || !roleId) return;
+    if (!trimmedLoginName || !trimmedDisplayName || !hasAssignableRole) return;
     if (!identityNameSchema.safeParse(trimmedLoginName).success
       || !identityNameSchema.safeParse(trimmedDisplayName).success) {
       notifyError(t("member.create.nameInvalid"));
@@ -228,7 +229,7 @@ export function CreateMemberModal({
               <Button
                 type="submit"
                 size="sm"
-                disabled={!loginName.trim() || !displayName.trim() || !roleId || creating}
+                disabled={!loginName.trim() || !displayName.trim() || !hasAssignableRole || creating}
                 loading={creating}
               >
                 <UserPlusIcon size={16} data-icon="inline-start" />

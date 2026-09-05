@@ -15,7 +15,7 @@ import {
 } from "@guild/shared/schemas/site-config";
 import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { canonicalMigrationPayload } from "./migration-manifest.js";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlStatement } from "@guild/kernel";
+import { prepareSqlReadBatch, prepareSqlReadStatement, type SqlBatchStatement, type SqlExecutor, type SqlResult, type SqlStatement } from "@guild/kernel";
 import { SqliteGalleryStore } from "../stores/gallery-store.js";
 import { SqliteSessionCleanupJob } from "../stores/scheduled-job-store.js";
 import { SqliteSiteConfigStore } from "../stores/site-config-store.js";
@@ -571,6 +571,16 @@ class CapturingExecutor implements SqlExecutor {
   readonly batches: SqlBatchStatement[][] = [];
 
   constructor(private readonly delegate: SqlExecutor) {}
+
+  read(statement: Parameters<SqlExecutor["read"]>[0]): Promise<SqlResult> {
+    this.executed.push(prepareSqlReadStatement(statement));
+    return this.delegate.read(statement);
+  }
+
+  readBatch(statements: Parameters<SqlExecutor["readBatch"]>[0]): Promise<readonly SqlResult[]> {
+    this.batches.push([...prepareSqlReadBatch(statements)]);
+    return this.delegate.readBatch(statements);
+  }
 
   execute(statement: SqlStatement): Promise<SqlResult> {
     this.executed.push(statement);

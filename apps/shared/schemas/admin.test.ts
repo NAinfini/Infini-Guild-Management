@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   adminRoleSchema,
   auditEventSchema,
+  auditSubjectSchema,
   createAdminMemberSchema,
   createInviteLinkSchema,
   inviteLinkSchema,
@@ -155,5 +156,12 @@ describe("audit event contract", () => {
       after: { type: "text", value: "After" },
     });
     expect(auditEventSchema.safeParse({ ...parsed, payload: "{}" }).success).toBe(false);
+  });
+
+  it("accepts the complete subject of a 50-image batch while keeping its length bounded", () => {
+    const id = Array.from({ length: 50 }, (_, index) => String(index).padStart(21, "0")).join(",");
+    const subject = { type: "gallery_item", id, label: "image" };
+    expect(auditSubjectSchema.parse(subject)).toEqual(subject);
+    expect(auditSubjectSchema.safeParse({ ...subject, id: `${id}x` }).success).toBe(false);
   });
 });

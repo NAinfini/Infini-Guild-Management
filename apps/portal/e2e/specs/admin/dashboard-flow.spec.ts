@@ -72,6 +72,8 @@ test("仪表盘卡片展示真实数据，并进入对应工作区", async ({ pa
   const signups = page.locator(".dashboard-workspace__signups");
   await expect(signups.getByRole("heading", { name: "My Signups", exact: true })).toBeVisible();
   await expect(signups).toContainText(fixture.event.title);
+  await expect(page.locator(".dashboard-workspace__main > :first-child")).toHaveClass("dashboard-workspace__signups");
+  await expect(page.locator(".dashboard-workspace__aside > .dashboard-workspace__attention")).toBeVisible();
 
   const attention = page.locator(".dashboard-attention");
   await expect(attention.getByRole("heading", { name: "Events to watch", exact: true })).toBeVisible();

@@ -116,7 +116,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .public-site-header__nav a,
   .public-site-header__nav a::after {
     transition: none;

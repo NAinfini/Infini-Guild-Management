@@ -2,6 +2,7 @@ import {
   PERMISSIONS,
   type AdminRole,
   type Permission,
+  type MemberSummary,
   type User,
 } from "@guild/shared";
 
@@ -133,7 +134,7 @@ export function isRoleAssignableToUser(role: AdminRole, user: User | null): bool
   );
 }
 
-export function canManageUserByRoleLevel(target: User, user: User | null): boolean {
+export function canManageUserByRoleLevel(target: Pick<MemberSummary, "id" | "role_level">, user: User | null): boolean {
   return Boolean(user && target.id !== user.id && target.role_level < user.role_level);
 }
 

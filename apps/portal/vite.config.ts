@@ -138,6 +138,10 @@ export default defineConfig(({ mode }) => {
       sourcemap: mode !== "production",
       chunkSizeWarningLimit: 600,
       rollupOptions: {
+        treeshake: {
+          // Icon modules only define components; unused barrel exports need no initialization.
+          moduleSideEffects: (id) => !id.replace(/\\/g, "/").includes("/apps/portal/components/icons/"),
+        },
         output: {
           manualChunks(id) {
             const normalizedId = id.replace(/\\/g, "/");

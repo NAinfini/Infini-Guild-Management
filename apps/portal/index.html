@@ -15,34 +15,6 @@
     <link rel="icon" href="{{SITE_LOGO_URL}}" />
     <link
       rel="preload"
-      href="/visual-themes/forged/public/light/login-desktop.webp"
-      as="image"
-      media="(min-width: 768px) and (prefers-color-scheme: light)"
-      fetchpriority="high"
-    />
-    <link
-      rel="preload"
-      href="/visual-themes/forged/public/login-desktop.webp"
-      as="image"
-      media="(min-width: 768px) and (prefers-color-scheme: dark)"
-      fetchpriority="high"
-    />
-    <link
-      rel="preload"
-      href="/visual-themes/forged/public/light/login-mobile.webp"
-      as="image"
-      media="(max-width: 767px) and (prefers-color-scheme: light)"
-      fetchpriority="high"
-    />
-    <link
-      rel="preload"
-      href="/visual-themes/forged/public/login-mobile.webp"
-      as="image"
-      media="(max-width: 767px) and (prefers-color-scheme: dark)"
-      fetchpriority="high"
-    />
-    <link
-      rel="preload"
       href="/fonts/saira-semi-condensed-latin-700.woff2"
       as="font"
       type="font/woff2"
@@ -54,47 +26,35 @@
         --splash-bg: #0A0A0F;
         --splash-text: #F0EDE8;
         --splash-text-muted: rgba(240,237,232,0.72);
-        --splash-scrim: rgba(10,10,15,0.32);
-        --splash-panel: rgba(10,10,15,0.88);
-        --splash-border: rgba(47,180,156,0.42);
-        --splash-inset: rgba(47,180,156,0.2);
-        --splash-shadow: rgba(0,0,0,0.48);
-        --splash-progress-track: rgba(240,237,232,0.2);
+        --splash-card: #1C1D24;
+        --splash-scene: url('/visual-themes/forged/public/login-desktop.webp');
+        --splash-mobile-scene: url('/visual-themes/forged/public/login-mobile.webp');
       }
       @media (prefers-color-scheme: light) {
         html {
           --splash-bg: #E9ECEC;
           --splash-text: #192526;
           --splash-text-muted: rgba(25,37,38,0.68);
-          --splash-scrim: rgba(233,236,236,0.1);
-          --splash-panel: rgba(247,249,249,0.88);
-          --splash-border: rgba(31,140,121,0.34);
-          --splash-inset: rgba(31,140,121,0.16);
-          --splash-shadow: rgba(24,37,39,0.2);
-          --splash-progress-track: rgba(25,37,38,0.16);
+          --splash-card: #F8F7F3;
+          --splash-scene: url('/visual-themes/forged/public/light/login-desktop.webp');
+          --splash-mobile-scene: url('/visual-themes/forged/public/light/login-mobile.webp');
         }
       }
       html[data-theme="dark"] {
         --splash-bg: #0A0A0F;
         --splash-text: #F0EDE8;
         --splash-text-muted: rgba(240,237,232,0.72);
-        --splash-scrim: rgba(10,10,15,0.32);
-        --splash-panel: rgba(10,10,15,0.88);
-        --splash-border: rgba(47,180,156,0.42);
-        --splash-inset: rgba(47,180,156,0.2);
-        --splash-shadow: rgba(0,0,0,0.48);
-        --splash-progress-track: rgba(240,237,232,0.2);
+        --splash-card: #1C1D24;
+        --splash-scene: url('/visual-themes/forged/public/login-desktop.webp');
+        --splash-mobile-scene: url('/visual-themes/forged/public/login-mobile.webp');
       }
       html[data-theme="light"] {
         --splash-bg: #E9ECEC;
         --splash-text: #192526;
         --splash-text-muted: rgba(25,37,38,0.68);
-        --splash-scrim: rgba(233,236,236,0.1);
-        --splash-panel: rgba(247,249,249,0.88);
-        --splash-border: rgba(31,140,121,0.34);
-        --splash-inset: rgba(31,140,121,0.16);
-        --splash-shadow: rgba(24,37,39,0.2);
-        --splash-progress-track: rgba(25,37,38,0.16);
+        --splash-card: #F8F7F3;
+        --splash-scene: url('/visual-themes/forged/public/light/login-desktop.webp');
+        --splash-mobile-scene: url('/visual-themes/forged/public/light/login-mobile.webp');
       }
       html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--splash-bg); overflow: hidden; }
       html.splash-done { overflow: auto; }
@@ -105,41 +65,24 @@
         inset: 0;
         z-index: 99999;
         display: grid;
-        place-items: center end;
+        place-items: center;
         box-sizing: border-box;
-        padding: clamp(1rem, 5vh, 4rem) clamp(3rem, 14vw, 14rem);
-        overflow: hidden;
-        background: var(--splash-bg);
-        color: var(--splash-text);
-      }
-      #splash > picture,
-      .splash-scene,
-      .splash-scrim {
-        position: absolute;
-        inset: 0;
-      }
-      .splash-scene {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: center;
-      }
-      .splash-scrim {
-        background: var(--splash-scrim);
+        padding: 1rem;
+        overflow: auto;
+        background: var(--splash-bg) var(--splash-scene) center / cover no-repeat;
+        color: var(--text-primary, var(--splash-text));
       }
       .splash-center {
-        position: relative;
         display: flex;
         flex-direction: column;
         align-items: center;
         box-sizing: border-box;
-        width: min(32rem, calc(100vw - 32px));
-        margin-inline-end: clamp(0rem, 2vw, 2rem);
-        padding: clamp(2rem, 5vw, 3rem);
-        border: 1px solid var(--splash-border);
-        border-radius: var(--radius-surface, 10px);
-        background: var(--splash-panel);
-        box-shadow: 0 24px 80px var(--splash-shadow), inset 0 0 0 1px var(--splash-inset);
+        width: min(32rem, 100%);
+        padding: clamp(1.5rem, 5vw, 3rem);
+        border: 1px solid color-mix(in srgb, var(--splash-text) 14%, transparent);
+        border-radius: 20px;
+        background: var(--surface-base, var(--splash-card));
+        box-shadow: 0 24px 64px rgb(0 0 0 / 24%);
         font-family: "Saira Semi Condensed", system-ui, sans-serif;
         text-align: center;
       }
@@ -149,6 +92,7 @@
         justify-content: center;
         gap: 16px;
         min-width: 0;
+        flex-direction: column;
       }
       .splash-emblem {
         display: block;
@@ -163,8 +107,9 @@
         font-size: clamp(1.5rem, 3vw, 2rem);
         font-weight: 700;
         line-height: 1.2;
-        color: var(--splash-text);
+        color: var(--text-primary, var(--splash-text));
         text-wrap: balance;
+        overflow-wrap: anywhere;
       }
       .splash-status {
         margin: 24px 0 0;
@@ -172,71 +117,35 @@
         font-size: 0.875rem;
         font-weight: 600;
         line-height: 1.35;
-        color: var(--splash-text-muted);
+        color: var(--text-muted, var(--splash-text-muted));
       }
-      .splash-progress {
-        margin: 24px 0 0;
-        width: min(16rem, 100%);
-        height: 3px;
-        overflow: hidden;
-        background: var(--splash-progress-track);
+      .splash-indicator {
+        width: 28px;
+        height: 28px;
+        margin-top: 24px;
+        border: 2px solid color-mix(in srgb, var(--splash-text) 15%, transparent);
+        border-top-color: var(--brand-primary, #2BB3A3);
+        border-radius: 50%;
+        animation: splash-spin 1s linear infinite;
       }
-      .splash-progress::after {
-        content: "";
-        display: block;
-        width: 58%;
-        height: 100%;
-        background: #2FB49C;
-        opacity: 0.8;
-      }
+      @keyframes splash-spin { to { transform: rotate(360deg); } }
       @media (max-width: 767px) {
-        #splash {
-          place-items: center;
-          padding: 1rem;
-        }
-        .splash-center {
-          width: min(448px, 100%);
-          margin-inline-end: 0;
-        }
+        #splash { background-image: var(--splash-mobile-scene); }
       }
+      @media (prefers-reduced-motion: reduce) {
+        .splash-indicator { animation: none; }
+      }
+      html[data-motion="reduced"] .splash-indicator { animation: none; }
     </style>
   </head>
   <body>
-    <div id="splash" aria-busy="true" data-visual-theme="forged">
-      <picture>
-        <source
-          id="splash-scene-light-mobile"
-          media="(max-width: 767px) and (prefers-color-scheme: light)"
-          srcset="/visual-themes/forged/public/light/login-mobile.webp"
-        />
-        <source
-          id="splash-scene-mobile"
-          media="(max-width: 767px)"
-          srcset="/visual-themes/forged/public/login-mobile.webp"
-        />
-        <source
-          id="splash-scene-light-desktop"
-          media="(prefers-color-scheme: light)"
-          srcset="/visual-themes/forged/public/light/login-desktop.webp"
-        />
-        <img
-          id="splash-scene"
-          class="splash-scene"
-          src="/visual-themes/forged/public/login-desktop.webp"
-          width="3840"
-          height="2160"
-          alt=""
-          aria-hidden="true"
-          fetchpriority="high"
-        />
-      </picture>
-      <div class="splash-scrim" aria-hidden="true"></div>
+    <div id="splash" aria-busy="true">
       <div class="splash-center">
         <div class="splash-brand">
           <img
             id="splash-emblem"
             class="splash-emblem"
-            src="/guild-logo.svg"
+            src="{{SITE_LOGO_URL}}"
             width="60"
             height="60"
             alt=""
@@ -246,7 +155,7 @@
           <h1 class="splash-title" id="splash-title">{{SITE_NAME}}</h1>
         </div>
         <p class="splash-status" id="splash-status" role="status" aria-live="polite">Preparing your guild space…</p>
-        <div class="splash-progress" aria-hidden="true"></div>
+        <div class="splash-indicator" aria-hidden="true"></div>
       </div>
     </div>
 

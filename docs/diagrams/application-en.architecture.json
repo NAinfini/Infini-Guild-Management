@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Shared Application Architecture",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [960, 460]
+  },
+  "components": [
+    {
+      "id": "portal",
+      "type": "frontend",
+      "label": "Portal",
+      "sublabel": "React client",
+      "pos": [35, 230],
+      "size": [150, 80]
+    },
+    {
+      "id": "transport",
+      "type": "backend",
+      "label": "HTTP Transport",
+      "sublabel": "Routes and middleware",
+      "pos": [255, 230],
+      "size": [165, 80]
+    },
+    {
+      "id": "domain",
+      "type": "backend",
+      "label": "Domain Services",
+      "sublabel": "Policy and business logic",
+      "pos": [490, 230],
+      "size": [170, 80]
+    },
+    {
+      "id": "ports",
+      "type": "backend",
+      "label": "Kernel Ports",
+      "sublabel": "Runtime-neutral contracts",
+      "pos": [730, 230],
+      "size": [180, 80]
+    },
+    {
+      "id": "composition",
+      "type": "backend",
+      "label": "Application Composition",
+      "sublabel": "Builds the shared application",
+      "tag": "composition root",
+      "pos": [355, 55],
+      "size": [240, 86]
+    }
+  ],
+  "connections": [
+    {
+      "id": "portal-http",
+      "from": "portal",
+      "to": "transport",
+      "label": "HTTP requests",
+      "variant": "emphasis"
+    },
+    {
+      "id": "transport-domain",
+      "from": "transport",
+      "to": "domain",
+      "label": "calls",
+      "variant": "emphasis"
+    },
+    {
+      "id": "domain-ports",
+      "from": "domain",
+      "to": "ports",
+      "label": "uses ports",
+      "variant": "emphasis"
+    },
+    {
+      "id": "composition-transport",
+      "from": "composition",
+      "to": "transport",
+      "label": "wires",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "composition-domain",
+      "from": "composition",
+      "to": "domain",
+      "label": "wires",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "One application path",
+      "items": ["Portal requests enter through HTTP transport", "Domain services depend on runtime-neutral kernel ports"]
+    },
+    {
+      "dot": "emerald",
+      "title": "Composition boundary",
+      "items": ["The application package wires transport and services", "Composition is assembly, not an HTTP request hop"]
+    }
+  ]
+}

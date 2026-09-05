@@ -1,6 +1,6 @@
-import type { APIRequestContext, Locator, Page, Response } from "@playwright/test";
+import type { APIRequestContext, Locator, Page, Request } from "@playwright/test";
 import { profileMutationHeaders } from "../../support/api";
-import { createThrowawayMember, uniqueTag } from "../../support/members";
+import { createThrowawayMember, expectMemberListPage, uniqueTag } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
 import { ensureFiltersOpen, expectNoDialog, topDialog } from "../../support/ui";
 
@@ -8,19 +8,9 @@ import { ensureFiltersOpen, expectNoDialog, topDialog } from "../../support/ui";
  * 名册页的全部控件：搜索、职业多选、排序单选、分页、空态重置、
  * 音频偏好（静音 + 音量）、成员卡片与资料弹窗。
  *
- * 和画廊页相反，这一页的筛选、排序、分页统统在前端完成
- * （useRosterPageController.ts:132 的 sortedRows 是个 useMemo，
- * 名单只在进页面时取一次，staleTime 10 分钟）。
- * 所以这里的验证契约是另一套：
- *   1. 结果集要和服务端的真实数据对得上——期望值一律从 GET /api/users 现算，
- *      需要特定分布时由用例先创建，不把演示用户名和职业抄进断言，
- *      而且抄一遍等于把实现又写了一遍，什么都没验证；
- *   2. 每个控件都必须证明它「没有回服务端」——既不重取名单，也不写库。
- *      纯前端控件一旦偷偷发请求，就是把 10 分钟的缓存和限流预算白白烧掉。
- *
- * 不用 flow.clickWithoutApi 做第 2 点：它把任何 /api/ 的 GET 都算成违例，
- * 后台重取、头像取件随时可能落进那半秒，会把用例洗成偶发红。
- * expectClientSideOnly 只盯两类真正说明问题的请求。
+ * 服务端拥有完整结果集、排序与分页。新条件只取当前 24 人页，已命中的
+ * 查询由缓存恢复；音频等本地偏好不取名单。界面结果与真实响应和专属夹具
+ * 同时比对，避免仅验证请求成功，或用整份目录请求掩盖分页错误。
  */
 
 const USERS_LIST = "/api/users";
@@ -52,8 +42,22 @@ test.afterEach(async ({ api }) => {
   createdUserIds = [];
 });
 
-async function openRoster(page: Page): Promise<void> {
-  await page.goto("/roster");
+async function expectRosterPage(
+  page: Page,
+  action: () => Promise<unknown>,
+  query: Record<string, string | null> = {},
+) {
+  const result = await expectMemberListPage(page, {
+    page: "1", limit: String(ROSTER_PAGE_SIZE), search_scope: "name", sort: "power", direction: "desc",
+    ...query,
+  }, action);
+  await expect(cardNames(page)).toHaveText(result.data.map((row) => row.user.display_name));
+  await expect.poll(() => readCount(page)).toEqual({ visible: result.data.length, total: result.total });
+  return result;
+}
+
+async function openRoster(page: Page, query: Record<string, string | null> = {}): Promise<void> {
+  await expectRosterPage(page, () => page.goto("/roster"), query);
   await expect(page.getByRole("list", { name: "Roster member grid" })).toBeVisible();
 }
 
@@ -129,31 +133,36 @@ async function readCount(page: Page): Promise<{ visible: number; total: number }
 }
 
 /**
- * 执行一段操作，并要求它既没有重取名单，也没有写任何库。
- * 只认这两类：pathname 恰好是 /api/users（统一媒体读取不算名单请求）
- * 和任何非 GET 的 /api/ 请求。
+ * 缓存恢复与音频偏好不取名单；同时重置防抖搜索和即时职业条件时，最多
+ * 读取一页。媒体读取不算名单请求，任何写操作仍然都是错误。
  */
-async function expectClientSideOnly(
+async function expectRosterReadBudget(
   page: Page,
   action: () => Promise<void>,
-  quietMs = 700,
+  maxListRequests = 0,
 ): Promise<void> {
-  const calls: string[] = [];
-  const record = (response: Response): void => {
-    const { pathname } = new URL(response.url());
-    const method = response.request().method();
-    if (pathname === USERS_LIST || (method !== "GET" && pathname.startsWith("/api/"))) {
-      calls.push(`${method} ${pathname}`);
-    }
+  const reads: URL[] = [];
+  const writes: string[] = [];
+  const record = (request: Request): void => {
+    const url = new URL(request.url());
+    if (url.pathname === USERS_LIST) reads.push(url);
+    if (request.method() !== "GET" && url.pathname.startsWith("/api/")) writes.push(`${request.method()} ${url.pathname}`);
   };
-  page.on("response", record);
+  page.on("request", record);
   try {
     await action();
-    await page.waitForTimeout(quietMs);
+    await page.waitForTimeout(700);
   } finally {
-    page.off("response", record);
+    page.off("request", record);
   }
-  expect(calls, "名册的筛选与排序都在前端完成，不该重取名单，更不该写库").toEqual([]);
+  expect(writes, "名册浏览与本地偏好不应写库").toEqual([]);
+  expect(reads.length, "超出这次交互的当前页请求预算").toBeLessThanOrEqual(maxListRequests);
+  for (const url of reads) {
+    expect(url.searchParams.get("limit")).toBe(String(ROSTER_PAGE_SIZE));
+    expect(url.searchParams.get("page")).toBe("1");
+    expect(url.searchParams.get("search_scope")).toBe("name");
+    expect(url.searchParams.get("include_total")).toBe("true");
+  }
 }
 
 async function readStoredFilters(page: Page): Promise<{ classFilter?: unknown; sortMode?: unknown }> {
@@ -162,7 +171,7 @@ async function readStoredFilters(page: Page): Promise<{ classFilter?: unknown; s
   return JSON.parse(raw as string) as { classFilter?: unknown; sortMode?: unknown };
 }
 
-test("搜索框：按用户名过滤，条件先 trim 再忽略大小写，全程不回服务端", async ({ page, api }) => {
+test("搜索框：按用户名过滤，先 trim 再忽略大小写，每个新条件只请求当前页", async ({ page, api }) => {
   const tag = uniqueTag("search");
   await createRosterMember(api, tag);
   await createRosterMember(api, tag);
@@ -174,11 +183,9 @@ test("搜索框：按用户名过滤，条件先 trim 再忽略大小写，全�
     .sort();
   expect(expectedMatches.length, "本用例创建的两个成员必须可检索").toBe(2);
 
-  /* 故意全大写：控件会 toLowerCase 之后再比（useRosterPageController.ts:65）。 */
-  await expectClientSideOnly(page, async () => {
-    await searchBox(page).fill(tag.toUpperCase());
-    await expect(cards(page)).toHaveCount(expectedMatches.length);
-  });
+  /* 名册只搜索显示名，ASCII 大小写在客户端和 SQLite 两端一致。 */
+  await expectRosterPage(page, () => searchBox(page).fill(tag.toUpperCase()), { search: tag.toLowerCase() });
+  await expect(cards(page)).toHaveCount(expectedMatches.length);
   expect(
     (await cardNames(page).allInnerTexts()).map((name) => name.trim()).sort(),
     "大小写不同就漏人的话，搜索基本等于不能用",
@@ -187,61 +194,56 @@ test("搜索框：按用户名过滤，条件先 trim 再忽略大小写，全�
     .toEqual({ visible: expectedMatches.length, total: expectedMatches.length });
 
   const single = expectedMatches[0]!;
-  await expectClientSideOnly(page, async () => {
-    await searchBox(page).fill(`  ${single}  `);
-    await expect(cards(page)).toHaveCount(1);
-  });
+  await expectRosterPage(page, () => searchBox(page).fill(`  ${single}  `), { search: single.toLowerCase() });
+  await expect(cards(page)).toHaveCount(1);
   await expect(cardNames(page), "前后空格没 trim 掉的话这里会一个都搜不到").toHaveText([single]);
 
-  await expectClientSideOnly(page, async () => {
-    await searchBox(page).fill("nobody-should-match-this");
-    await expect(cards(page)).toHaveCount(0);
+  await expectRosterPage(page, () => searchBox(page).fill("nobody-should-match-this"), {
+    search: "nobody-should-match-this",
   });
+  await expect(cards(page)).toHaveCount(0);
   await expect(page.getByText("No members match your filters")).toBeVisible();
 });
 
 test("职业多选：结果集与服务端数据一致，条件写进 localStorage 并在刷新后恢复", async ({ page, api }) => {
-  const rosterClass = await createRosterClass(api, uniqueTag("class"));
-  const member = await createRosterMember(api, uniqueTag("class_member"));
-  await updateRosterProfile(api, member.id, { classes: [rosterClass.id] });
+  const tag = uniqueTag("classes");
+  const firstClass = await createRosterClass(api, `${tag}_a`);
+  const secondClass = await createRosterClass(api, `${tag}_b`);
+  const first = await createRosterMember(api, tag);
+  const second = await createRosterMember(api, tag);
+  const both = await createRosterMember(api, tag);
+  const outsider = await createRosterMember(api, tag);
+  await updateRosterProfile(api, first.id, { classes: [firstClass.id] });
+  await updateRosterProfile(api, second.id, { classes: [secondClass.id] });
+  await updateRosterProfile(api, both.id, { classes: [firstClass.id, secondClass.id] });
   await openRoster(page);
-  const roster = await fetchRoster(api);
-  const catalog = await readJson(await api.get("/api/classes"), "读取职业目录") as Array<{ id: string; label: string }>;
-
-  const byClass = new Map<string, string[]>();
-  for (const row of roster) {
-    for (const classId of new Set(row.profile.classes)) {
-      byClass.set(classId, [...(byClass.get(classId) ?? []), row.user.display_name]);
-    }
-  }
-  const ranked = [...byClass.entries()].sort((left, right) => right[1].length - left[1].length || left[0].localeCompare(right[0]));
-  const top = ranked[0];
-  expect(top, "本用例创建的职业成员必须出现在名册里").toBeTruthy();
-  const [classId, expectedNames] = top!;
-  const outsider = roster.find((row) => !row.profile.classes.includes(classId));
-  expect(outsider, "得有一个不属于该职业的成员，才能验证「滤掉」的方向").toBeTruthy();
-  const label = catalog.find((item) => item.id === classId)?.label ?? classId;
-
-  await expectClientSideOnly(page, async () => {
-    await ensureFiltersOpen(filterToolbar(page));
-    await classFilterOption(page, label).click();
-    await expect(cards(page)).toHaveCount(expectedNames.length);
+  await expectRosterPage(page, () => searchBox(page).fill(tag), { search: tag });
+  await ensureFiltersOpen(filterToolbar(page));
+  const single = await expectRosterPage(page, () => classFilterOption(page, firstClass.label).click(), {
+    search: tag, classes: JSON.stringify([firstClass.id]),
   });
-  expect(
-    (await cardNames(page).allInnerTexts()).map((name) => name.trim()).sort(),
-    "留下的必须正好是服务端记着挂了这个职业的人",
-  ).toEqual([...expectedNames].sort());
+  expect(new Set(single.data.map((row) => row.user.id))).toEqual(new Set([first.id, both.id]));
+
+  const classIds = [firstClass.id, secondClass.id];
+  const classes = JSON.stringify([...classIds].sort());
+  const union = await expectRosterPage(page, () => classFilterOption(page, secondClass.label).click(), {
+    search: tag, classes,
+  });
+  expect(new Set(union.data.map((row) => row.user.id)), "多职业是 OR，同属两类的成员只出现一次")
+    .toEqual(new Set([first.id, second.id, both.id]));
+  expect(union.total).toBe(3);
   await expect(
-    cardNames(page).filter({ hasText: outsider!.user.display_name }),
+    cardNames(page).filter({ hasText: outsider.display_name }),
     "不属于该职业的成员必须被滤掉",
   ).toHaveCount(0);
 
-  expect((await readStoredFilters(page)).classFilter, "职业条件要落盘，否则刷新就白选了").toEqual([classId]);
+  expect((await readStoredFilters(page)).classFilter, "职业条件要落盘，否则刷新就白选了").toEqual(classIds);
 
-  await openRoster(page);
+  await openRoster(page, { classes });
   await ensureFiltersOpen(filterToolbar(page));
-  await expect(classFilterOption(page, label), "刷新后控件上要还勾着这个职业").toBeChecked();
-  await expect(cards(page), "刷新后结果集也要跟着恢复").toHaveCount(expectedNames.length);
+  await expect(classFilterOption(page, firstClass.label), "刷新后控件上要还勾着这个职业").toBeChecked();
+  await expect(classFilterOption(page, secondClass.label)).toBeChecked();
+  await expect(cards(page), "刷新后结果集也要跟着恢复").toHaveCount(3);
 });
 
 test("排序选项：换一套排序依据真的重排卡片，选择被持久化", async ({ page, api }) => {
@@ -254,10 +256,8 @@ test("排序选项：换一套排序依据真的重排卡片，选择被持久�
   await updateRosterProfile(api, high.id, { power: 20, classes: [alphaClass.id] });
   await openRoster(page);
   /* 只排序本用例创建的两个人，避免分页切片掺进其他 spec 的临时成员。 */
-  await expectClientSideOnly(page, async () => {
-    await searchBox(page).fill(tag);
-    await expect(cards(page), "排序样本必须恰好是本用例创建的两名成员").toHaveCount(2);
-  });
+  await expectRosterPage(page, () => searchBox(page).fill(tag), { search: tag });
+  await expect(cards(page), "排序样本必须恰好是本用例创建的两名成员").toHaveCount(2);
   const roster = await fetchRoster(api);
   const powerOf = new Map(roster.map((row) => [row.user.display_name, row.profile.power]));
 
@@ -269,16 +269,11 @@ test("排序选项：换一套排序依据真的重排卡片，选择被持久�
     "默认是战力倒序，出现回升就说明排序没生效",
   ).toBe(true);
 
-  /*
-   * 等的是排序选项自己的 checked 状态，不是「首张卡换人了」。
-   * 战力最高的正好也是字典序最前的那个账号，按首张卡等会一直等不到变化；
-   * 而排序状态和网格读的是同一个 sortMode，同一次提交里落地，等它就够了。
-   */
-  await expectClientSideOnly(page, async () => {
-    await ensureFiltersOpen(filterToolbar(page));
-    await sortOption(page, "Display name (A-Z)").click();
-    await expect(sortOption(page, "Display name (A-Z)")).toBeChecked();
+  await ensureFiltersOpen(filterToolbar(page));
+  await expectRosterPage(page, () => sortOption(page, "Display name (A-Z)").click(), {
+    search: tag, sort: "display_name", direction: "asc",
   });
+  await expect(sortOption(page, "Display name (A-Z)")).toBeChecked();
   const byUsername = (await cardNames(page).allInnerTexts()).map((name) => name.trim());
   expect(
     byUsername.every((name, index) => index === 0 || byUsername[index - 1]!.localeCompare(name) <= 0),
@@ -287,23 +282,22 @@ test("排序选项：换一套排序依据真的重排卡片，选择被持久�
   expect(byUsername, "换了排序依据，顺序就该真的不一样").not.toEqual(defaultOrder);
   expect(new Set(byUsername), "换排序不该把人换掉，只该换顺序").toEqual(new Set(defaultOrder));
 
-  await expectClientSideOnly(page, async () => {
-    await ensureFiltersOpen(filterToolbar(page));
-    await sortOption(page, "Class").click();
-    await expect(sortOption(page, "Class")).toBeChecked();
+  await expectRosterPage(page, () => sortOption(page, "Class").click(), {
+    search: tag, sort: "class", direction: "asc",
   });
+  await expect(sortOption(page, "Class")).toBeChecked();
   expect(
     (await cardNames(page).allInnerTexts()).map((name) => name.trim()),
     "按职业排序必须使用目录标签；alpha 职业应排在 omega 职业之前",
   ).toEqual([high.display_name, low.display_name]);
 
   expect((await readStoredFilters(page)).sortMode, "排序选择要落盘").toBe("class");
-  await openRoster(page);
+  await openRoster(page, { sort: "class", direction: "asc" });
   await ensureFiltersOpen(filterToolbar(page));
   await expect(sortOption(page, "Class"), "刷新后排序要还停在上次的选择").toBeChecked();
 });
 
-test("分页：专属的 25 人结果集按每页 24 人切换，全程不回服务端", async ({ page, api }) => {
+test("分页：专属 25 人按每页 24 人读取，翻页无遗漏，返回已加载页使用缓存", async ({ page, api }) => {
   const tag = uniqueTag("page");
   for (let count = 0; count < ROSTER_PAGE_SIZE + 1; count += 1) {
     await createRosterMember(api, tag);
@@ -314,33 +308,35 @@ test("分页：专属的 25 人结果集按每页 24 人切换，全程不回服
     .filter((row) => row.user.display_name.toLowerCase().includes(tag.toLowerCase()));
   expect(expectedMembers, "专属搜索结果必须正好有 25 人").toHaveLength(ROSTER_PAGE_SIZE + 1);
 
-  await expectClientSideOnly(page, async () => {
-    await searchBox(page).fill(tag);
-    await expect(cards(page)).toHaveCount(ROSTER_PAGE_SIZE);
-  });
+  const firstPage = await expectRosterPage(page, () => searchBox(page).fill(tag), { search: tag });
+  await expect(cards(page)).toHaveCount(ROSTER_PAGE_SIZE);
   expect(await readCount(page)).toEqual({ visible: ROSTER_PAGE_SIZE, total: expectedMembers.length });
 
   const pagination = page.getByRole("navigation", { name: "Page", exact: true });
   await expect(pagination.getByRole("button", { name: "Go to page 1", exact: true }))
     .toHaveAttribute("aria-current", "page");
-  await expectClientSideOnly(page, async () => {
-    await pagination.getByRole("button", { name: "Go to page 2", exact: true }).click();
-    await expect(cards(page)).toHaveCount(1);
-  });
+  const secondPage = await expectRosterPage(page, () => pagination.getByRole("button", {
+    name: "Go to page 2", exact: true,
+  }).click(), { search: tag, page: "2" });
+  await expect(cards(page)).toHaveCount(1);
+  const pageIds = [...firstPage.data, ...secondPage.data].map((row) => row.user.id);
+  expect(pageIds).toHaveLength(25);
+  expect(new Set(pageIds), "两页合起来必须包含全部专属成员，不能重复或漏人")
+    .toEqual(new Set(expectedMembers.map((row) => row.user.id)));
   expect(await readCount(page)).toEqual({ visible: 1, total: expectedMembers.length });
   await expect(pagination.getByRole("button", { name: "Go to page 2", exact: true }))
     .toHaveAttribute("aria-current", "page");
   await expect(pagination.getByRole("button", { name: "Next page", exact: true })).toBeDisabled();
 
-  await expectClientSideOnly(page, async () => {
+  await expectRosterReadBudget(page, async () => {
     await pagination.getByRole("button", { name: "Previous page", exact: true }).click();
-    await expect(cards(page)).toHaveCount(ROSTER_PAGE_SIZE);
+    await expect(cardNames(page)).toHaveText(firstPage.data.map((row) => row.user.display_name));
   });
   expect(await readCount(page)).toEqual({ visible: ROSTER_PAGE_SIZE, total: expectedMembers.length });
 });
 
 test("空态的重置筛选：一次清掉搜索与职业，列表回到第一页", async ({ page, api }) => {
-  await createRosterClass(api, uniqueTag("empty"));
+  const emptyClass = await createRosterClass(api, uniqueTag("empty"));
 
   let total = (await fetchRoster(api)).length;
   while (total <= ROSTER_PAGE_SIZE) {
@@ -356,9 +352,11 @@ test("空态的重置筛选：一次清掉搜索与职业，列表回到第一�
   await expect(page.getByRole("navigation", { name: "Page", exact: true })).toBeVisible();
 
   await ensureFiltersOpen(filterToolbar(page));
-  await page.getByRole("group", { name: "Filter roster by class", exact: true })
-    .getByRole("checkbox").first().click();
-  await searchBox(page).fill("nobody-should-match-this");
+  const classes = JSON.stringify([emptyClass.id]);
+  await expectRosterPage(page, () => classFilterOption(page, emptyClass.label).click(), { classes });
+  await expectRosterPage(page, () => searchBox(page).fill("nobody-should-match-this"), {
+    search: "nobody-should-match-this", classes,
+  });
   await expect(cards(page)).toHaveCount(0);
 
   const reset = page.getByRole("button", { name: "Reset filters", exact: true });
@@ -368,11 +366,11 @@ test("空态的重置筛选：一次清掉搜索与职业，列表回到第一�
   const filterToggle = filterToolbar(page).locator(".content-filter-toolbar__toggle");
   await filterToggle.click();
   await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
-  await expectClientSideOnly(page, async () => {
+  await expectRosterReadBudget(page, async () => {
     await reset.click();
     await expect(cards(page)).toHaveCount(ROSTER_PAGE_SIZE);
     await expect(page.getByRole("navigation", { name: "Page", exact: true })).toBeVisible();
-  });
+  }, 1);
 
   await expect(searchBox(page)).toHaveValue("");
   await ensureFiltersOpen(filterToolbar(page));
@@ -395,7 +393,7 @@ test("音频偏好：静音开关与音量滑块都落盘", async ({ page }) => 
 
   const mute = panel.getByRole("button", { name: "Mute", exact: true });
   await expect(mute, "默认不静音").toHaveAttribute("aria-pressed", "false");
-  await expectClientSideOnly(page, async () => {
+  await expectRosterReadBudget(page, async () => {
     await mute.click();
     await expect(panel.getByRole("button", { name: "Unmute", exact: true })).toHaveAttribute("aria-pressed", "true");
   });
@@ -432,11 +430,18 @@ test("成员卡片：打开资料弹窗，内容与服务端一致，关闭按�
   expect(target, "fresh fixture 必须提供共享成员 member_01").toBeTruthy();
   const { display_name } = target!.user;
 
-  await searchBox(page).fill(display_name);
+  await expectRosterPage(page, () => searchBox(page).fill(display_name), { search: display_name.toLowerCase() });
   await expect(cards(page)).toHaveCount(1);
 
-  await expectClientSideOnly(page, async () => {
+  await expectRosterReadBudget(page, async () => {
+    const detailResponse = page.waitForResponse((response) =>
+      response.request().method() === "GET" && new URL(response.url()).pathname === `/api/users/${target!.user.id}`);
     await page.getByRole("button", { name: `Open profile for ${display_name}`, exact: true }).click();
+    const response = await detailResponse;
+    expect(response.status(), "打开卡片应按稳定 ID 独立读取详情").toBe(200);
+    const detail = await response.json() as RosterRow;
+    expect(detail.user.id).toBe(target!.user.id);
+    expect(detail.profile.power).toBe(target!.profile.power);
     await expect(topDialog(page)).toBeVisible();
   });
 
@@ -458,20 +463,18 @@ test("资料弹窗的编辑入口：别人的资料跳去后台，自己的跳�
   expect(target, "fresh fixture 必须提供共享成员 member_01").toBeTruthy();
   const { display_name } = target!.user;
 
-  /*
-   * 必须先等搜索的防抖落地再开弹窗：debouncedSearch 一变
-   * useRosterPageController.ts:99 的 effect 就会把已打开的弹窗关掉，
-   * 抢在防抖之前点开的话，弹窗会在半路被这条 effect 拆掉。
-   */
-  await searchBox(page).fill(display_name);
+  await expectRosterPage(page, () => searchBox(page).fill(display_name), { search: display_name.toLowerCase() });
   await expect(cards(page)).toHaveCount(1);
   await page.getByRole("button", { name: `Open profile for ${display_name}`, exact: true }).click();
   const dialog = topDialog(page);
   await dialog.getByRole("button", { name: "Edit in Admin", exact: true }).click();
-  await page.waitForURL((url) => url.pathname === "/admin" && url.searchParams.get("member") === display_name);
+  await page.waitForURL((url) => url.pathname === "/admin" && url.searchParams.get("member") === target!.user.id);
+  await expect(topDialog(page).getByRole("heading", {
+    name: `Member Detail · ${display_name}`, exact: true,
+  })).toBeVisible();
 
   await openRoster(page);
-  await searchBox(page).fill("admin");
+  await expectRosterPage(page, () => searchBox(page).fill("admin"), { search: "admin" });
   await expect(cards(page)).toHaveCount(1);
   await page.getByRole("button", { name: "Open profile for admin", exact: true }).click();
   const own = topDialog(page);

@@ -7,16 +7,18 @@ import { dismissSplash } from "./splash";
 import { AppRouter } from "./router";
 import { applyPublicSiteConfig } from "./stores/site-config";
 import { fetchPublicSiteConfig } from "./services/SiteConfigService";
-
-async function loadSiteConfig(): Promise<void> {
-  applyPublicSiteConfig(await fetchPublicSiteConfig());
-  const splashStatus = document.getElementById("splash-status");
-  if (splashStatus) splashStatus.textContent = i18n.t("message.loading");
-}
+import { queryClient } from "./api/query-client";
+import { resolveSessionSnapshot } from "./session-transition";
 
 export async function mountApp(root: Root): Promise<void> {
-  await i18nReady;
-  await loadSiteConfig();
+  const [, siteConfig] = await Promise.all([
+    i18nReady,
+    fetchPublicSiteConfig(),
+    resolveSessionSnapshot(queryClient, undefined, { broadcast: false }),
+  ]);
+  applyPublicSiteConfig(siteConfig);
+  const splashStatus = document.getElementById("splash-status");
+  if (splashStatus) splashStatus.textContent = i18n.t("message.loading");
   root.render(
     <StrictMode>
       <ErrorBoundary>

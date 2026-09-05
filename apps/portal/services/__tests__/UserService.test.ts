@@ -37,7 +37,10 @@ import {
   deleteProfileImages,
   deleteProfileAudio,
   uploadProfileAudio,
-  fetchAllUsersListWithOptions,
+  fetchUsersListWithOptions,
+  fetchMemberDirectory,
+  fetchMemberIdentities,
+  fetchUserDetail,
 } from "../UserService";
 
 describe("UserService mutations", () => {
@@ -135,28 +138,44 @@ describe("UserService mutations", () => {
     expect(new Headers(init.headers).get("If-Match")).toBe('"member-profile-profile-v1"');
   });
 
-  it("fetchAllUsersListWithOptions follows pages until the final partial page", async () => {
-    const firstPage = Array.from({ length: 50 }, (_, index) => ({
-      user: { id: `u-${index}`, display_name: `user-${index}` },
-      profile: {},
-      badges: [],
-    }));
-    const secondPage = [
-      { user: { id: "u-50", display_name: "user-50" }, profile: {}, badges: [] },
-    ];
-    mockFetch
-      .mockResolvedValueOnce(mockJsonResponse({ data: firstPage, page: 1, limit: 50 }))
-      .mockResolvedValueOnce(mockJsonResponse({ data: secondPage, page: 2, limit: 50 }));
+  it("fetches one requested list page with explicit filters and totals", async () => {
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ data: [], total: 1000, page: 3, limit: 24, total_pages: 42 }));
+    const result = await fetchUsersListWithOptions({ externalView: true, page: 3, limit: 24, includeTotal: true, classIds: ["warrior", "mage"], sort: "power", direction: "desc", search: "Alice", searchScope: "name" });
+    expect(result.total).toBe(1000);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const query = new URL(String(mockFetch.mock.calls[0]![0]), "http://localhost").searchParams;
+    expect(Object.fromEntries(query)).toMatchObject({ page: "3", limit: "24", sort: "power", direction: "desc", search: "Alice", external_view: "true", search_scope: "name" });
+    expect(JSON.parse(query.get("classes")!)).toEqual(["mage", "warrior"]);
+    expect(query.get("include_total")).toBe("true");
+  });
 
-    const result = await fetchAllUsersListWithOptions({ externalView: true });
+  it("leaves directory pagination under caller control and keeps the external detail projection", async () => {
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ data: [], next_cursor: "next-page" }));
+    expect((await fetchMemberDirectory({ externalView: true, search: "Alice" })).next_cursor).toBe("next-page");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ user: { id: "u-1" }, profile: profileResponse, badges: [] }));
+    await fetchUserDetail("u-1", { externalView: true });
+    expect(String(mockFetch.mock.calls[1]![0])).toBe("/api/users/u-1?external_view=true");
+  });
 
-    expect(result.data).toHaveLength(51);
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(String(mockFetch.mock.calls[0]![0])).toContain("page=1");
-    expect(String(mockFetch.mock.calls[0]![0])).toContain("limit=50");
-    expect(String(mockFetch.mock.calls[0]![0])).toContain("include_total=false");
-    expect(String(mockFetch.mock.calls[0]![0])).toContain("external_view=true");
-    expect(String(mockFetch.mock.calls[1]![0])).toContain("page=2");
-    expect(String(mockFetch.mock.calls[1]![0])).toContain("limit=50");
+  it("deduplicates known identity IDs and keeps each request and parallel worker count bounded", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    mockFetch.mockImplementation(async (url: string) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      const query = new URL(url, "http://localhost").searchParams;
+      const ids = JSON.parse(query.get("ids")!) as string[];
+      expect(ids.length).toBeLessThanOrEqual(100);
+      expect(query.get("external_view")).toBe("true");
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight--;
+      return mockJsonResponse({ data: ids.map((id) => ({ user: { id, display_name: id }, profile: { classes: [], power: 0, avatar_media_id: null } })), next_cursor: null });
+    });
+    const ids = Array.from({ length: 305 }, (_, index) => `u-${index}`);
+    const result = await fetchMemberIdentities([...ids, ids[0]!], { externalView: true });
+    expect(result.data).toHaveLength(305);
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+    expect(peak).toBe(3);
   });
 });

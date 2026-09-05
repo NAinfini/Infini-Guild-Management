@@ -73,6 +73,44 @@ function selfContext() {
 }
 
 describe("MemberService guarded profile edits", () => {
+  it("accepts long literal member searches and folds only ASCII case like SQLite", async () => {
+    const store = { listRoster: vi.fn().mockResolvedValue({ data: [], total: 0, page: 1, limit: 24, totalPages: 1 }) } as unknown as MembersStore;
+    const service = new MemberService({ store, media: { listForMembers: async () => new Map() } as unknown as MemberMediaPort, absencePolicy: { readAbsencePolicy: async () => ({ maxSpanDays: 30, maxEntriesPerUser: 5 }) } });
+    const search = "天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁";
+    await service.list(publicContext(), { page: 1, limit: 24, includeTotal: true, externalView: false, search });
+    expect(store.listRoster).toHaveBeenLastCalledWith(expect.objectContaining({ search }));
+    await service.list(publicContext(), { page: 1, limit: 24, includeTotal: true, externalView: false, search: "ÉLAN" });
+    expect(store.listRoster).toHaveBeenLastCalledWith(expect.objectContaining({ search: "Élan" }));
+  });
+  it("requires server authority for management search and availability aggregates", async () => {
+    const store = { listRoster: vi.fn(), getAvailabilitySummary: vi.fn() } as unknown as MembersStore;
+    const service = new MemberService({ store, media: {} as MemberMediaPort, absencePolicy: { readAbsencePolicy: async () => ({ maxSpanDays: 30, maxEntriesPerUser: 5 }) } });
+    await expect(service.list(selfContext(), { page: 1, limit: 20, includeTotal: true, externalView: false, searchScope: "management" })).rejects.toMatchObject({ status: 403 });
+    await expect(service.list(publicContext(), { page: 1, limit: 20, includeTotal: true, externalView: false, sort: "last_login_at" })).rejects.toMatchObject({ status: 403 });
+    await expect(service.availabilitySummary(publicContext())).rejects.toMatchObject({ status: 401 });
+    expect(store.listRoster).not.toHaveBeenCalled();
+    expect(store.getAvailabilitySummary).not.toHaveBeenCalled();
+  });
+
+  it("passes public identity and planning projections even for an administrator's external view", async () => {
+    const store = { listDirectory: vi.fn().mockResolvedValue({ data: [], hasMore: false }), listPlanningMembers: vi.fn().mockResolvedValue([]) } as unknown as MembersStore;
+    const service = new MemberService({ store, media: {} as MemberMediaPort, absencePolicy: { readAbsencePolicy: async () => ({ maxSpanDays: 30, maxEntriesPerUser: 5 }) } });
+    await service.directory(context(), { externalView: true, limit: 50, ids: ["target"] });
+    await service.planning(context(), ["target"], true);
+    expect(store.listDirectory).toHaveBeenCalledWith(expect.objectContaining({ projection: "public", ids: ["target"] }));
+    expect(store.listPlanningMembers).toHaveBeenCalledWith(["target"], "public");
+  });
+  it.each(["public", "member", "admin"] as const)("does not invent session permissions for the %s member projection", (projection) => {
+    const result = buildMemberWire({
+      record: memberRecord,
+      media: { avatarMediaId: null, images: [], audioMediaId: null, audioName: null },
+      projection,
+    });
+
+    expect(result.user).toMatchObject({ id: target.userId, role: target.roleId, role_level: target.roleLevel });
+    expect(result.user).not.toHaveProperty("permissions");
+  });
+
   it("rejects oversized guest roster pages before storage access", async () => {
     const listRoster = vi.fn();
     const service = new MemberService({

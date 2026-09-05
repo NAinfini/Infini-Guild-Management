@@ -1,5 +1,5 @@
 import type { AdminRole } from "@guild/shared";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { CreateMemberModal } from "./CreateMemberModal";
@@ -29,7 +29,7 @@ describe("CreateMemberModal", () => {
       temporary_password: "temporary-password",
     });
 
-    render(
+    const { rerender } = render(
       <CreateMemberModal
         opened
         onClose={vi.fn()}
@@ -45,7 +45,16 @@ describe("CreateMemberModal", () => {
     expect(within(dialog).getByRole("button", { name: "member.create.submit" })).toBeDisabled();
 
     await user.click(within(dialog).getByRole("combobox", { name: /member\.create\.roleLabel/ }));
-    await user.click(await screen.findByRole("option", { name: "Raid Lead", hidden: true }));
+    await user.click(await screen.findByRole("option", { name: "Raid Lead" }));
+    await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
+    rerender(<CreateMemberModal opened onClose={vi.fn()} onCreateMember={onCreateMember} creating={false} roles={[]} />);
+    expect(within(dialog).getByRole("button", { name: "member.create.submit" })).toBeDisabled();
+    fireEvent.submit(within(dialog).getByRole("button", { name: "member.create.submit" }).closest("form")!);
+    expect(onCreateMember).not.toHaveBeenCalled();
+
+    rerender(<CreateMemberModal opened onClose={vi.fn()} onCreateMember={onCreateMember} creating={false} roles={roles} />);
+    await user.click(within(dialog).getByRole("combobox", { name: /member\.create\.roleLabel/ }));
+    await user.click(await screen.findByRole("option", { name: "Raid Lead" }));
     await user.click(within(dialog).getByRole("button", { name: "member.create.submit" }));
 
     await waitFor(() => expect(onCreateMember).toHaveBeenCalledWith({
@@ -55,6 +64,7 @@ describe("CreateMemberModal", () => {
       roleId: "raid-lead",
     }));
     expect(await screen.findByRole("textbox", { name: "member.create.temporaryLoginName" })).toHaveValue("new-login");
+    rerender(<CreateMemberModal opened onClose={vi.fn()} onCreateMember={onCreateMember} creating={false} roles={[]} />);
     expect(screen.getByRole("textbox", { name: "member.create.temporaryPassword" })).toHaveValue("temporary-password");
   });
 });

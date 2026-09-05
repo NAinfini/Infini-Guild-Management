@@ -9,6 +9,18 @@ import {
 import { AdminBadgesSection } from "./AdminBadgesSection";
 
 const confirm = vi.hoisted(() => vi.fn());
+const memberDirectory = vi.hoisted(() => ({
+  entries: [] as ReturnType<typeof member>[],
+  hasMore: false,
+  isLoadingMore: false,
+  directoryQuery: { isLoading: false },
+  loadError: null as null | {
+    kind: "directory" | "next-page" | "identities";
+    retry: () => Promise<unknown>;
+    retrying: boolean;
+  },
+  loadMore: vi.fn(),
+}));
 
 vi.mock("@portal/hooks/useConfirmDialog", () => ({
   useConfirmDialog: () => confirm,
@@ -25,6 +37,14 @@ vi.mock("react-i18next", () => ({
 /* 样式编辑器要读路由 search 判断只读态，这一屏不挂路由。 */
 vi.mock("@portal/hooks/useExternalView", () => ({
   useExternalView: () => false,
+}));
+
+vi.mock("@portal/hooks/data/useMemberDirectory", () => ({
+  useMemberDirectory: () => memberDirectory,
+}));
+
+vi.mock("@portal/stores/auth", () => ({
+  useAuthStore: (selector: (state: { user: { id: string } }) => unknown) => selector({ user: { id: "admin-1" } }),
 }));
 
 const badge = {
@@ -99,8 +119,15 @@ const MEMBERS = [member("user-1", "Alice"), member("user-2", "Bob"), member("use
 function renderBadges(
   controller: AdminBadgesController,
   userRows: ReturnType<typeof member>[] = [],
+  loadError: typeof memberDirectory.loadError = null,
 ) {
-  render(<AdminBadgesSection userRows={userRows} controller={controller} />);
+  memberDirectory.entries = userRows;
+  memberDirectory.hasMore = false;
+  memberDirectory.isLoadingMore = false;
+  memberDirectory.directoryQuery.isLoading = false;
+  memberDirectory.loadError = loadError;
+  memberDirectory.loadMore.mockReset();
+  render(<AdminBadgesSection controller={controller} />);
 }
 
 describe("AdminBadgesSection", () => {
@@ -270,6 +297,20 @@ describe("AdminBadgesSection", () => {
     await user.click(screen.getByRole("button", { name: "action.retry" }));
 
     expect(retryAssignments).toHaveBeenCalledOnce();
+  });
+
+  it("offers directory retry instead of reporting no matching members", async () => {
+    const retry = vi.fn(async () => undefined);
+    renderBadges(createController({
+      selectedBadgeId: badge.id,
+      badges: [badge],
+      selectedBadge: badge,
+    }), [], { kind: "directory", retry, retrying: false });
+
+    expect(screen.getByText("loadError")).toBeInTheDocument();
+    expect(screen.queryByText("badges.membership.noMatch")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "action.retry" }));
+    expect(retry).toHaveBeenCalledOnce();
   });
 
   it("offers badge creation from the global empty state", async () => {

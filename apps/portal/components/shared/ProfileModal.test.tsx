@@ -1,4 +1,4 @@
-import type { MemberProfile, User } from "@guild/shared";
+import type { MemberProfile, MemberSummary } from "@guild/shared";
 import { screen } from "@testing-library/react";
 import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import { describe, expect, it, vi } from "vitest";
@@ -12,14 +12,13 @@ vi.mock("react-i18next", () => ({
 }));
 
 const now = "2026-08-05T12:00:00.000Z";
-const user: User = {
+const user: MemberSummary = {
   id: "user-1",
   display_name: "Aster",
   role: "member",
   role_name: "Guild Member",
   role_color: "#22c55e",
   role_level: 1,
-  permissions: {} as User["permissions"],
   is_active: true,
   deleted_at: null,
   created_at: now,

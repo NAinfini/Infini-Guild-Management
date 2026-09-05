@@ -60,7 +60,7 @@ export function assertMigrationLedger(
 export async function assertApplicationSchema(sql: SqlExecutor): Promise<void> {
   let rows;
   try {
-    rows = (await sql.execute({
+    rows = (await sql.read({
       method: "all",
       sql: "SELECT id, ordinal, checksum FROM app_migrations ORDER BY ordinal",
     })).rows;

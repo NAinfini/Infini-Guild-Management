@@ -164,16 +164,11 @@ describe("portal route access policy", () => {
     expect(errorFallback).not.toContain("window.location.reload");
   });
 
-  it("announces lazy route loading while the global route progress supplies visual feedback", () => {
+  it("preloads route modules while keeping the current page and global progress visible", () => {
     const source = routerSource();
-    const loadingFallback = source.slice(
-      source.indexOf("function RouteLoadingFallback"),
-      source.indexOf("function LandingRoutePage"),
-    );
-
-    expect(loadingFallback).not.toContain("<Skeleton");
     expect(source).toContain("<RouteProgress />");
-    expect(loadingFallback).toContain('role="status"');
-    expect(loadingFallback).toContain('aria-live="polite"');
+    expect(source).toContain("lazyRouteComponent(");
+    expect(source).toContain("defaultPendingMs: Infinity");
+    expect(source).toContain("defaultPendingComponent: LoadingIndicator");
   });
 });

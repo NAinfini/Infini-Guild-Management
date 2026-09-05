@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Choose One Deployment Runtime",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [1000, 600]
+  },
+  "components": [
+    { "id": "reader", "type": "external", "label": "User Browser", "sublabel": "Portal + API requests", "pos": [10, 270], "size": [130, 60] },
+    { "id": "shared_app", "type": "frontend", "label": "Infini Guild Management", "sublabel": "one shared application", "pos": [180, 270], "size": [170, 60] },
+    { "id": "runtime_choice", "type": "security", "label": "Deployment Target", "sublabel": "select exactly one adapter", "pos": [390, 270], "size": [150, 60] },
+    { "id": "cf_worker", "type": "cloud", "label": "Cloudflare Workers", "sublabel": "edge application runtime", "pos": [590, 100], "size": [165, 60] },
+    { "id": "cf_d1", "type": "database", "label": "D1", "sublabel": "relational state", "pos": [800, 25], "size": [135, 56] },
+    { "id": "cf_r2", "type": "database", "label": "R2", "sublabel": "media blobs", "pos": [800, 110], "size": [135, 56] },
+    { "id": "cf_platform", "type": "cloud", "label": "Durable Objects + Cron", "sublabel": "real-time, limits, jobs", "pos": [800, 195], "size": [170, 56] },
+    { "id": "vps_node", "type": "backend", "label": "One Node.js Process", "sublabel": "single-server runtime", "pos": [590, 405], "size": [165, 60] },
+    { "id": "vps_sqlite", "type": "database", "label": "SQLite", "sublabel": "relational state", "pos": [800, 350], "size": [135, 56] },
+    { "id": "vps_local", "type": "backend", "label": "Filesystem + Process", "sublabel": "blobs, WebSockets, scheduler", "pos": [800, 440], "size": [170, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "OPTION A — CLOUDFLARE", "wraps": ["cf_worker", "cf_d1", "cf_r2", "cf_platform"], "pad": 18 },
+    { "kind": "region", "label": "OPTION B — ONE VPS", "wraps": ["vps_node", "vps_sqlite", "vps_local"], "pad": 18 }
+  ],
+  "connections": [
+    { "from": "reader", "to": "shared_app", "label": "HTTPS", "variant": "emphasis" },
+    { "from": "shared_app", "to": "runtime_choice", "variant": "emphasis" },
+    { "from": "runtime_choice", "to": "cf_worker", "variant": "emphasis" },
+    { "from": "runtime_choice", "to": "vps_node", "variant": "emphasis" },
+    { "from": "cf_worker", "to": "cf_d1", "label": "SQL" },
+    { "from": "cf_worker", "to": "cf_r2" },
+    { "from": "cf_worker", "to": "cf_platform" },
+    { "from": "vps_node", "to": "vps_sqlite", "label": "SQL" },
+    { "from": "vps_node", "to": "vps_local" }
+  ],
+  "cards": [
+    { "dot": "amber", "title": "Mutually Exclusive", "items": ["Each installation activates one runtime branch", "Cloudflare and VPS never share a database"] },
+    { "dot": "emerald", "title": "Behavior Stays Aligned", "items": ["Both adapters run the same application services", "D1 and SQLite apply the same core schema bytes"] }
+  ]
+}

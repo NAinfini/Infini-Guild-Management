@@ -1,8 +1,8 @@
 import { Button, buttonVariants } from "@portal/components/ui/button";
-import { cn } from "@portal/lib/utils";
 import { Card } from "@portal/components/ui/card";
+import { cn } from "@portal/lib/utils";
 import type { ReactNode } from "react";
-import { ACTIVE_VISUAL_THEME } from "../../visual/themes";
+import { useSiteConfigStore } from "../../stores/site-config";
 import { VisualThemeScene } from "../shared/VisualThemeArtwork";
 import "./SystemStatusPage.css";
 
@@ -11,12 +11,20 @@ type SystemStatusAction =
   | { label: ReactNode; onClick: () => void };
 
 type SystemStatusPageProps = {
-  kind: "not-found" | "error" | "forbidden" | "maintenance";
+  kind: "not-found" | "error" | "unauthorized" | "forbidden" | "maintenance";
   code: string;
   title: ReactNode;
   description: ReactNode;
   action: SystemStatusAction;
 };
+
+const STATUS_SCENES = {
+  "not-found": "status-not-found",
+  error: "status-error",
+  unauthorized: "status-forbidden",
+  forbidden: "status-forbidden",
+  maintenance: "status-maintenance",
+} as const;
 
 export function SystemStatusPage({
   kind,
@@ -25,6 +33,9 @@ export function SystemStatusPage({
   description,
   action,
 }: SystemStatusPageProps) {
+  const siteName = useSiteConfigStore((state) => state.siteName).trim();
+  const siteLogoUrl = useSiteConfigStore((state) => state.siteLogoUrl);
+
   return (
     <section
       className={`system-status-page system-status-page--${kind}`}
@@ -32,22 +43,31 @@ export function SystemStatusPage({
     >
       <VisualThemeScene
         className="system-status-page__scene"
-        variant={`status-${kind}`}
+        variant={STATUS_SCENES[kind]}
         loading="eager"
         fetchPriority="high"
       />
 
       <Card className="system-status-page__panel">
-        <img
-          src={ACTIVE_VISUAL_THEME.mark.src}
-          alt=""
-          aria-hidden="true"
-          className="system-status-page__emblem"
-        />
-        <p className="system-status-page__code">{code}</p>
-        <h1 id="system-status-title" className="system-status-page__title">
-          {title}
-        </h1>
+        {siteLogoUrl || siteName ? (
+          <div className="system-status-page__brand">
+            {siteLogoUrl ? (
+              <img
+                src={siteLogoUrl}
+                alt=""
+                aria-hidden="true"
+                className="system-status-page__emblem"
+              />
+            ) : null}
+            {siteName ? <span className="system-status-page__site-name">{siteName}</span> : null}
+          </div>
+        ) : null}
+        <div className="system-status-page__heading">
+          <h1 id="system-status-title" className="system-status-page__title">
+            {title}
+          </h1>
+          <p className="system-status-page__code">{code}</p>
+        </div>
         <p className="system-status-page__description">{description}</p>
         {"href" in action ? (
           <a

@@ -8,29 +8,29 @@
 import type { CreateStorageTransactionPayload, StorageItem } from "@guild/shared";
 import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
-import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { PlusIcon, SettingsIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useBeforeUnloadPrompt } from "@portal/hooks/useBeforeUnloadPrompt";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { queryKeys } from "../../api/query-keys";
 import { useDebouncedSearch } from "../../hooks/useDebouncedSearch";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
+import { useMemberDirectory } from "../../hooks/data/useMemberDirectory";
 import { useStorageItem, useStorageItems, useStorageTree } from "../../hooks/useStorage";
 import { useStorageMutations } from "../../hooks/useStorageMutations";
-import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
-import { viewerIdentity } from "../../session-storage";
 import { StorageInventoryPanel } from "../feature/storage/StorageInventoryPanel";
+import { StorageBatchPanel } from "../feature/storage/StorageBatchPanel";
 import {
-  StorageBatchPanel,
+  createBatchDraft,
+  refreshBatchKey,
   type StorageBatchDirection,
   type StorageBatchDraft,
-} from "../feature/storage/StorageBatchPanel";
+} from "../feature/storage/storage-batch-draft";
 import { StorageItemDetailModal } from "../feature/storage/StorageItemDetailModal";
 import { StorageItemEditorModal } from "../feature/storage/StorageItemEditorModal";
 import { StorageTransactionModal } from "../feature/storage/StorageTransactionModal";
@@ -45,24 +45,6 @@ type ActiveModal =
   | { type: "item-editor"; storageId: string; item: StorageItem | null }
   | { type: "transaction"; storageId: string; item: StorageItem | null; mode: TransactionMode }
   | null;
-
-function createBatchDraft(recipientUserId: string | null): StorageBatchDraft {
-  return {
-    idempotencyKey: crypto.randomUUID(),
-    type: "intake",
-    quantities: {},
-    itemSnapshots: {},
-    recipientUserId,
-    note: "",
-  };
-}
-
-function refreshBatchKey(
-  draft: StorageBatchDraft,
-  patch: Partial<Omit<StorageBatchDraft, "idempotencyKey">>,
-): StorageBatchDraft {
-  return { ...draft, ...patch, idempotencyKey: crypto.randomUUID() };
-}
 
 export function StoragePage() {
   const { t } = useTranslation("storage");
@@ -130,6 +112,10 @@ export function StoragePage() {
     debouncedSearch: debouncedManualItemSearch,
   } = useDebouncedSearch();
   const activeBatchDraft = activeStorage ? batchDrafts[activeStorage.id] : undefined;
+  const [batchMemberSearch, setBatchMemberSearch] = useState("");
+  const [transactionMemberSearch, setTransactionMemberSearch] = useState("");
+  const debouncedBatchMemberSearch = useDebouncedValue(batchMemberSearch.trim(), 250);
+  const debouncedTransactionMemberSearch = useDebouncedValue(transactionMemberSearch.trim(), 250);
   const hasUnsavedBatchDraft = Object.values(batchDrafts).some((draft) => (
     draft.note.trim().length > 0
     || Object.values(draft.quantities).some((quantity) => quantity > 0)
@@ -143,16 +129,21 @@ export function StoragePage() {
       : null;
   const activeItemQuery = useStorageItem(activeItemId);
   const mutations = useStorageMutations();
-  const usersQuery = useQuery({
-    queryKey: queryKeys.users.directory(viewerIdentity(user?.id), "internal"),
-    queryFn: () => fetchAllUsersListWithOptions(),
-    enabled: canManageStock,
-    staleTime: 10 * 60_000,
-  });
   const editingItem = activeModal?.type === "item-editor"
     ? activeItemQuery.data ?? activeModal.item
     : null;
   const transactionState = activeModal?.type === "transaction" ? activeModal : null;
+  const batchMemberDirectory = useMemberDirectory({
+    currentUserId: user?.id,
+    enabled: canManageStock && Boolean(activeBatchDraft),
+    search: debouncedBatchMemberSearch,
+    selectedIds: activeBatchDraft?.recipientUserId ? [activeBatchDraft.recipientUserId] : [],
+  });
+  const transactionMemberDirectory = useMemberDirectory({
+    currentUserId: user?.id,
+    enabled: canManageStock && Boolean(transactionState && transactionState.mode !== "adjust"),
+    search: debouncedTransactionMemberSearch,
+  });
   const manualEntryOpen = Boolean(
     canManageStock
     && transactionState
@@ -218,6 +209,7 @@ export function StoragePage() {
   };
   const handleCloseBatch = async () => {
     if (!await confirmBatchReset(t("confirm.discardBatch"))) return;
+    setBatchMemberSearch("");
     updateActiveBatch(() => null);
   };
   const handleSubmitBatch = () => {
@@ -243,7 +235,7 @@ export function StoragePage() {
     <PageLayout className="storage-page" workspaceMode="contained">
       <div className="storage-page__stack">
         {treeQuery.isLoading ? (
-          <Skeleton className="storage-loading storage-loading--page" />
+          <LoadingIndicator />
         ) : null}
         {!treeQuery.isLoading && treeBlockingError ? (
           <EmptyState
@@ -319,7 +311,12 @@ export function StoragePage() {
                 {activeBatchDraft ? (
                   <StorageBatchPanel
                     draft={activeBatchDraft}
-                    users={usersQuery.data?.data ?? []}
+                    users={batchMemberDirectory.entries}
+                    userSearch={batchMemberSearch}
+                    usersHasMore={batchMemberDirectory.hasMore}
+                    usersLoadingMore={batchMemberDirectory.isLoadingMore}
+                    usersLoading={batchMemberDirectory.directoryQuery.isLoading}
+                    userLoadError={batchMemberDirectory.loadError}
                     currentUsername={user?.display_name}
                     canManageStock={canManageStock}
                     isSaving={mutations.createBatchTransactionMutation.isPending}
@@ -327,6 +324,8 @@ export function StoragePage() {
                     onRecipientChange={(recipientUserId) => {
                       updateActiveBatch((draft) => refreshBatchKey(draft, { recipientUserId }));
                     }}
+                    onUserSearchChange={setBatchMemberSearch}
+                    onLoadMoreUsers={() => { void batchMemberDirectory.loadMore(); }}
                     onNoteChange={(note) => {
                       updateActiveBatch((draft) => refreshBatchKey(draft, { note }));
                     }}
@@ -364,6 +363,7 @@ export function StoragePage() {
                     /* Administrators must choose the accountable recipient explicitly;
                      * regular members can only record a batch for themselves. */
                     const defaultRecipientId = canManageStock ? null : user?.id ?? null;
+                    setBatchMemberSearch("");
                     setBatchDrafts((current) => ({
                       ...current,
                       [activeStorage.id]: createBatchDraft(defaultRecipientId),
@@ -391,6 +391,7 @@ export function StoragePage() {
                   })}
                   onOpenTransaction={(item, mode) => {
                     if (!item) setManualItemSearch("");
+                    setTransactionMemberSearch("");
                     setActiveModal({
                       type: "transaction",
                       storageId: item?.storage_id ?? activeStorage.id,
@@ -411,18 +412,14 @@ export function StoragePage() {
         canEditItem={canManageItems}
         canManageStock={canManageStock}
         onClose={() => setActiveModal(null)}
-        onDeposit={(item) => setActiveModal({
-          type: "transaction",
-          storageId: item.storage_id,
-          item,
-          mode: "intake",
-        })}
-        onWithdraw={(item) => setActiveModal({
-          type: "transaction",
-          storageId: item.storage_id,
-          item,
-          mode: "distribute",
-        })}
+        onDeposit={(item) => {
+          setTransactionMemberSearch("");
+          setActiveModal({ type: "transaction", storageId: item.storage_id, item, mode: "intake" });
+        }}
+        onWithdraw={(item) => {
+          setTransactionMemberSearch("");
+          setActiveModal({ type: "transaction", storageId: item.storage_id, item, mode: "distribute" });
+        }}
         onEdit={(item) => setActiveModal({ type: "item-editor", storageId: item.storage_id, item })}
       />
       <StorageItemEditorModal
@@ -481,7 +478,12 @@ export function StoragePage() {
       <StorageTransactionModal
         opened={activeModal?.type === "transaction"}
         items={transactionItems}
-        users={usersQuery.data?.data ?? []}
+        users={transactionMemberDirectory.entries}
+        userSearch={transactionMemberSearch}
+        usersHasMore={transactionMemberDirectory.hasMore}
+        usersLoadingMore={transactionMemberDirectory.isLoadingMore}
+        usersLoading={transactionMemberDirectory.directoryQuery.isLoading}
+        userLoadError={transactionMemberDirectory.loadError}
         initialItem={transactionState?.item ?? null}
         initialMode={transactionState?.mode ?? "intake"}
         canManageStock={canManageStock}
@@ -492,11 +494,19 @@ export function StoragePage() {
         isSaving={mutations.createTransactionMutation.isPending}
         onItemSearchChange={manualEntryOpen ? setManualItemSearch : undefined}
         onLoadMoreItems={() => void manualItemsQuery.fetchNextPage()}
-        onClose={() => setActiveModal(null)}
+        onUserSearchChange={setTransactionMemberSearch}
+        onLoadMoreUsers={() => { void transactionMemberDirectory.loadMore(); }}
+        onClose={() => {
+          setTransactionMemberSearch("");
+          setActiveModal(null);
+        }}
         onSubmit={(itemId, payload) => {
           mutations.createTransactionMutation.mutate(
             { itemId, payload },
-            { onSuccess: () => setActiveModal(null) },
+            { onSuccess: () => {
+              setTransactionMemberSearch("");
+              setActiveModal(null);
+            } },
           );
         }}
       />

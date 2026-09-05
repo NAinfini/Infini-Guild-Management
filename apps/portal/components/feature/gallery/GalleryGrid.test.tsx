@@ -198,6 +198,19 @@ function renderPopulatedGrid(
 }
 
 describe("GalleryGrid media behavior", () => {
+  it("keeps the title and description below the media instead of covering it", () => {
+    renderPopulatedGrid([galleryRows[0]!]);
+
+    const item = screen.getByRole("listitem");
+    const media = item.querySelector<HTMLElement>(".gallery-preview-media");
+    const copy = item.querySelector<HTMLElement>(".gallery-preview-copy");
+
+    expect(media).not.toContainElement(copy);
+    expect(copy?.previousElementSibling).toBe(media);
+    expect(within(copy as HTMLElement).getByText("First image")).toBeInTheDocument();
+    expect(within(copy as HTMLElement).getByText("A bright guild victory.")).toBeInTheDocument();
+  });
+
   it("keeps preview actions in keyboard order", async () => {
     const user = userEvent.setup();
     renderPopulatedGrid();

@@ -1,4 +1,4 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { MemberDirectoryEntry } from "@guild/shared";
 import { Button } from "@portal/components/ui/button";
 import { Input } from "@portal/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
@@ -17,12 +17,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { eventHasBehavior, getEventTypeLabel } from "@portal/utils/game-rules";
 import { getParticipantActionDisabledReasonKey } from "./participant-action";
+import type { EventDetailResponse } from "@portal/services/EventService";
 import { EventDetailMemberRoster } from "./EventDetailMemberRoster";
 import { EventDetailPoll } from "./EventDetailPoll";
 import { EventDetailRaffle } from "./EventDetailRaffle";
 import "./EventDetailContent.css";
 
-export type MemberEntry = { user: User; profile: MemberProfile };
+export type MemberEntry = MemberDirectoryEntry;
 
 function formatLocalDate(startAt: string, locale: string): string {
   return formatLocaleParts(startAt, locale, {
@@ -34,7 +35,7 @@ function formatLocalDate(startAt: string, locale: string): string {
 }
 
 export type EventDetailContentProps = {
-  event: Event;
+  event: EventDetailResponse;
   members: MemberEntry[];
   allUsers: MemberEntry[];
   canManage: boolean;
@@ -49,6 +50,11 @@ export type EventDetailContentProps = {
   votePending?: boolean;
   onDrawRaffle?: (eventId: string) => void;
   drawRafflePending?: boolean;
+  memberDirectoryHasMore?: boolean;
+  memberDirectoryLoadingMore?: boolean;
+  onMemberSearchChange?: (value: string) => void;
+  onLoadMoreMembers?: () => void;
+  memberIdentitiesUnavailable?: boolean;
 };
 
 /*
@@ -71,6 +77,11 @@ export function EventDetailContent({
   votePending,
   onDrawRaffle,
   drawRafflePending,
+  memberDirectoryHasMore = false,
+  memberDirectoryLoadingMore = false,
+  onMemberSearchChange,
+  onLoadMoreMembers,
+  memberIdentitiesUnavailable = false,
 }: EventDetailContentProps) {
   const { t, i18n } = useTranslation("events");
   const { t: tc } = useTranslation("common");
@@ -81,8 +92,13 @@ export function EventDetailContent({
    * 不是会保留选中值的普通选择框。选中后立即清空搜索词，才能连续添加多人。
    */
   const [addMemberSearch, setAddMemberSearch] = useState("");
-  const isJoined = currentUserId ? members.some((entry) => entry.user.id === currentUserId) : false;
-  const isFull = event.capacity != null ? members.length >= event.capacity : false;
+  const participantIds = useMemo(
+    () => new Set(event.participants.map((participant) => participant.user_id)),
+    [event.participants],
+  );
+  const participantCount = event.participants.length;
+  const isJoined = currentUserId ? participantIds.has(currentUserId) : false;
+  const isFull = event.capacity != null ? participantCount >= event.capacity : false;
   const hasEnded = Boolean(event.end_at && new Date(event.end_at) <= new Date());
   const isPoll = eventHasBehavior(event.type, "poll");
   const isRaffle = eventHasBehavior(event.type, "raffle");
@@ -106,7 +122,8 @@ export function EventDetailContent({
 
   useEffect(() => {
     setAddMemberSearch("");
-  }, [event]);
+    onMemberSearchChange?.("");
+  }, [event, onMemberSearchChange]);
 
   const handleRemoveParticipant = async (userId: string, display_name: string) => {
     const eventId = event.id;
@@ -204,7 +221,6 @@ export function EventDetailContent({
               {isRaffle ? (
                 <EventDetailRaffle
                   event={event}
-                  members={members}
                   allUsers={allUsers}
                   canManage={canManage}
                   onDrawRaffle={onDrawRaffle}
@@ -218,7 +234,7 @@ export function EventDetailContent({
                     <div className="event-detail-content__members-heading">
                       <UsersIcon size={20} />
                       <h2>
-                        {event.capacity ? t("detail.membersWithCap", { count: members.length, capacity: event.capacity }) : t("detail.members", { count: members.length })}
+                        {event.capacity ? t("detail.membersWithCap", { count: participantCount, capacity: event.capacity }) : t("detail.members", { count: participantCount })}
                       </h2>
                     </div>
                     {showMemberAction ? (
@@ -256,28 +272,37 @@ export function EventDetailContent({
                         onChange={(inputEvent) => {
                           const next = inputEvent.currentTarget.value;
                           setAddMemberSearch(next);
-                          const member = allUsers.find((entry) => entry.user.display_name === next && entry.user.is_active && !entry.user.deleted_at && !members.some((current) => current.user.id === entry.user.id));
+                          onMemberSearchChange?.(next);
+                          const member = allUsers.find((entry) => entry.user.display_name === next && !participantIds.has(entry.user.id));
                           if (member) {
                             onAddParticipant(event.id, member.user.id);
                             setAddMemberSearch("");
+                            onMemberSearchChange?.("");
                           }
                         }}
                         aria-label={t("detail.addMemberPlaceholder")}
                       />
                       <datalist id={`event-${event.id}-members`}>
                         {allUsers
-                        .filter((entry) => entry.user.is_active && !entry.user.deleted_at && !members.some((m) => m.user.id === entry.user.id))
+                        .filter((entry) => !participantIds.has(entry.user.id))
                         .map((entry) => <option key={entry.user.id} value={entry.user.display_name} />)}
                       </datalist>
+                      {memberDirectoryHasMore && onLoadMoreMembers ? (
+                        <Button size="sm" variant="ghost" loading={memberDirectoryLoadingMore} onClick={onLoadMoreMembers}>
+                          {t("action.loadMore")}
+                        </Button>
+                      ) : null}
                     </div>
                   ) : null}
 
-                  <EventDetailMemberRoster
-                    event={event}
-                    members={members}
-                    canManage={canManage}
-                    onRemoveMember={(userId, display_name) => void handleRemoveParticipant(userId, display_name)}
-                  />
+                  {!memberIdentitiesUnavailable ? (
+                    <EventDetailMemberRoster
+                      event={event}
+                      members={members}
+                      canManage={canManage}
+                      onRemoveMember={(userId, display_name) => void handleRemoveParticipant(userId, display_name)}
+                    />
+                  ) : null}
                 </section>
               ) : null}
             </div>

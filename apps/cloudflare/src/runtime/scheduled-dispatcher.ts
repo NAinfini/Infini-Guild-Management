@@ -19,6 +19,8 @@ function recordOutcome(schedule: ScheduledJobSchedule, outcome: ScheduledJobOutc
   const details = { schedule, ...outcome };
   if (outcome.status === "failed") {
     console.error("Cloudflare scheduled job failed", details);
+  } else if (outcome.status === "completed" && outcome.warning) {
+    console.warn("Cloudflare scheduled job completed with warning", details);
   } else if (outcome.backlog.status === "unknown") {
     console.warn("Cloudflare scheduled job backlog is unknown", details);
   } else {

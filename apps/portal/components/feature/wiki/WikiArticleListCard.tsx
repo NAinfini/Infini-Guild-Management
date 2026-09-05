@@ -4,7 +4,7 @@ import { ContentPreviewCard } from "@portal/components/shared/ContentPreviewCard
 import { Alert, AlertDescription } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
 import { resolveMediaUrl } from "@portal/utils/media";
 import type { ReactNode } from "react";
@@ -71,10 +71,7 @@ export function WikiArticleListCard({
   return (
     <Card className="wiki-catalog" role="region" aria-labelledby="wiki-catalog-title">
       <header className="wiki-catalog__header">
-        <div>
-          <p className="wiki-catalog__eyebrow">{t("catalog.eyebrow")}</p>
-          <h2 id="wiki-catalog-title" className="wiki-catalog__title">{title}</h2>
-        </div>
+        <h2 id="wiki-catalog-title" className="wiki-catalog__title">{title}</h2>
         <div className="wiki-catalog__actions">
           {canManageCategories ? (
             <Button type="button" variant="outline" size="sm" onClick={onOpenCategoryEditor}>
@@ -92,9 +89,7 @@ export function WikiArticleListCard({
       </header>
 
       {isLoading && articles.length === 0 ? (
-        <div className="wiki-preview-list" aria-busy="true">
-          {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="wiki-preview-skeleton" />)}
-        </div>
+        <LoadingIndicator />
       ) : null}
       {isBlockingError ? (
         <EmptyState

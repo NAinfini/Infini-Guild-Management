@@ -14,6 +14,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { availabilityFromWindows, availabilityToWindows } from "@guild/shared/schemas/user";
+import { memberDirectoryEntrySchema, memberPlanningEntrySchema, PERMISSIONS } from "@guild/shared";
 import { AppError } from "@guild/kernel";
 import type { ClassVectorIconId } from "@guild/shared/constants/class-icons";
 import { LIMITS } from "@guild/shared/config/limits";
@@ -29,10 +30,12 @@ import type {
   MemberTarget,
   RosterPage,
   RosterQuery,
+  MemberDirectoryQuery,
+  MemberProjection,
 } from "@guild/server/modules/members";
 import type { AuditEventWrite as AuditMutation } from "@guild/server/modules/audit";
 import type { AppDatabase } from "../database.js";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
+import type { SqlBatchStatement, SqlReadBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
 import { roles, users } from "../schema/auth.js";
 import {
   classCatalog,
@@ -148,6 +151,17 @@ const memberColumns = {
 } as const;
 
 const adminColumns = { ...memberColumns, notes: memberProfiles.notes } as const;
+
+const directoryColumns = {
+  userId: users.id,
+  displayName: users.display_name,
+  power: memberProfiles.power,
+  classesJson: drizzleSql<string>`(SELECT json_group_array(class_id) FROM (
+    SELECT class_id FROM member_profile_classes WHERE user_id = ${users.id} ORDER BY sort_order
+  ))`,
+  avatarMediaId: drizzleSql<string | null>`(SELECT media_id FROM media_links
+    WHERE entity_type = 'member_profile' AND entity_id = ${users.id} AND slot = 'avatar' LIMIT 1)`,
+};
 
 function run(sql: string, params: readonly SqlValue[] = []): SqlBatchStatement {
   return { method: "run", sql, params };
@@ -454,10 +468,6 @@ function foreignKeyViolation(error: unknown): boolean {
   return error instanceof Error && /FOREIGN KEY constraint failed/i.test(error.message);
 }
 
-function escapeLike(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
-}
-
 const SQL_IN_CHUNK = 100;
 
 function chunks<T>(values: readonly T[], size = SQL_IN_CHUNK): readonly T[][] {
@@ -615,28 +625,65 @@ export class SqliteMembersStore implements MembersStore {
       throw new RangeError(`Roster pages must contain 1 to ${LIMITS.pagination.users} members`);
     }
     const filters: SQL<unknown>[] = [isNull(users.deletedAt)];
-    if (query.active !== undefined) filters.push(eq(users.isActive, query.active));
-    if (query.search) filters.push(
-      drizzleSql`lower(${users.display_name}) LIKE ${`%${escapeLike(query.search)}%`} ESCAPE '\\'`,
-    );
+    if (query.search) {
+      const match = query.search;
+      const name = drizzleSql`instr(lower(${users.display_name}), ${match}) > 0`;
+      filters.push(query.searchScope === "management" ? drizzleSql`(
+        ${name} OR instr(lower(${memberProfiles.notes}), ${match}) > 0
+        OR instr(lower(${roles.name}), ${match}) > 0
+        OR EXISTS (SELECT 1 FROM member_profile_classes mpc JOIN class_catalog cc ON cc.id = mpc.class_id
+          WHERE mpc.user_id = ${users.id} AND (instr(lower(mpc.class_id), ${match}) > 0
+            OR instr(lower(cc.label), ${match}) > 0))
+      )` : name);
+    }
     if (query.roleId) filters.push(eq(users.roleId, query.roleId));
-    if (query.classId) filters.push(drizzleSql`EXISTS (
+    const classIds = [...new Set([...(query.classIds ?? []), ...(query.classId ? [query.classId] : [])])];
+    if (classIds.length) filters.push(drizzleSql`EXISTS (
       SELECT 1 FROM member_profile_classes mpc
-      WHERE mpc.user_id = ${users.id} AND mpc.class_id = ${query.classId}
+      WHERE mpc.user_id = ${users.id} AND mpc.class_id IN (SELECT value FROM json_each(${JSON.stringify(classIds)}))
     )`);
-    const where = and(...filters);
+    const where = and(...filters, ...(query.active === undefined ? [] : [eq(users.isActive, query.active)]));
     const offset = (query.page - 1) * query.limit;
-    const dataPromise = this.selectMemberRows(query.projection, where)
-      .orderBy(asc(users.createdAt), asc(users.id)).limit(query.limit).offset(offset);
-    const [baseRows, totalRows] = await Promise.all([
-      dataPromise,
-      query.includeTotal
-        ? this.db.select({ value: count() }).from(users)
-            .innerJoin(memberProfiles, eq(memberProfiles.userId, users.id)).where(where)
-        : Promise.resolve(null),
-    ]);
-    const data = await this.hydrate(baseRows as BaseMemberRow[], query.projection);
-    const total = query.includeTotal ? Number(totalRows?.[0]?.value ?? 0) : offset + data.length;
+    const sortColumns = {
+      created_at: users.createdAt,
+      display_name: drizzleSql`${users.display_name} COLLATE NOCASE`,
+      power: memberProfiles.power,
+      class: drizzleSql`coalesce((SELECT cc.label FROM member_profile_classes mpc JOIN class_catalog cc ON cc.id = mpc.class_id
+        WHERE mpc.user_id = ${users.id} ORDER BY mpc.sort_order LIMIT 1), '') COLLATE NOCASE`,
+      role: drizzleSql`${roles.name} COLLATE NOCASE`,
+      last_login_at: users.lastLoginAt,
+      is_active: users.isActive,
+    };
+    const order = (query.direction === "desc" ? desc : asc)(sortColumns[query.sort ?? "created_at"]);
+    const columns = query.projection === "public" ? publicMemberColumns : query.projection === "admin" ? adminColumns : memberColumns;
+    // Stable aliases let both SQL adapters return the same bounded page and counts from one snapshot.
+    const aliased = Object.fromEntries(Object.entries(columns).map(([key, value]) => [key, drizzleSql`${value}`.as(key)]));
+    const statement = this.db.select(aliased).from(users).innerJoin(roles, eq(users.roleId, roles.id))
+      .innerJoin(memberProfiles, eq(memberProfiles.userId, users.id)).where(where)
+      .orderBy(order, asc(users.id)).limit(query.limit).offset(offset).toSQL();
+    const countStatement = this.db.select({ value: count().as("value") }).from(users).innerJoin(roles, eq(users.roleId, roles.id))
+      .innerJoin(memberProfiles, eq(memberProfiles.userId, users.id)).where(where).toSQL();
+    const statements: SqlReadBatchStatement[] = [{ ...statement, params: statement.params as SqlValue[], method: "all", columns: Object.keys(columns) }];
+    if (query.includeTotal) statements.push({ ...countStatement, params: countStatement.params as SqlValue[], method: "all", columns: ["value"] });
+    if (query.searchScope === "management") {
+      const stats = this.db.select({
+        total: count().as("total"),
+        active: drizzleSql`coalesce(sum(${users.isActive}), 0)`.as("active"),
+        management_access: drizzleSql`coalesce(sum(EXISTS (SELECT 1 FROM role_permissions rp WHERE rp.role_id = ${users.roleId}
+          AND rp.permission IN (SELECT value FROM json_each(${JSON.stringify(PERMISSIONS.filter((permission) => permission.startsWith("admin.")))})))), 0)`.as("management_access"),
+        directory_total: drizzleSql`(SELECT count(*) FROM users u JOIN member_profiles mp ON mp.user_id = u.id WHERE u.deleted_at IS NULL)`.as("directory_total"),
+      }).from(users).innerJoin(roles, eq(users.roleId, roles.id)).innerJoin(memberProfiles, eq(memberProfiles.userId, users.id))
+        .where(and(...filters)).toSQL();
+      statements.push({ ...stats, params: stats.params as SqlValue[], method: "all", columns: ["total", "active", "management_access", "directory_total"] });
+    }
+    const results = await this.executor.readBatch(statements);
+    const baseRows = sqlRows(results[0]!, Object.keys(columns).length, "roster").map((row) => {
+      const mapped = Object.fromEntries(Object.keys(columns).map((key, index) => [key, row[index]]));
+      return { ...mapped, isActive: mapped.isActive === 1 } as BaseMemberRow;
+    });
+    const data = await this.hydrate(baseRows, query.projection);
+    const total = query.includeTotal ? Number(sqlRows(results[1]!, 1, "roster count")[0]?.[0] ?? 0) : offset + data.length;
+    const statsRow = query.searchScope === "management" ? sqlRows(results.at(-1)!, 4, "roster statistics")[0]! : null;
     return {
       data,
       total,
@@ -645,6 +692,7 @@ export class SqliteMembersStore implements MembersStore {
       totalPages: query.includeTotal
         ? Math.max(1, Math.ceil(total / query.limit))
         : data.length < query.limit ? query.page : query.page + 1,
+      ...(statsRow ? { stats: { total: Number(statsRow[0]), active: Number(statsRow[1]), inactive: Number(statsRow[0]) - Number(statsRow[1]), management_access: Number(statsRow[2]), directory_total: Number(statsRow[3]) } } : {}),
     };
   }
 
@@ -657,6 +705,83 @@ export class SqliteMembersStore implements MembersStore {
     return (await this.hydrate(rows as BaseMemberRow[], projection))[0] ?? null;
   }
 
+  async listDirectory(query: MemberDirectoryQuery) {
+    if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > 50) throw new RangeError("Member directory pages must contain 1 to 50 entries");
+    if (query.ids) assertBoundedUnique(query.ids, 100, "Member directory IDs");
+    const rows = await this.db.select(directoryColumns).from(users)
+      .innerJoin(memberProfiles, eq(memberProfiles.userId, users.id)).where(and(
+        isNull(users.deletedAt),
+        ...(query.projection === "admin" ? [] : [eq(users.isActive, true)]),
+        query.search ? drizzleSql`instr(lower(${users.display_name}), ${query.search}) > 0` : undefined,
+        query.ids ? drizzleSql`${users.id} IN (SELECT value FROM json_each(${JSON.stringify(query.ids)}))` : undefined,
+        query.cursor ? drizzleSql`(${users.display_name} COLLATE NOCASE > ${query.cursor.displayName}
+          OR (${users.display_name} COLLATE NOCASE = ${query.cursor.displayName} AND ${users.id} > ${query.cursor.userId}))` : undefined,
+      )).orderBy(drizzleSql`${users.display_name} COLLATE NOCASE`, asc(users.id)).limit(query.ids ? query.ids.length : query.limit + 1);
+    return {
+      data: rows.slice(0, query.ids ? query.ids.length : query.limit).map((row) => memberDirectoryEntrySchema.parse({
+        user: { id: row.userId, display_name: row.displayName },
+        profile: { classes: parseStringArray(row.classesJson, "directory classes"), power: row.power, avatar_media_id: row.avatarMediaId },
+      })),
+      hasMore: !query.ids && rows.length > query.limit,
+    };
+  }
+
+  async listPlanningMembers(userIds: readonly string[], projection: MemberProjection) {
+    assertBoundedUnique(userIds, 100, "Planning member IDs");
+    const columns = projection === "public" ? publicMemberColumns : projection === "admin" ? adminColumns : memberColumns;
+    const rows = await this.db.select({
+      ...directoryColumns,
+      titleHtml: memberProfiles.titleHtml,
+      availabilityTimezone: columns.availabilityTimezone,
+      vacationStart: columns.vacationStart,
+      vacationEnd: columns.vacationEnd,
+      notes: columns.notes,
+      windowsJson: projection === "public" ? drizzleSql<string>`'[]'` : drizzleSql<string>`(SELECT json_group_array(json_array(weekday, start_minute, end_minute))
+        FROM member_availability_windows WHERE user_id = ${users.id})`,
+    }).from(users).innerJoin(memberProfiles, eq(memberProfiles.userId, users.id)).where(and(
+      isNull(users.deletedAt),
+      ...(projection === "admin" ? [] : [eq(users.isActive, true)]),
+      drizzleSql`${users.id} IN (SELECT value FROM json_each(${JSON.stringify(userIds)}))`,
+    ));
+    return rows.map((row) => memberPlanningEntrySchema.parse({
+      user: { id: row.userId, display_name: row.displayName },
+      profile: {
+        classes: parseStringArray(row.classesJson, "planning classes"), power: row.power, avatar_media_id: row.avatarMediaId,
+        title_html: row.titleHtml,
+        availability: row.availabilityTimezone ? availabilityFromWindows(row.availabilityTimezone,
+          (JSON.parse(row.windowsJson) as number[][]).map(([weekday, startMinute, endMinute]) => ({ weekday: weekday!, startMinute: startMinute!, endMinute: endMinute! }))) : null,
+        vacation_start: row.vacationStart, vacation_end: row.vacationEnd, notes: row.notes,
+      },
+    }));
+  }
+
+  async getAvailabilitySummary() {
+    const scope = `users.is_active = 1 AND users.deleted_at IS NULL AND profiles.availability_timezone IS NOT NULL`;
+    const [hourResult, countResult] = await this.executor.readBatch([
+      {
+        method: "all", columns: ["weekday", "hour", "members"],
+        sql: `WITH RECURSIVE hours(hour) AS (SELECT 0 UNION ALL SELECT hour + 1 FROM hours WHERE hour < 23)
+          SELECT windows.weekday AS weekday, hours.hour AS hour, count(DISTINCT users.id) AS members
+          FROM member_availability_windows windows JOIN users ON users.id = windows.user_id
+          JOIN member_profiles profiles ON profiles.user_id = users.id
+          JOIN hours ON windows.start_minute < (hours.hour + 1) * 60 AND hours.hour * 60 < windows.end_minute
+          WHERE ${scope} GROUP BY windows.weekday, hours.hour`,
+      },
+      {
+        method: "all", columns: ["members"],
+        sql: `SELECT count(DISTINCT users.id) AS members FROM users JOIN member_profiles profiles ON profiles.user_id = users.id
+          JOIN member_availability_windows windows ON windows.user_id = users.id WHERE ${scope}`,
+      },
+    ]);
+    const hourly_counts = Array.from({ length: 7 }, () => Array<number>(24).fill(0));
+    for (const [day, hour, members] of sqlRows(hourResult!, 3, "availability summary")) {
+      if (typeof day !== "number" || typeof hour !== "number" || typeof members !== "number" || !hourly_counts[day] || hour < 0 || hour > 23) {
+        throw invalidHydration("availability summary");
+      }
+      hourly_counts[day]![hour] = members;
+    }
+    return { hourly_counts, member_count: Number(sqlRows(countResult!, 1, "availability member count")[0]?.[0] ?? 0) };
+  }
   async getMemberTarget(userId: string): Promise<MemberTarget | null> {
     const rows = await this.db.select({
       userId: users.id,
@@ -1387,7 +1512,7 @@ export class SqliteMembersStore implements MembersStore {
     if (userIds.length === 0) return [];
     const ids = JSON.stringify(userIds);
     const [classResult, videoResult, availabilityResult, badgeResult] = await Promise.all([
-      this.executor.execute({
+      this.executor.read({
         method: "all",
         sql: `SELECT classes.user_id, classes.class_id
           FROM member_profile_classes AS classes
@@ -1395,7 +1520,7 @@ export class SqliteMembersStore implements MembersStore {
           ORDER BY classes.user_id, classes.sort_order`,
         params: [ids],
       }),
-      this.executor.execute({
+      this.executor.read({
         method: "all",
         sql: `SELECT videos.user_id, videos.url
           FROM member_profile_videos AS videos
@@ -1403,7 +1528,7 @@ export class SqliteMembersStore implements MembersStore {
           ORDER BY videos.user_id, videos.sort_order`,
         params: [ids],
       }),
-      projection === "public" ? Promise.resolve({ rows: [] } satisfies SqlResult) : this.executor.execute({
+      projection === "public" ? Promise.resolve({ rows: [] } satisfies SqlResult) : this.executor.read({
         method: "all",
         sql: `SELECT windows.user_id, windows.weekday, windows.start_minute, windows.end_minute
           FROM member_availability_windows AS windows
@@ -1411,7 +1536,7 @@ export class SqliteMembersStore implements MembersStore {
           ORDER BY windows.user_id, windows.weekday, windows.start_minute`,
         params: [ids],
       }),
-      this.executor.execute({
+      this.executor.read({
         method: "all",
         sql: `SELECT assignments.user_id, badges.id, badges.name, badges.label_html, badges.color
           FROM member_badge_assignments AS assignments
@@ -1533,6 +1658,7 @@ function parseStringArray(value: string, label: string): string[] {
   } catch {
     // The invariant error below keeps malformed snapshot data visible to callers.
   }
+
   throw invalidHydration(label);
 }
 
@@ -1546,7 +1672,7 @@ export class SqliteClassTagUsageReader {
   async countByTagIds(tagIds: readonly string[]): Promise<ReadonlyMap<string, number>> {
     if (tagIds.length === 0) return new Map();
     assertBoundedUnique(tagIds, LIMITS.content.classTags.max, "Class tag usage ids");
-    const result = await this.executor.execute({
+    const result = await this.executor.read({
       method: "all",
       sql: `SELECT tag_id, count(*) FROM (
         SELECT tag_id FROM event_class_quotas WHERE tag_id IN (${placeholders(tagIds)})

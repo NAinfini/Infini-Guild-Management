@@ -10,6 +10,21 @@ import { createAuditRoutes } from "./audit-routes.js";
 const NOW = "2026-08-09T12:00:00.000Z";
 
 describe("audit export route", () => {
+  it.each(["/audit-log", "/audit-log/export"])("accepts a full image-batch subject filter and rejects oversized IDs at %s", async (path) => {
+    const list = vi.fn().mockResolvedValue({ data: [], next_cursor: null });
+    const recordExport = vi.fn().mockResolvedValue(undefined);
+    const exportRows = vi.fn(() => emptyRows());
+    const app = buildApp({ list, recordExport, export: exportRows });
+    const subjectId = Array.from({ length: 50 }, (_, index) => String(index).padStart(21, "0")).join(",");
+    const url = `/api/admin${path}?entity_type=gallery_item&entity_id=${encodeURIComponent(subjectId)}`;
+
+    expect((await app.request(url)).status).toBe(200);
+    const call = path === "/audit-log" ? list : recordExport;
+    expect(call.mock.calls[0]?.at(-1)).toMatchObject({ subjectType: "gallery_item", subjectId });
+    expect((await app.request(`${url}x`)).status).toBe(400);
+    expect(call).toHaveBeenCalledOnce();
+  });
+
   it("passes cursor and an exact indexed subject target to the list service", async () => {
     const list = vi.fn().mockResolvedValue({ data: [], next_cursor: null });
     const app = buildApp({

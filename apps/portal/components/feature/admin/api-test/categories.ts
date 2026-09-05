@@ -427,11 +427,10 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
   }
   if (endpoint.path.startsWith("/api/wiki/articles") && endpoint.path.includes("/revisions")) return requiresAll("wiki.articles.edit");
   if (endpoint.path.startsWith("/api/admin/users")) {
-    if (endpoint.path.includes("role")) return requiresAll("admin.users.edit", "admin.users.role", "admin.users.delete");
-    if (endpoint.path.includes("deactivate") || endpoint.path.includes("reactivate")) return requiresAll("admin.users.edit", "admin.users.activate", "admin.users.delete");
-    if (endpoint.path.includes("delete")) return requiresAll("admin.users.edit", "admin.users.delete");
-    if (endpoint.path.includes("reset-password")) return requiresAll("admin.users.edit", "admin.users.password", "admin.users.delete");
-    return requiresAll("admin.users.edit", "admin.users.delete");
+    const fixturePermissions = ["admin.users.edit", "admin.users.role", "admin.users.delete"];
+    if (endpoint.path.includes("deactivate") || endpoint.path.includes("reactivate")) return requiresAll(...fixturePermissions, "admin.users.activate");
+    if (endpoint.path.includes("reset-password")) return requiresAll(...fixturePermissions, "admin.users.password");
+    return requiresAll(...fixturePermissions);
   }
   if (endpoint.path.startsWith("/api/admin/roles")) {
     return endpoint.method === "GET" ? requiresAny("admin.roles.view", "admin.roles.manage") : requiresAll("admin.roles.manage");

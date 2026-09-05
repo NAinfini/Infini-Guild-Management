@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { PERMISSIONS } from "../constants/roles";
-import { AUDIT_ACTIONS, AUDIT_ENTITY_TYPES, AUDIT_FIELDS } from "../constants/audit";
+import { AUDIT_ACTIONS, AUDIT_ENTITY_TYPES, AUDIT_FIELDS, AUDIT_SUBJECT_ID_MAX_LENGTH } from "../constants/audit";
 import { LIMITS } from "../config/limits";
 import { roleIdSchema, roleMetadataSchema } from "./role";
 import { siteAnalyticsModifierWeightsSchema } from "./site-config";
@@ -38,7 +38,7 @@ export const createInviteLinkSchema = z.object({
 });
 
 const auditReferenceSchema = z.object({
-  id: z.string().min(1).max(512),
+  id: z.string().min(1).max(AUDIT_SUBJECT_ID_MAX_LENGTH),
   label: z.string().min(1).max(200).nullable(),
 }).strict();
 
@@ -83,7 +83,7 @@ export const auditActorSchema = z.object({
 
 export const auditSubjectSchema = z.object({
   type: z.enum(AUDIT_ENTITY_TYPES),
-  id: z.string().min(1).max(512),
+  id: z.string().min(1).max(AUDIT_SUBJECT_ID_MAX_LENGTH),
   label: z.string().min(1).max(200).nullable(),
 }).strict();
 

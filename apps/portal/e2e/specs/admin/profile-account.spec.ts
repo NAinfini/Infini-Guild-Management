@@ -130,6 +130,21 @@ function submitButton(card: Locator, name: string): Locator {
   return card.getByRole("button", { name, exact: true });
 }
 
+async function passwordLayout(card: Locator) {
+  // Resize can switch the shell navigation between protocol calls; compare one layout snapshot.
+  const rectangles = await card.locator(".password-setup__fields, .password-requirements").evaluateAll((elements) =>
+    elements.map((element) => {
+      const { x, y, width, height } = element.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+  expect(rectangles).toHaveLength(2);
+  for (const rectangle of rectangles) {
+    expect(rectangle.width).toBeGreaterThan(0);
+    expect(rectangle.height).toBeGreaterThan(0);
+  }
+  return [rectangles[0]!, rectangles[1]!] as const;
+}
+
 async function openSensitiveAction(control: Locator): Promise<void> {
   await flow.clickWithoutApi(control);
   await expect(confirmationDialog()).toBeVisible();
@@ -162,7 +177,7 @@ test("改密码卡：当前密码填错时保留会话并显示表单错误，�
   await flow.click(confirmationSubmitButton(), { ...CHANGE_PASSWORD, status: 401 });
 
   await expect(page).toHaveURL(/\/profile\?tab=account/);
-  await expectToast(page, "Current password is incorrect");
+  await expectToast(page, "Could not verify your identity. Check your current password. If it is correct, sign in again and retry.");
 
   expect(
     await loginStatus(account.login_name, account.password),
@@ -174,8 +189,9 @@ test("改密码卡：填对当前密码后旧密码立即失效、新密码可�
   const newPassword = "Violet7!";
   const card = passwordSecurityCard();
   await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(page.locator(".app-shell-root")).not.toHaveAttribute("data-compact-navigation", "true");
   await expect(field(card, "New password")).toHaveAccessibleDescription(/8–128 characters/);
-  await expect(card.locator('[data-password-rule]')).toHaveCount(6);
+  await expect(card.locator('[data-password-rule]')).toHaveCount(5);
   await expect(card.locator('[data-met="true"]')).toHaveCount(0);
   await field(card, "New password").fill("short12");
   await field(card, "Confirm new password").fill("short12");
@@ -189,20 +205,19 @@ test("改密码卡：填对当前密码后旧密码立即失效、新密码可�
   await field(card, "Confirm new password").fill(newPassword);
   await expect(field(card, "New password")).toHaveAttribute("aria-invalid", "false");
   await expect(submitButton(card, "Change password")).toBeEnabled();
-  await expect(card.locator('[data-met="true"]')).toHaveCount(6);
-  const fields = card.locator(".password-setup__fields");
-  const requirements = card.locator(".password-requirements");
-  const desktopFields = await fields.boundingBox();
-  const desktopRules = await requirements.boundingBox();
-  expect(desktopRules!.x).toBeGreaterThanOrEqual(desktopFields!.x + desktopFields!.width);
+  await expect(card.locator('[data-met="true"]')).toHaveCount(5);
+  const [desktopFields, desktopRules] = await passwordLayout(card);
+  expect(desktopRules.y).toBeGreaterThanOrEqual(desktopFields.y + desktopFields.height);
+  expect(desktopRules.x + desktopRules.width).toBeLessThanOrEqual(desktopFields.x + desktopFields.width + 1);
   await card.screenshot({ path: testInfo.outputPath("password-requirements-desktop.png") });
   await page.setViewportSize({ width: 390, height: 844 });
-  const mobileFields = await fields.boundingBox();
-  const mobileRules = await requirements.boundingBox();
-  expect(mobileRules!.y).toBeGreaterThanOrEqual(mobileFields!.y + mobileFields!.height);
-  expect(mobileRules!.x + mobileRules!.width).toBeLessThanOrEqual(390);
+  await expect(page.locator(".app-shell-root")).toHaveAttribute("data-compact-navigation", "true");
+  const [mobileFields, mobileRules] = await passwordLayout(card);
+  expect(mobileRules.y).toBeGreaterThanOrEqual(mobileFields.y + mobileFields.height);
+  expect(mobileRules.x + mobileRules.width).toBeLessThanOrEqual(390);
   await card.screenshot({ path: testInfo.outputPath("password-requirements-mobile.png") });
   await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(page.locator(".app-shell-root")).not.toHaveAttribute("data-compact-navigation", "true");
   await openSensitiveAction(submitButton(card, "Change password"));
   await currentPasswordField().fill(account.password);
 

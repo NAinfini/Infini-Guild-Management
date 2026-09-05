@@ -2,7 +2,6 @@ import type { User } from "@guild/shared";
 import type { IconProps } from "@tabler/icons-react";
 import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
-import type { VisualPageSceneId } from "../../visual/themes";
 import { Button } from "../ui/button";
 import { ExperienceControls } from "../shared/ExperienceControls";
 import { CmdKSearch } from "./CmdKSearch";
@@ -15,7 +14,6 @@ type AppHeaderProps = {
   activePageTitle: string;
   /* 当前路由的图标，与侧栏同一份元数据，标题旁做区域标记用。 */
   activePageIcon: ComponentType<IconProps>;
-  visualScene?: VisualPageSceneId;
   user: User | null;
   onLogout: () => void;
   onLoginClick: () => void;
@@ -26,7 +24,6 @@ export function AppHeader({
   isHeaderCompact,
   activePageTitle,
   activePageIcon: ActivePageIcon,
-  visualScene,
   user,
   onLogout,
   onLoginClick,
@@ -34,9 +31,7 @@ export function AppHeader({
   const { t } = useTranslation("common");
 
   return (
-    <header
-      className={`app-header${visualScene ? " app-header--with-scene" : ""}`}
-    >
+    <header className="app-header">
       <h1 className="app-header__page-title" tabIndex={-1}>
         <span className="app-header__page-glyph" aria-hidden>
           <ActivePageIcon />

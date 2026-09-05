@@ -1,7 +1,7 @@
 import { request, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { MUTATION_HEADERS } from "../../support/api";
 import { ADMIN_PASSWORD, PORTAL_ORIGIN } from "../../support/config";
-import { createThrowawayMember, uniqueTag } from "../../support/members";
+import { createThrowawayMember, searchAdminMembers, uniqueTag } from "../../support/members";
 import { expect, identityHeaders, test } from "../../support/test";
 import { expectToast } from "../../support/ui";
 
@@ -76,7 +76,7 @@ async function openMembers(page: Page, tag: string): Promise<void> {
   await page.goto("/admin");
   await expect(searchBox(page)).toBeVisible();
   await page.waitForLoadState("networkidle");
-  await searchBox(page).fill(tag);
+  await searchAdminMembers(page, tag);
 }
 
 async function openRowMenu(page: Page, display_name: string): Promise<void> {

@@ -94,6 +94,19 @@ async function openDeposit(page: Page): Promise<Locator> {
   return dialog;
 }
 
+async function selectRecipient(dialog: Locator): Promise<void> {
+  // 等防抖搜索返回；加载骨架会卸载此前打开的成员下拉。
+  const memberSearch = dialog.page().waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === "GET"
+      && url.pathname === "/api/users/directory"
+      && url.searchParams.get("search") === "member_01";
+  });
+  await dialog.getByRole("searchbox", { name: "Search members", exact: true }).fill("member_01");
+  expect((await memberSearch).ok(), "领取人搜索请求必须成功").toBe(true);
+  await selectOption(dialog, "Member", "member_01");
+}
+
 test("存入弹窗打开时：类型为 Intake，领取人可选，预览是 10 → 11", async ({ page }) => {
   const dialog = await openDeposit(page);
 
@@ -117,7 +130,7 @@ test("切到 Withdrawal：领取人变必填，预览转为减库存，选人后
   const submit = dialog.getByRole("button", { name: "Submit", exact: true });
   await expect(submit, "没指定领取人时出库必须按不下去").toBeDisabled();
 
-  await selectOption(dialog, "Member", "member_01");
+  await selectRecipient(dialog);
   await expect(submit).toBeEnabled();
 });
 
@@ -144,7 +157,7 @@ test("切到 Stocktake：领取人消失，数量预填当前库存，没变化�
 test("校验：出库数量超过库存会报错并禁用提交", async ({ page }) => {
   const dialog = await openDeposit(page);
   await transactionTypeButton(dialog, "Withdrawal").click();
-  await selectOption(dialog, "Member", "member_01");
+  await selectRecipient(dialog);
 
   await dialog.getByLabel("Quantity", { exact: true }).fill(String(START_STOCK + 1));
 

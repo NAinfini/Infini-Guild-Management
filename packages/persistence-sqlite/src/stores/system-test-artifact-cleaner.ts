@@ -10,7 +10,7 @@ export class SqliteSystemTestArtifactCleaner implements SystemTestArtifactCleane
   constructor(private readonly sql: SqlExecutor) {}
 
   async listMediaObjectKeys(mediaId: string): Promise<readonly string[]> {
-    return allRows(await this.sql.execute({
+    return allRows(await this.sql.read({
       method: "all",
       sql: "SELECT object_key FROM media_variants WHERE media_id = ? ORDER BY variant",
       params: [mediaId],
@@ -43,7 +43,7 @@ export class SqliteSystemTestArtifactCleaner implements SystemTestArtifactCleane
   }
 
   async listBeforeImages(runId: string, limit: number): Promise<readonly SystemTestBeforeImage[]> {
-    return allRows(await this.sql.execute({
+    return allRows(await this.sql.read({
       method: "all",
       sql: `SELECT target_type, target_id
         FROM system_test_before_images

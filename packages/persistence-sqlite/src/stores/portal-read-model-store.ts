@@ -19,7 +19,7 @@ import {
   type WarMemberStatKey,
   type WarResult,
 } from "@guild/shared/constants/guild-war";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
+import type { SqlReadBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
 
 const DASHBOARD_EVENTS_PER_GROUP = 5;
 const DASHBOARD_EVENT_LIMIT = DASHBOARD_EVENTS_PER_GROUP * 2;
@@ -62,7 +62,7 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
   constructor(private readonly sql: SqlExecutor) {}
 
   async dashboardMembers() {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "get",
       sql: `SELECT
         sum(CASE WHEN deleted_at IS NULL AND is_active = 1 THEN 1 ELSE 0 END),
@@ -84,7 +84,7 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
   }>): Promise<DashboardEventsRead> {
     const selected = selectedEventsCte(input.canViewHidden);
     const params = selectionParams(input);
-    const results = await this.sql.batch([
+    const results = await this.sql.readBatch([
       {
         method: "all",
         columns: [...EVENT_RESULT_COLUMNS, "participant_count", "viewer_signed_up"],
@@ -287,7 +287,7 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
       ORDER BY gw.created_at DESC, gw.id DESC
       LIMIT ${RECENT_WAR_LIMIT}
     )`;
-    const results = await this.sql.batch([
+    const results = await this.sql.readBatch([
       {
         method: "all",
         columns: WAR_RESULT_COLUMNS,
@@ -359,7 +359,7 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
     const enabled = (column: string) => `EXISTS (
       SELECT 1 FROM site_config sc WHERE sc.singleton = 1 AND sc.${column} = 1
     )`;
-    const statements: SqlBatchStatement[] = [
+    const statements: SqlReadBatchStatement[] = [
       {
         method: "all",
         columns: ["id", "display_name", "role_id", "name", "color", "level", "power"],
@@ -368,7 +368,7 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
           JOIN roles r ON r.id = u.role_id
           LEFT JOIN member_profiles mp ON mp.user_id = u.id
           WHERE u.deleted_at IS NULL AND u.is_active = 1
-            AND lower(u.display_name) LIKE ? ESCAPE '\\'
+            AND u.display_name LIKE ? ESCAPE '\\'
           ORDER BY u.display_name COLLATE NOCASE, u.id
           LIMIT ?`,
         params: [pattern, input.perTypeLimit],
@@ -379,10 +379,9 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
         sql: `SELECT e.id, e.title, e.type, e.start_at
           FROM events e INDEXED BY idx_events_list_start
           WHERE e.archived_at IS NULL AND (e.visible_at IS NULL OR e.visible_at <= ?)
-            AND ${enabled("feature_events")}
-            AND (lower(e.title) LIKE ? ESCAPE '\\' OR lower(coalesce(e.description, '')) LIKE ? ESCAPE '\\')
+            AND (e.title LIKE ? ESCAPE '\\' OR coalesce(e.description, '') LIKE ? ESCAPE '\\')
           ORDER BY e.start_at, e.id
-          LIMIT ?`,
+          LIMIT CASE WHEN ${enabled("feature_events")} THEN ? ELSE 0 END`,
         params: [input.now, pattern, pattern, input.perTypeLimit],
       },
       {
@@ -392,10 +391,9 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
           FROM announcements a INDEXED BY idx_announcements_public
           WHERE a.status = 'published' AND a.archived_at IS NULL
             AND a.publish_at <= ? AND (a.expires_at IS NULL OR a.expires_at > ?)
-            AND ${enabled("feature_announcements")}
-            AND (lower(a.title) LIKE ? ESCAPE '\\' OR lower(a.search_text) LIKE ? ESCAPE '\\')
+            AND (a.title LIKE ? ESCAPE '\\' OR a.search_text LIKE ? ESCAPE '\\')
           ORDER BY a.pinned DESC, a.updated_at DESC, a.id DESC
-          LIMIT ?`,
+          LIMIT CASE WHEN ${enabled("feature_announcements")} THEN ? ELSE 0 END`,
         params: [input.now, input.now, pattern, pattern, input.perTypeLimit],
       },
       {
@@ -403,10 +401,10 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
         columns: ["id", "title", "slug"],
         sql: `SELECT w.id, w.title, w.slug
           FROM wiki_articles w INDEXED BY idx_wiki_articles_visibility_updated
-          WHERE w.deleted_at IS NULL AND w.archived_at IS NULL AND ${enabled("feature_wiki")}
-            AND (lower(w.title) LIKE ? ESCAPE '\\' OR lower(w.search_text) LIKE ? ESCAPE '\\')
+          WHERE w.deleted_at IS NULL AND w.archived_at IS NULL
+            AND (w.title LIKE ? ESCAPE '\\' OR w.search_text LIKE ? ESCAPE '\\')
           ORDER BY w.updated_at DESC, w.id DESC
-          LIMIT ?`,
+          LIMIT CASE WHEN ${enabled("feature_wiki")} THEN ? ELSE 0 END`,
         params: [pattern, pattern, input.perTypeLimit],
       },
       {
@@ -414,10 +412,9 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
         columns: ["id", "type", "title"],
         sql: `SELECT g.id, g.type, g.title
           FROM gallery_items g INDEXED BY idx_gallery_items_created
-          WHERE ${enabled("feature_gallery")}
-            AND (lower(g.title) LIKE ? ESCAPE '\\' OR lower(coalesce(g.caption, '')) LIKE ? ESCAPE '\\')
+          WHERE (g.title LIKE ? ESCAPE '\\' OR coalesce(g.caption, '') LIKE ? ESCAPE '\\')
           ORDER BY g.created_at DESC, g.id DESC
-          LIMIT ?`,
+          LIMIT CASE WHEN ${enabled("feature_gallery")} THEN ? ELSE 0 END`,
         params: [pattern, pattern, input.perTypeLimit],
       },
       {
@@ -425,14 +422,14 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
         columns: ["id", "war_name", "enemy_name"],
         sql: `SELECT gw.id, gw.war_name, gw.enemy_name
           FROM guild_wars gw INDEXED BY idx_guild_wars_history_created
-          WHERE gw.status = 'concluded' AND ${enabled("feature_guild_war")}
-            AND (lower(gw.war_name) LIKE ? ESCAPE '\\' OR lower(coalesce(gw.enemy_name, '')) LIKE ? ESCAPE '\\')
+          WHERE gw.status = 'concluded'
+            AND (gw.war_name LIKE ? ESCAPE '\\' OR coalesce(gw.enemy_name, '') LIKE ? ESCAPE '\\')
           ORDER BY gw.created_at DESC, gw.id DESC
-          LIMIT ?`,
+          LIMIT CASE WHEN ${enabled("feature_guild_war")} THEN ? ELSE 0 END`,
         params: [pattern, pattern, input.perTypeLimit],
       },
     ];
-    const result = await this.sql.batch(statements);
+    const result = await this.sql.readBatch(statements);
     const userResults = rows(result[0], "member search").map((row): SearchResultRead => {
       const power = nonnegativeNumber(row[6], "search member power");
       const roleName = text(row[3], "search role name");

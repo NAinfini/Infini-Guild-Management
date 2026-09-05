@@ -1,7 +1,7 @@
 import type { FeatureFlags } from "@guild/shared";
 import type { IconProps } from "@tabler/icons-react";
 import type { ComponentType } from "react";
-import type { VisualPageSceneId } from "../../visual/themes";
+import type { VisualWorkspaceSceneId } from "../../visual/themes";
 import {
   BookOutlined,
   CalendarOutlined,
@@ -57,7 +57,7 @@ export type PortalRouteMetadata = {
   domain?: PortalDomain;
   icon: ComponentType<IconProps>;
   contentWidth: PortalContentWidth;
-  visualScene?: VisualPageSceneId;
+  workspaceScene: VisualWorkspaceSceneId;
   mobilePrimary?: number;
   requiresSession?: boolean;
   requiresModerator?: boolean;
@@ -75,124 +75,124 @@ export const PORTAL_NAV_GROUPS = [
 export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
   {
     to: "/dashboard",
+    workspaceScene: "guild",
     labelKey: "nav.dashboard",
     group: "overview",
     icon: DashboardOutlined,
     contentWidth: "wide",
-    visualScene: "dashboard",
     mobilePrimary: 1,
   },
   {
     to: "/announcements",
+    workspaceScene: "falls",
     labelKey: "nav.announcements",
     group: "community",
     domain: "announce",
     icon: NotificationOutlined,
     contentWidth: "wide",
-    visualScene: "announcements",
     featureFlag: "announcements",
   },
   {
     to: "/events",
+    workspaceScene: "guild",
     labelKey: "nav.events",
     group: "community",
     domain: "event",
     icon: CalendarOutlined,
     contentWidth: "standard",
-    visualScene: "events",
     mobilePrimary: 2,
     featureFlag: "events",
   },
   {
     to: "/roster",
+    workspaceScene: "guild",
     labelKey: "nav.roster",
     group: "community",
     domain: "roster",
     icon: TeamOutlined,
     contentWidth: "wide",
-    visualScene: "roster",
     mobilePrimary: 4,
   },
   {
     to: "/gallery",
+    workspaceScene: "falls",
     labelKey: "nav.gallery",
     group: "community",
     domain: "gallery",
     icon: PictureOutlined,
     contentWidth: "wide",
-    visualScene: "gallery",
     featureFlag: "gallery",
   },
   {
     to: "/wiki",
+    workspaceScene: "falls",
     labelKey: "nav.wiki",
     group: "community",
     domain: "wiki",
     icon: BookOutlined,
     contentWidth: "wide",
-    visualScene: "wiki",
     featureFlag: "wiki",
   },
   {
     to: "/guild-war",
+    workspaceScene: "citadel",
     labelKey: "nav.guild-war",
     group: "operations",
     domain: "war",
     icon: ThunderboltOutlined,
     contentWidth: "workbench",
-    visualScene: "guild-war",
     mobilePrimary: 3,
     featureFlag: "guildWar",
   },
   {
     to: "/storage",
+    workspaceScene: "citadel",
     labelKey: "nav.storage",
     group: "operations",
     domain: "ops",
     icon: WarehouseOutlined,
     contentWidth: "workbench",
-    visualScene: "storage",
     requiresSession: true,
     featureFlag: "storage",
   },
   {
     to: "/tools",
+    workspaceScene: "citadel",
     labelKey: "nav.tools",
     group: "operations",
     domain: "ops",
     icon: ToolOutlined,
     contentWidth: "standard",
-    visualScene: "tools",
     featureFlag: "tools",
   },
   {
     to: "/profile",
+    workspaceScene: "citadel",
     labelKey: "nav.profile",
     group: "personal",
     domain: "personal",
     icon: UserOutlined,
     contentWidth: "standard",
-    visualScene: "profile",
     requiresSession: true,
   },
   {
     to: "/settings",
+    workspaceScene: "citadel",
     labelKey: "nav.settings",
     group: "personal",
     domain: "personal",
     icon: SettingOutlined,
     contentWidth: "standard",
-    visualScene: "settings",
   },
   {
     to: "/admin",
+    workspaceScene: "citadel",
     labelKey: "nav.admin",
     group: "administration",
     domain: "admin",
     /* 和「设置」共用齿轮时，折叠成图标轨道后两项完全分不出来。 */
     icon: ShieldOutlined,
     contentWidth: "workbench",
-    visualScene: "admin",
     requiresSession: true,
     requiresModerator: true,
   },
@@ -200,6 +200,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
 
 const NOT_FOUND_ROUTE: PortalRouteMetadata = {
   to: "/__not-found__",
+  workspaceScene: "guild",
   labelKey: "notFound.title",
   group: "overview",
   icon: DashboardOutlined,

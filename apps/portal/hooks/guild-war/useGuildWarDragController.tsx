@@ -1,4 +1,4 @@
-import { GUILD_WAR_CAPTAIN_ROLE_TAG, type GuildWarActiveResponse } from "@guild/shared";
+import { GUILD_WAR_CAPTAIN_ROLE_TAG, type GuildWarActiveResponse, type MemberPlanningEntry } from "@guild/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
@@ -10,7 +10,6 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
-import type { UsersListResponse } from "../../services/UserService";
 import {
   fetchGuildWarActive,
   GuildWarService,
@@ -57,7 +56,7 @@ type RoleTagMutation = {
 
 type UseGuildWarDragControllerParams = {
   activeData: GuildWarActiveResponse | undefined;
-  usersData: UsersListResponse["data"] | undefined;
+  usersData: MemberPlanningEntry[] | undefined;
   canManageActive: boolean;
   canRemoveParticipants: boolean;
   selectedEventId: string | undefined;

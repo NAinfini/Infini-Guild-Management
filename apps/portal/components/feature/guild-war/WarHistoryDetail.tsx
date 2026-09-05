@@ -25,6 +25,7 @@ import {
 import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
 import { SectionHeader } from "@portal/components/shared/SectionHeader";
 import { useMediaQuery } from "@portal/hooks/useMediaQuery";
+import { useReducedMotionPreference } from "@portal/hooks/useReducedMotionPreference";
 import { resolveMediaUrl } from "@portal/utils/media";
 import { useSiteConfigStore } from "@portal/stores/site-config";
 import type { DataTableInstance } from "@portal/components/shared/data-table-features";
@@ -139,6 +140,7 @@ export function WarHistoryDetail({
   const siteName = useSiteConfigStore((state) => state.siteName);
   const gameRules = DEFAULT_GAME_RULES;
   const isMobileMemberLayout = useMediaQuery("(max-width: 767px)");
+  const reducedMotion = useReducedMotionPreference();
 
   useEffect(() => {
     echarts.registerTheme(chartThemeName, chartThemeConfig);
@@ -431,11 +433,9 @@ export function WarHistoryDetail({
                   <ReactEChartsCore
                     echarts={echarts}
                     theme={chartThemeName}
-                    style={{
-                      width: "100%",
-                      height: Math.min(520, Math.max(240, historyDetail.member_stats.length * 32 + 60)),
-                    }}
+                    style={{ width: "100%", height: Math.min(520, Math.max(240, historyDetail.member_stats.length * 32 + 60)) }}
                     option={{
+                      animation: !reducedMotion,
                       tooltip: { trigger: "axis" },
                       grid: { left: 100, right: 20, top: 10, bottom: 30 },
                       xAxis: { type: "value" },

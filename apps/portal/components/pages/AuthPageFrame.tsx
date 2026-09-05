@@ -1,11 +1,9 @@
 import { buttonVariants } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useSiteConfigStore } from "../../stores/site-config";
-import { ACTIVE_VISUAL_THEME } from "../../visual/themes";
 import { PublicSiteHeader } from "../layout/PublicSiteHeader";
 import { VisualThemeScene } from "../shared/VisualThemeArtwork";
 
@@ -34,6 +32,7 @@ const MODE_COPY = {
 export function AuthPageFrame({ mode, children }: AuthPageFrameProps) {
   const { t } = useTranslation("auth");
   const siteName = useSiteConfigStore((state) => state.siteName);
+  const siteLogoUrl = useSiteConfigStore((state) => state.siteLogoUrl);
   const copy = MODE_COPY[mode];
   const offersVisitorAccess = mode === "login" || mode === "register";
 
@@ -58,18 +57,19 @@ export function AuthPageFrame({ mode, children }: AuthPageFrameProps) {
         <Card className="login-page__card">
           <header className="login-page__form-heading">
             <div className="login-page__card-brand">
-              <img
-                src={ACTIVE_VISUAL_THEME.mark.src}
-                alt=""
-                aria-hidden="true"
-                className="login-page__card-emblem"
-              />
-              <Tooltip>
-                <TooltipTrigger render={<span className="login-page__card-site-name" tabIndex={0} />}>
-                  {siteName}
-                </TooltipTrigger>
-                <TooltipContent>{siteName}</TooltipContent>
-              </Tooltip>
+              {siteLogoUrl ? (
+                <img
+                  src={siteLogoUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="login-page__card-emblem"
+                />
+              ) : (
+                <span className="login-page__card-emblem login-page__card-emblem--fallback" aria-hidden="true">
+                  {siteName.trim().slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <span className="login-page__card-site-name">{siteName}</span>
             </div>
             <h1>
               {t(copy.title)}

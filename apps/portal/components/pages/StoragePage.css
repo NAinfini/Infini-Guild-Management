@@ -1605,8 +1605,15 @@ html:not([data-input-modality="pointer"]) .storage-item-editor__dropzone:has(:fo
   }
 
   .storage-item-card__actions [data-slot="button"] {
-    flex: 1 1 112px;
     min-block-size: var(--control-hit-area);
+  }
+
+  .storage-item-card__actions > [data-slot="button"] {
+    flex: 1 1 0;
+  }
+
+  .storage-item-card__actions > .storage-item-card__edit {
+    flex: 0 0 var(--control-hit-area);
   }
 
   .storage-detail-media__image,
@@ -1736,7 +1743,7 @@ html:not([data-input-modality="pointer"]) .storage-item-editor__dropzone:has(:fo
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .storage-item-card,
   .storage-management-modal__tree-row,
   .storage-management-modal__node-actions,

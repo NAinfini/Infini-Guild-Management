@@ -1,4 +1,4 @@
-import type { MemberAvailability, MemberProfile, User, UserBadge } from "@guild/shared";
+import type { MemberAvailability, MemberProfile, MemberSummary, UserBadge } from "@guild/shared";
 import { IMAGE_FILE_ACCEPT } from "@guild/shared";
 import { BoltIcon, PhotoIcon, ClockIcon, SwordsIcon, TrashIcon, UploadIcon, VideoIcon } from "@portal/components/icons";
 import { Button } from "@portal/components/ui/button";
@@ -17,7 +17,7 @@ import { resolveMediaUrl } from "../../utils/media";
 import "./ProfileOverviewCard.css";
 
 type ProfileOverviewCardProps = {
-  user: User | null;
+  user: MemberSummary | null;
   profile: MemberProfile | null | undefined;
   badges: UserBadge[];
   power: number;

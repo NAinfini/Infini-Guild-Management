@@ -8,7 +8,7 @@ import type {
 import type { ContentReadScope } from "@guild/server";
 import type { Announcement, AnnouncementAttachment, AnnouncementSummary, PaginatedResponse } from "@guild/shared";
 import { createContentExcerpt, extractTipTapText } from "@guild/shared/utils/tiptap-text";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
+import type { SqlBatchStatement, SqlExecutor, SqlReadBatchStatement, SqlResult, SqlValue } from "@guild/kernel";
 import { auditInsertStatement } from "./audit-statement.js";
 import { assertMediaAttachments, replaceMediaLinksStatements } from "./media-link-statements.js";
 import { returnedRowCount } from "./sql-result.js";
@@ -35,7 +35,7 @@ export class SqliteAnnouncementStore implements AnnouncementStore {
         : "idx_announcements_category_manage"
       : query.readScope.kind === "all" ? "idx_announcements_manage" : "idx_announcements_public";
     const order = `announcements.pinned DESC, announcements.updated_at ${direction}, announcements.id ${direction}`;
-    const results = await this.sql.batch([
+    const results = await this.sql.readBatch([
       { method: "get", columns: ["total"], sql: `SELECT COUNT(*) AS total FROM announcements ${where}`, params },
       {
         method: "all",
@@ -58,7 +58,7 @@ export class SqliteAnnouncementStore implements AnnouncementStore {
   }
 
   async get(id: string, readScope: ContentReadScope, now: string): Promise<AnnouncementDetailRecord | null> {
-    return announcementDetailFromResults(await this.sql.batch(announcementDetailStatements(id, readScope, now)));
+    return announcementDetailFromResults(await this.sql.readBatch(announcementDetailStatements(id, readScope, now)));
   }
 
   async incrementView(id: string, readScope: ContentReadScope, now: string): Promise<number | null> {
@@ -289,7 +289,7 @@ function announcementDetailStatements(
   readScope: ContentReadScope,
   now: string,
   revisionToken?: string,
-): SqlBatchStatement[] {
+): SqlReadBatchStatement[] {
   const visibility = announcementVisibility(readScope, now, "announcements");
   const attachmentVisibility = announcementAttachmentVisibility(readScope);
   return [

@@ -37,7 +37,7 @@ export class SqliteEmailVerificationStore implements EmailVerificationStore {
   constructor(private readonly sql: SqlExecutor) {}
 
   async getVerifiedEmail(userId: string): Promise<string | null> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "get",
       columns: ["normalized_email"],
       sql: "SELECT normalized_email FROM user_emails WHERE user_id = ? LIMIT 1",
@@ -99,7 +99,7 @@ export class SqliteEmailVerificationStore implements EmailVerificationStore {
   }
 
   async findActiveChallenge(userId: string, now: string): Promise<PendingEmailVerification | null> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "get",
       columns: ["token_digest", "user_id", "pending_email", "expires_at", "sent_count", "last_sent_at"],
       sql: `SELECT token_digest, user_id, pending_email, expires_at, sent_count, last_sent_at

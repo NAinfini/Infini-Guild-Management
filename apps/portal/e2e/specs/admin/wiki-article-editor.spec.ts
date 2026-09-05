@@ -1,7 +1,9 @@
 import type { APIRequestContext, Locator, Page, Request } from "@playwright/test";
+import type { Editor } from "@tiptap/core";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
 import { confirmDialog, expectNoDialog, expectToast, field, selectOption } from "../../support/ui";
+import { createWikiCategory as createCategory } from "../../support/wiki";
 
 /*
  * Wiki 文章编辑器：进出编辑态、标题/分类/正文三个字段、置顶与归档两个「意图」开关、
@@ -59,14 +61,6 @@ function bodyJson(text: string): string {
     type: "doc",
     content: [{ type: "paragraph", content: [{ type: "text", text }] }],
   });
-}
-
-async function createCategory(api: APIRequestContext, name: string): Promise<{ id: string; name: string }> {
-  const created = await readJson(
-    await api.post("/api/wiki/categories", { data: { name } }),
-    `创建分类 ${name}`,
-  ) as { id: string };
-  return { id: created.id, name };
 }
 
 async function readArticle(api: APIRequestContext, slug: string): Promise<ArticleDetail> {
@@ -186,7 +180,8 @@ test("保存：标题清空时挡在前端，不写服务端", async ({ page, ap
 
 test("表格与链接：编辑器生成的正文能连续保存并回读", async ({ page, flow, api }) => {
   await openEditor(page);
-  await replaceBody(page, `linked guide ${stamp}`);
+  const linkedText = `linked guide ${stamp}`;
+  await replaceBody(page, linkedText);
   await page.keyboard.press("ControlOrMeta+a");
   await page.getByRole("button", { name: "More Formatting", exact: true }).click();
   await page.getByRole("menuitem", { name: "Link", exact: true }).click();
@@ -195,7 +190,16 @@ test("表格与链接：编辑器生成的正文能连续保存并回读", async
   await linkDialog.getByRole("button", { name: "Link", exact: true }).click();
   await bodyField(page).click();
   await page.keyboard.press("ControlOrMeta+End");
+  // Chromium delivers selectionchange asynchronously; wait for the editor to
+  // consume the new caret before Enter can operate on the previous link range.
+  await expect.poll(() => bodyField(page).evaluate((element) => {
+    const editor = (element as HTMLElement & { editor: Editor }).editor;
+    return editor.state.selection.empty
+      && editor.state.selection.head === editor.state.doc.content.size - 1;
+  })).toBe(true);
   await page.keyboard.press("Enter");
+  await expect(bodyField(page).getByRole("link", { name: linkedText, exact: true }))
+    .toHaveAttribute("href", "https://example.com/guide");
   await page.getByRole("button", { name: "Table", exact: true }).click();
   await page.getByRole("menuitem", { name: "Table", exact: true }).click();
 
@@ -205,6 +209,7 @@ test("表格与链接：编辑器生成的正文能连续保存并回读", async
   expect(saved.body_json).toContain('"tableCell"');
   expect(saved.body_json).toContain('"title":null');
   expect(saved.body_json).toContain("https://example.com/guide");
+  expect(saved.body_json).toContain(linkedText);
 
   const nextTitle = `${SYSTEM_TEST_CONTENT_MARKER} Second save ${stamp}`;
   await titleField(page).fill(nextTitle);

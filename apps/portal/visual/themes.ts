@@ -1,34 +1,3 @@
-export const VISUAL_PAGE_SCENE_IDS = [
-  "dashboard",
-  "announcements",
-  "events",
-  "events-recurring",
-  "roster",
-  "gallery",
-  "wiki",
-  "guild-war",
-  "guild-war-history",
-  "guild-war-analytics",
-  "storage",
-  "tools",
-  "profile",
-  "profile-availability",
-  "profile-account",
-  "settings",
-  "admin",
-  "admin-invite",
-  "admin-roles",
-  "admin-classes",
-  "admin-badges",
-  "admin-site-config",
-  "admin-important-notices",
-  "admin-operations",
-  "admin-diagnostics",
-  "admin-audit",
-] as const;
-
-export type VisualPageSceneId = (typeof VISUAL_PAGE_SCENE_IDS)[number];
-
 export const VISUAL_ACCESS_SCENE_IDS = ["login", "register"] as const;
 
 export type VisualAccessSceneId = (typeof VISUAL_ACCESS_SCENE_IDS)[number];
@@ -41,6 +10,9 @@ export const VISUAL_STATUS_SCENE_IDS = [
 ] as const;
 
 export type VisualStatusSceneId = (typeof VISUAL_STATUS_SCENE_IDS)[number];
+
+export const VISUAL_WORKSPACE_SCENE_IDS = ["guild", "falls", "citadel"] as const;
+export type VisualWorkspaceSceneId = (typeof VISUAL_WORKSPACE_SCENE_IDS)[number];
 
 export const VISUAL_THEME_IDS = ["forged"] as const;
 
@@ -71,13 +43,11 @@ export type PortalVisualTheme = Readonly<{
   label: string;
   version: number;
   provenance: "source-owned-generated-art";
-  mark: Readonly<{ src: string }>;
   scenes: Readonly<{
+    workspace: Readonly<Record<VisualWorkspaceSceneId, ResponsiveVisualThemeAsset>>;
     landing: ResponsiveVisualThemeAsset;
     access: Readonly<Record<VisualAccessSceneId, ResponsiveVisualThemeAsset>>;
     status: Readonly<Record<VisualStatusSceneId, ResponsiveVisualThemeAsset>>;
-    navigation: VisualThemeAsset;
-    routes: Readonly<Record<VisualPageSceneId, VisualThemeAsset>>;
   }>;
 }>;
 
@@ -98,22 +68,6 @@ export function resolveVisualThemeAssetSource(
   return asset.sources[colorMode];
 }
 
-function routeAsset(sceneId: VisualPageSceneId): VisualThemeAsset {
-  return {
-    sources: assetSources(
-      `/visual-themes/forged/routes/${sceneId}.webp`,
-      `/visual-themes/forged/routes/light/${sceneId}.webp`,
-    ),
-    width: 3840,
-    height: 2160,
-    objectPosition: "center",
-  };
-}
-
-const forgedRoutes = Object.fromEntries(
-  VISUAL_PAGE_SCENE_IDS.map((sceneId) => [sceneId, routeAsset(sceneId)]),
-) as Record<VisualPageSceneId, VisualThemeAsset>;
-
 function publicAsset(
   name: string,
   width: number,
@@ -131,13 +85,38 @@ function publicAsset(
   };
 }
 
+function workspaceAsset(name: string, width: number, height: number): VisualThemeAsset {
+  return {
+    sources: assetSources(
+      `/visual-themes/forged/workspace/${name}-dark.webp`,
+      `/visual-themes/forged/workspace/${name}.webp`,
+    ),
+    width,
+    height,
+    objectPosition: "center",
+  };
+}
+
 const forgedTheme: PortalVisualTheme = {
   id: "forged",
   label: "Zhonghua Wuxia Guildhall",
-  version: 6,
+  version: 8,
   provenance: "source-owned-generated-art",
-  mark: { src: "/guild-logo.svg" },
   scenes: {
+    workspace: {
+      guild: {
+        desktop: workspaceAsset("guild-desktop", 1672, 941),
+        mobile: workspaceAsset("guild-mobile", 941, 1672),
+      },
+      falls: {
+        desktop: workspaceAsset("falls-desktop", 1672, 941),
+        mobile: workspaceAsset("falls-mobile", 941, 1672),
+      },
+      citadel: {
+        desktop: workspaceAsset("citadel-desktop", 1672, 941),
+        mobile: workspaceAsset("citadel-mobile", 941, 1672),
+      },
+    },
     landing: {
       desktop: publicAsset("landing", 3840, 2160),
       mobile: publicAsset("landing-mobile", 2160, 3840),
@@ -170,13 +149,6 @@ const forgedTheme: PortalVisualTheme = {
         mobile: publicAsset("status-maintenance-mobile", 2160, 3840),
       },
     },
-    navigation: publicAsset(
-      "navigation-sidebar",
-      2160,
-      3840,
-      "center bottom",
-    ),
-    routes: forgedRoutes,
   },
 };
 

@@ -1,11 +1,13 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiDownload, apiRequest, resetApiSessionCache } from "./client";
+import { deferred } from "../testing/deferred";
 
 describe("apiRequest", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    resetApiSessionCache();
   });
 
   it("reuses cached JSON when the server returns 304", async () => {
@@ -88,6 +90,43 @@ describe("apiRequest", () => {
     await apiDownload("/api/export", { method: "PUT" });
 
     expect(new Headers(fetchMock.mock.calls[0]![1].headers).get("X-Requested-With")).toBe("XMLHttpRequest");
+  });
+
+  it.each([200, 304])("does not restore an old identity's ETag cache from a late %s response", async (status) => {
+    const pending = deferred<Response>();
+    const json = (owner: string) => new Response(JSON.stringify({ owner }), {
+      headers: { ETag: `"${owner}"`, "Content-Type": "application/json" },
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json("user-a"))
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce(json("user-b"))
+      .mockResolvedValueOnce(new Response(null, { status: 304 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await apiRequest("/api/private-session");
+    const oldRequest = apiRequest("/api/private-session");
+    resetApiSessionCache();
+    await apiRequest("/api/private-session");
+    pending.resolve(status === 304 ? new Response(null, { status: 304 }) : json("user-a"));
+    await oldRequest;
+    await expect(apiRequest("/api/private-session")).resolves.toEqual({ owner: "user-b" });
+    expect(new Headers(fetchMock.mock.calls[3]![1].headers).get("If-None-Match")).toBe('"user-b"');
+  });
+
+  it("does not invalidate a newer session's cache when an old mutation completes", async () => {
+    const pending = deferred<Response>();
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ owner: "user-b" }), { headers: { ETag: '"user-b"' } }))
+      .mockResolvedValueOnce(new Response(null, { status: 304 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const oldRequest = apiRequest("/api/users/user-a", { method: "PATCH", bodyJson: {} });
+    resetApiSessionCache();
+    await apiRequest("/api/users/user-a");
+    pending.resolve(new Response("{}"));
+    await oldRequest;
+    await expect(apiRequest("/api/users/user-a")).resolves.toEqual({ owner: "user-b" });
+    expect(new Headers(fetchMock.mock.calls[2]![1].headers).get("If-None-Match")).toBe('"user-b"');
   });
 
   it.each([apiRequest, apiDownload])("preserves caller cancellation without reporting a network failure (%#)", async (request) => {

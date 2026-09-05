@@ -20,7 +20,7 @@ export class SqliteAuditStore implements AuditStore {
 
   async list(query: AuditStoreQuery): Promise<AuditStorePage> {
     const filter = auditFilter(query);
-    const rows = allRows(await this.sql.execute({
+    const rows = allRows(await this.sql.read({
       method: "all",
       columns: AUDIT_COLUMNS,
       sql: `${auditSelect()} ${filter.where}
@@ -35,7 +35,7 @@ export class SqliteAuditStore implements AuditStore {
     let cursor: Readonly<{ occurredAt: string; eventId: string }> | null = null;
     while (true) {
       const filter = auditFilter({ ...query, limit: EXPORT_PAGE_SIZE, cursor });
-      const rows = allRows(await this.sql.execute({
+      const rows = allRows(await this.sql.read({
         method: "all",
         columns: AUDIT_COLUMNS,
         sql: `${auditSelect()} ${filter.where}

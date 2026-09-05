@@ -4,7 +4,7 @@ import { ContentPreviewCard } from "@portal/components/shared/ContentPreviewCard
 import { Alert, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
 import { resolveMediaUrl } from "@portal/utils/media";
 import type { ReactNode } from "react";
@@ -51,10 +51,7 @@ export function AnnouncementListCard({
   return (
     <Card className="announcements-catalog" role="region" aria-labelledby="announcements-catalog-title">
       <header className="announcements-catalog__header">
-        <div>
-          <p className="announcements-catalog__eyebrow">{t("catalog.eyebrow")}</p>
-          <h2 id="announcements-catalog-title" className="announcements-catalog__title">{title}</h2>
-        </div>
+        <h2 id="announcements-catalog-title" className="announcements-catalog__title">{title}</h2>
         {canCreate && onCreate ? (
           <Button type="button" size="sm" onClick={onCreate}>
             <PlusIcon size={16} aria-hidden="true" />
@@ -64,11 +61,7 @@ export function AnnouncementListCard({
       </header>
 
       {isLoading && rows.length === 0 ? (
-        <div className="announcements-preview-list" aria-busy="true">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="announcements-preview-skeleton" />
-          ))}
-        </div>
+        <LoadingIndicator />
       ) : null}
       {isBlockingError ? (
         <EmptyState

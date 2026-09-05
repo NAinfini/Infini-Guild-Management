@@ -1,16 +1,16 @@
 import { AppError, SHA256_HEX_PATTERN } from "@guild/kernel";
-import type {
-  ClaimedMediaDeletion,
-  MediaReadFacts,
-  MediaReservation,
-  MediaStore,
+import {
+  MEDIA_GARBAGE_COLLECTION_BATCH_SIZE,
+  type ClaimedMediaDeletion,
+  type MediaReadFacts,
+  type MediaReservation,
+  type MediaStore,
 } from "@guild/server/modules/media";
-import type { AuditEventWrite } from "@guild/server/modules/audit";
 import type { ContentReadScopes } from "@guild/server";
 import type { MediaEntityType, MediaVariant } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
-import { auditInsertStatement } from "./audit-statement.js";
+import { auditInsertSelectStatement } from "./audit-statement.js";
 import {
   observedBacklog,
   SCHEDULED_BACKLOG_READ_LIMIT,
@@ -175,7 +175,7 @@ export class SqliteMediaStore implements MediaStore {
   ): Promise<MediaReadFacts | null> {
     const publicRead = publicReadCondition(now);
     const contentRead = contentReadCondition(scopes);
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "get",
       sql: `SELECT
           variants.object_key,
@@ -332,7 +332,7 @@ export class SqliteMediaStore implements MediaStore {
     id: string;
     pendingAt: string;
   }>[]> {
-    const results = await this.sql.batch([
+    const results = await this.sql.readBatch([
       {
         method: "all",
         columns: ["id", "pending_at"],
@@ -387,27 +387,50 @@ export class SqliteMediaStore implements MediaStore {
       .slice(0, limit);
   }
 
-  async finalizeDeletion(mediaId: string, claimToken: string, audit: AuditEventWrite): Promise<void> {
+  async finalizeDeletions(deletions: Parameters<MediaStore["finalizeDeletions"]>[0]): Promise<readonly string[]> {
+    if (deletions.length < 1 || deletions.length > MEDIA_GARBAGE_COLLECTION_BATCH_SIZE) {
+      throw new RangeError(`Media deletion batches must contain 1 to ${MEDIA_GARBAGE_COLLECTION_BATCH_SIZE} claims`);
+    }
+    if (new Set(deletions.map(({ mediaId }) => mediaId)).size !== deletions.length) {
+      throw new TypeError("Media deletion claims must be unique");
+    }
+    const payload = JSON.stringify(deletions);
     const results = await this.sql.batch([
-      auditInsertStatement(audit, {
-        sql: `SELECT 1 FROM media_assets
-          WHERE id = ? AND state = 'deleting' AND delete_claim_token = ?`,
-        params: [mediaId, claimToken],
-      }),
+      auditInsertSelectStatement(`SELECT
+          json_extract(entry.value, '$.audit.eventId'),
+          json_extract(entry.value, '$.audit.requestId'),
+          json_extract(entry.value, '$.audit.actorKind'),
+          json_extract(entry.value, '$.audit.actorId'),
+          CASE WHEN json_extract(entry.value, '$.audit.actorKind') = 'user'
+            THEN (SELECT display_name FROM users WHERE id = json_extract(entry.value, '$.audit.actorId'))
+            ELSE json_extract(entry.value, '$.audit.actorLabel') END,
+          json_extract(entry.value, '$.audit.subjectType'),
+          json_extract(entry.value, '$.audit.subjectId'),
+          json_extract(entry.value, '$.audit.subjectLabel'),
+          json_extract(entry.value, '$.audit.action'),
+          json_extract(entry.value, '$.audit.payload'),
+          json_extract(entry.value, '$.audit.occurredAt')
+        FROM json_each(?) AS entry
+        JOIN media_assets AS assets ON assets.id = json_extract(entry.value, '$.mediaId')
+          AND assets.delete_claim_token = json_extract(entry.value, '$.claimToken')
+        WHERE assets.state = 'deleting'`, [payload]),
       {
-        method: "get",
+        method: "all",
         sql: `DELETE FROM media_assets
-          WHERE id = ? AND state = 'deleting' AND delete_claim_token = ?
-            AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
+          WHERE state = 'deleting' AND (id, delete_claim_token) IN (
+            SELECT json_extract(entry.value, '$.mediaId'), json_extract(entry.value, '$.claimToken')
+            FROM json_each(?) AS entry
+            JOIN audit_log ON audit_log.id = json_extract(entry.value, '$.audit.eventId')
+          )
           RETURNING id AS deleted_id`,
-        params: [mediaId, claimToken, audit.eventId],
+        params: [payload],
         columns: ["deleted_id"],
       },
     ]);
-    const deleted = oneRow(results[1]);
-    if (!deleted || deleted[0] !== mediaId) {
-      throw new AppError({ code: "CONFLICT", status: 409, message: "Media deletion claim expired" });
-    }
+    return allRows(results[1]).map(([id]) => {
+      if (typeof id !== "string") throw corrupt("Invalid media deletion result");
+      return id;
+    });
   }
 }
 

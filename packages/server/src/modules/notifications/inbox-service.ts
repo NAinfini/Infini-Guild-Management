@@ -1,6 +1,7 @@
 import type {
   InboxNotification,
   InboxNotificationListResponse,
+  InboxNotificationUnreadCountResponse,
   NotificationPreferences,
   UpdateNotificationPreferences,
 } from "@guild/shared";
@@ -10,6 +11,7 @@ import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
 export type NotificationInboxCursor = Readonly<{ occurredAt: string; id: string }>;
 
 export interface NotificationInboxStore {
+  countUnread(input: Readonly<{ userId: string; now: string }>): Promise<number>;
   list(input: Readonly<{
     userId: string;
     limit: number;
@@ -40,6 +42,11 @@ export class NotificationInboxService {
     private readonly notifications: NotificationPublisher,
     private readonly deferred: DeferredTasks,
   ) {}
+
+  async getUnreadCount(context: RequestContext): Promise<InboxNotificationUnreadCountResponse> {
+    const actor = context.authorization.requireAuthenticated();
+    return { unread_count: await this.store.countUnread({ userId: actor.userId, now: context.now }) };
+  }
 
   async list(
     context: RequestContext,

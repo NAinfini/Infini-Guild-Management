@@ -50,6 +50,7 @@
     "apps/portal/**/*.tsx",
     "apps/portal/vite.config.ts",
     "playwright.config.ts",
+    "vitest.config.ts",
     "apps/cloudflare/**/*.ts",
     "apps/vps/**/*.ts",
     "packages/**/*.ts",

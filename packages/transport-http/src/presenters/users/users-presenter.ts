@@ -1,4 +1,4 @@
-import { usersListResponseSchema, type MemberProfile } from "@guild/shared";
+import { usersListResponseSchema, type MemberProfile, type MemberManagementStats } from "@guild/shared";
 import { buildMemberWire, type MemberView } from "@guild/server/modules/members";
 
 export function presentUserDetail(view: MemberView) {
@@ -11,6 +11,7 @@ export function presentUsersPage(page: Readonly<{
   page: number;
   limit: number;
   totalPages: number;
+  stats?: MemberManagementStats;
 }>) {
   return usersListResponseSchema.parse({
     data: page.data.map(presentUserDetail),
@@ -18,6 +19,7 @@ export function presentUsersPage(page: Readonly<{
     page: page.page,
     limit: page.limit,
     total_pages: page.totalPages,
+    ...(page.stats ? { stats: page.stats } : {}),
   });
 }
 

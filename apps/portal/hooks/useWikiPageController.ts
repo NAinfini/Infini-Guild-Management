@@ -2,6 +2,7 @@ import { type PaginatedResponse, type WikiArticle } from "@guild/shared";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useMediaQuery } from "@portal/hooks/useMediaQuery";
 import { useDebouncedSearch } from "./useDebouncedSearch";
+import { useRetainedQueryData } from "./useRetainedQueryData";
 import {
   useInfiniteQuery,
   useMutation,
@@ -139,7 +140,9 @@ export function useWikiPageController() {
 
   const selectedCategoryFilterKey = selectedCategoryId ?? "all";
 
+  const retainedListData = useRetainedQueryData();
   const articlesQuery = useInfiniteQuery({
+    ...retainedListData,
     queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, effectiveArchivedMode, sortOrder),
     queryFn: ({ pageParam }) =>
       fetchWikiArticles({
@@ -185,7 +188,7 @@ export function useWikiPageController() {
     () => flattenUniqueArticles(articlesQuery.data),
     [articlesQuery.data],
   );
-  const articlesHasMore = articlesQuery.hasNextPage ?? false;
+  const articlesHasMore = !articlesQuery.isPlaceholderData && (articlesQuery.hasNextPage ?? false);
 
   const selectedArticle = detailQuery.data ?? null;
 
@@ -459,7 +462,7 @@ export function useWikiPageController() {
     pinnedArticles: pinnedQuery.data?.data.slice(0, 3) ?? [],
     articlesHasMore,
     articlesLoadingMore: articlesQuery.isFetchingNextPage,
-    loadMoreArticles: () => void articlesQuery.fetchNextPage(),
+    loadMoreArticles: () => { if (!articlesQuery.isPlaceholderData) void articlesQuery.fetchNextPage(); },
     selectedArticle,
     selectedSlug,
     selectedCategory,

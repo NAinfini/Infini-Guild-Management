@@ -1,6 +1,6 @@
 import type { InboxNotification, NotificationPreferences } from "@guild/shared";
 import { NOTIFICATION_INBOX_RETENTION_DAYS, inboxNotificationSchema } from "@guild/shared";
-import type { SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
+import type { SqlReadBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
 import type {
   NotificationInboxStore,
 } from "@guild/server/modules/notifications";
@@ -13,10 +13,15 @@ const INBOX_COLUMNS = [
 export class SqliteNotificationInboxStore implements NotificationInboxStore {
   constructor(private readonly sql: SqlExecutor) {}
 
+  async countUnread(input: Parameters<NotificationInboxStore["countUnread"]>[0]): Promise<number> {
+    const result = await this.sql.read(unreadCountStatement(input.userId, retentionCutoff(input.now)));
+    return numberCell(result, "Notification inbox unread count");
+  }
+
   async list(input: Parameters<NotificationInboxStore["list"]>[0]) {
     const cutoff = retentionCutoff(input.now);
     const cursor = input.cursor;
-    const results = await this.sql.batch([
+    const results = await this.sql.readBatch([
       {
         method: "all",
         columns: INBOX_COLUMNS,
@@ -33,13 +38,7 @@ export class SqliteNotificationInboxStore implements NotificationInboxStore {
           input.limit + 1,
         ],
       },
-      {
-        method: "get",
-        columns: ["unread_count"],
-        sql: `SELECT COUNT(*) AS unread_count FROM notification_inbox
-          WHERE user_id = ? AND occurred_at >= ? AND read_at IS NULL`,
-        params: [input.userId, cutoff],
-      },
+      unreadCountStatement(input.userId, cutoff),
     ]);
     const entries = allRows(required(results[0], "Notification inbox page")).map(mapNotification);
     const unreadCount = numberCell(required(results[1], "Notification inbox count"), "Notification inbox unread count");
@@ -65,19 +64,13 @@ export class SqliteNotificationInboxStore implements NotificationInboxStore {
             ${ids === null ? "" : "AND id IN (SELECT value FROM json_each(?))"}`,
         params: ids === null ? [input.now, input.userId, cutoff] : [input.now, input.userId, cutoff, ids],
       },
-      {
-        method: "get",
-        columns: ["unread_count"],
-        sql: `SELECT COUNT(*) AS unread_count FROM notification_inbox
-          WHERE user_id = ? AND occurred_at >= ? AND read_at IS NULL`,
-        params: [input.userId, cutoff],
-      },
+      unreadCountStatement(input.userId, cutoff),
     ]);
     return numberCell(required(results[1], "Notification inbox count"), "Notification inbox unread count");
   }
 
   async getPreferences(userId: string): Promise<NotificationPreferences> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "get",
       columns: ["member_joined", "announcement_published", "event_created", "wiki_article_created", "updated_at"],
       sql: `SELECT member_joined, announcement_published, event_created, wiki_article_created, updated_at
@@ -127,6 +120,16 @@ export class SqliteNotificationInboxStore implements NotificationInboxStore {
     return mapPreferences(row);
   }
 
+}
+
+function unreadCountStatement(userId: string, cutoff: string): SqlReadBatchStatement {
+  return {
+    method: "get",
+    columns: ["unread_count"],
+    sql: `SELECT COUNT(*) AS unread_count FROM notification_inbox
+      WHERE user_id = ? AND occurred_at >= ? AND read_at IS NULL`,
+    params: [userId, cutoff],
+  };
 }
 
 function mapNotification(row: readonly SqlValue[]): InboxNotification {

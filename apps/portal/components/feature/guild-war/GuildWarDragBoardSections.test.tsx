@@ -31,7 +31,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 describe("GuildWarDragBoardSections", () => {
-  it("keeps primary 44px actions visible and moves low-frequency controls into one menu", async () => {
+  it("keeps primary actions visible and moves low-frequency controls into one menu", async () => {
     const { container } = render(
       <DroppableMemberColumn
           column={{
@@ -67,7 +67,7 @@ describe("GuildWarDragBoardSections", () => {
     ].map((name) => screen.getByRole("button", { name }));
 
     actions.forEach((action) => {
-      expect(action).toHaveClass("guild-war-column-action");
+      expect(action).toBeVisible();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "active.aria.columnActions" }));

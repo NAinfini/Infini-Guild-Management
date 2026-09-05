@@ -39,6 +39,15 @@ describe("portal route metadata", () => {
     expect(findPortalRoute("/storage/manage").to).toBe("/storage");
   });
 
+  it("shares three scene groups across routes and nested pages", () => {
+    expect(new Set(PORTAL_ROUTES.map((route) => route.workspaceScene))).toEqual(new Set(["guild", "falls", "citadel"]));
+    expect(findPortalRoute("/events/event-1").workspaceScene).toBe("guild");
+    expect(findPortalRoute("/wiki/getting-started").workspaceScene).toBe("falls");
+    expect(findPortalRoute("/gallery").workspaceScene).toBe("falls");
+    expect(findPortalRoute("/settings").workspaceScene).toBe("citadel");
+    expect(findPortalRoute("/admin").workspaceScene).toBe("citadel");
+  });
+
   it("uses the not-found title and reading width for unknown paths", () => {
     expect(findPortalRoute("/does-not-exist")).toMatchObject({
       labelKey: "notFound.title",
@@ -57,14 +66,6 @@ describe("portal route metadata", () => {
 
   it("uses one fixed-height shell contract instead of per-route viewport flags", () => {
     expect(PORTAL_ROUTES.every((route) => !("fillsViewport" in route))).toBe(true);
-  });
-
-  it("assigns one decorative workspace scene to every portal destination", () => {
-    expect(
-      PORTAL_ROUTES
-        .filter((route) => route.visualScene)
-        .map((route) => [route.to, route.visualScene]),
-    ).toEqual(PORTAL_ROUTES.map((route) => [route.to, route.to.slice(1)]));
   });
 
   /*

@@ -8,9 +8,9 @@ import {
   type Locator,
   type Page,
   type Request,
-  type Response,
 } from "@playwright/test";
 import { MUTATION_HEADERS, systemTestHeaders } from "./api";
+import { matchesApiResponse, type ApiExpectation } from "./api-expectation";
 import {
   clientIdentityHeaders,
   e2eClientAddress,
@@ -24,16 +24,7 @@ import {
 
 export { expect };
 
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-
-/** 一次控件操作应该在网络上留下的痕迹。 */
-export type ApiExpectation = {
-  method: HttpMethod;
-  /** 匹配 pathname（不含查询串），用正则是因为大部分路径里带 id。 */
-  path: RegExp;
-  /** 默认要求 2xx；只有在专门验证失败分支时才显式写非 2xx。 */
-  status?: number;
-};
+export type { ApiExpectation, HttpMethod } from "./api-expectation";
 
 export type Flow = {
   /**
@@ -67,46 +58,7 @@ type Fixtures = {
   failOnPageDefects: void;
   /** 把客户端地址（以及需要时的系统测试运行头）装到浏览器上下文上。 */
   requestIdentity: void;
-  /** 取证开关：量这条用例烧掉多少读配额。默认关，见下面 fixture 的说明。 */
-  quotaTrace: void;
 };
-
-const API_METHODS = new Set(["fetch", "get", "post", "put", "patch", "delete", "head"]);
-
-/*
- * 配额取证的收集点，只有 E2E_QUOTA_TRACE 打开时才不是 null（见 quotaTrace fixture）。
- * 浏览器和 api 回读通道现在各占一个客户端号，但两边都要量：
- * 只量浏览器那一半，就看不出回读通道自己有没有把它那一份配额烧穿。
- */
-let quotaWorst: Map<string, number> | null = null;
-
-/* 分「浏览器」和「回读通道」两路记，是为了看清一条用例的配额到底花在哪一边。 */
-function recordQuota(headers: Record<string, string>, source: "page" | "api"): void {
-  if (!quotaWorst) return;
-  const limit = headers["x-ratelimit-limit"];
-  const remaining = Number(headers["x-ratelimit-remaining"]);
-  if (!limit || !Number.isFinite(remaining)) return;
-  const key = `${source}:${limit}`;
-  quotaWorst.set(key, Math.min(quotaWorst.get(key) ?? Number.POSITIVE_INFINITY, remaining));
-}
-
-function withQuotaTrace(context: APIRequestContext): APIRequestContext {
-  if (!process.env.E2E_QUOTA_TRACE) return context;
-  return new Proxy(context, {
-    get(target, property, receiver) {
-      const value = Reflect.get(target, property, receiver) as unknown;
-      if (typeof value !== "function") return value;
-      if (typeof property !== "string" || !API_METHODS.has(property)) {
-        return value.bind(target);
-      }
-      return async (...args: unknown[]) => {
-        const response = await (value as (...a: unknown[]) => Promise<APIResponse>).call(target, ...args);
-        recordQuota(response.headers(), "api");
-        return response;
-      };
-    },
-  });
-}
 
 let cachedRunState: E2eRunStateFile | null = null;
 /*
@@ -156,11 +108,6 @@ function slotRunState() {
 
 function pathOf(url: string): string {
   return new URL(url).pathname;
-}
-
-function matches(response: Response, expected: ApiExpectation): boolean {
-  return response.request().method() === expected.method
-    && expected.path.test(pathOf(response.url()));
 }
 
 /** 身份头：客户端地址 + 需要时的系统测试运行头。自己新开上下文的用例也得装齐。 */
@@ -218,27 +165,19 @@ export function createFlow(page: Page): Flow {
 
   async function awaitApi(action: () => Promise<void>, expected: ApiExpectation): Promise<unknown> {
     /*
-     * 只认这次操作之后才发出去的那一发。
-     *
-     * ApiExpectation.path 是正则，一条正则常常同时匹配上一步还没落地的请求
-     * （进页面的列表请求和搜索的列表请求走的是同一个路径）。不排除它们的话，
-     * 谁先回来就算谁：断言「这次点击发出了预期请求」实际退化成
-     * 「网络上恰好有一发形状对得上的请求」——绿得不对，而真正属于这次点击的那一发
-     * 顺延给了下一个等待者，被算成下一个控件的账。
-     *
-     * 这类错位只在时序变化时才暴露，本地一直是绿的：wiki-history 的「切档」等到的是
-     * 上一次点击的迟到响应，wiki-filters 的置顶开关抓到的是搜索那一发
-     * （URL 里根本没有 pinned 参数，断言当场读出 null）。两条都只在 CI 上挂。
+     * 排除动作开始前已在飞的请求。动作之后的后台刷新仍可能走同一路径，
+     * 因此搜索和筛选调用还须提供 query，不能把后台缓存校验当成搜索完成。
      */
     const stale = new Set(apiInFlight);
     const waiter = page.waitForResponse((response) =>
-      !stale.has(response.request()) && matches(response, expected));
+      !stale.has(response.request()) && matchesApiResponse(response, expected));
     await action();
     const response = await waiter;
-    const label = `${expected.method} ${pathOf(response.url())}`;
+    const url = new URL(response.url());
+    const label = `${expected.method} ${url.pathname}${url.search}`;
 
     if (expected.status === undefined) {
-      expect(response.ok(), `${label} 返回 ${response.status()}: ${await response.text()}`).toBe(true);
+      expect(response.ok(), `${label} 返回 ${response.status()}`).toBe(true);
     } else {
       expect(response.status(), label).toBe(expected.status);
     }
@@ -297,22 +236,8 @@ export const test = base.extend<E2eOptions & Fixtures>({
   },
 
   /*
-   * 回读通道自己占一个客户端号，不和浏览器共用。
-   *
-   * 共用时两边的请求算进同一个 120 次/分钟的读桶，而回读通道并不是被模拟的那个
-   * 用户——它是用例的量具，用来绕开界面直接问服务端「到底落库了没有」。
-   * 把量具的流量记到被测用户头上，得到的既不是真实用户的用量，也不是一个能用的预算。
-   * 更直接的代价是取证本身失真：共用一个桶时，两边读到的
-   * X-RateLimit-Remaining 讲的是同一个数，api 那一行看着像「回读通道烧了 55 次」，
-   * 其实里头 54 次是浏览器烧的。拆开之后每一行才只讲自己那一份。
-   *
-   * 这不是放宽限流：拆开之后两个通道各自仍受 120 次/分钟约束，
-   * 浏览器那一半真的超了照样会 429、照样看得见。
-   * 限流本身仍由专门的用例覆盖（见 config.ts 的说明）。
-   *
-   * 注意这不是 CI 上那批读配额 429 的解法。那一批的成因是服务端压根没按地址分桶
-   * （见 config.ts 的 clientIdentityHeaders），拆几个号都没用。本地单条用例的读峰值
-   * 只有 50–55/120，离 120 一直很远。
+   * 回读通道验证持久化结果，使用独立客户端号，避免测试量具占用浏览器用户的配额。
+   * 两个通道各自仍受服务端真实限流约束，限流本身另有专门用例覆盖。
    */
   apiClientAddress: async ({}, use, testInfo) => {
     await use(allocateClientAddress(testInfo.workerIndex));
@@ -325,7 +250,7 @@ export const test = base.extend<E2eOptions & Fixtures>({
       ignoreHTTPSErrors: true,
       extraHTTPHeaders: { ...MUTATION_HEADERS, ...identityHeaders(apiClientAddress, trackArtifacts) },
     });
-    await use(withQuotaTrace(context));
+    await use(context);
     await context.dispose();
   },
 
@@ -341,45 +266,6 @@ export const test = base.extend<E2eOptions & Fixtures>({
     assertClean();
   }, { auto: true }],
 
-  /*
-   * E2E_QUOTA_TRACE=1 时打印每条用例烧掉的读配额，默认完全不接线。
-   *
-   * 服务端把每条用例当成一个独立客户端（见 config.ts 的说明），配额是
-   * 120 次读/分钟。用例驱动界面的速度远超真人，「一条用例会不会把自己的
-   * 配额点爆」不能靠推测，只能量。X-RateLimit-Remaining 是服务端自己报的
-   * 剩余额度。
-   *
-   * 输出按「来源 已用/上限」分开报，因为浏览器和回读通道是两个客户端号、两个桶
-   * （见 apiClientAddress fixture）。两路都要记：只量浏览器那一半，
-   * 就看不出回读通道有没有把它自己那一份烧穿。
-   */
-  quotaTrace: [async ({ page }, use, testInfo) => {
-    if (!process.env.E2E_QUOTA_TRACE) {
-      await use();
-      return;
-    }
-    /* 按桶分开：limit=120 是读、80 是写、20 是上传、15 是查重名、5 是登录/改凭据。
-       混在一起看只会看到最后一个响应属于哪个桶，得不出任何结论。 */
-    quotaWorst = new Map<string, number>();
-    const record = (response: Response): void => {
-      if (!pathOf(response.url()).startsWith("/api/")) return;
-      recordQuota(response.headers(), "page");
-    };
-    page.on("response", record);
-    await use();
-    page.off("response", record);
-    /* 键是 `${来源}:${上限}`，打成「page 40/120」这种形状：分子是烧掉的量，
-       分母是这个桶的上限，前缀说明这一半花在浏览器还是回读通道上。 */
-    const report = [...quotaWorst.entries()]
-      .map(([key, left]) => {
-        const [source, limit] = key.split(":");
-        return `${source} ${Number(limit) - left}/${limit}`;
-      })
-      .sort()
-      .join("  ");
-    quotaWorst = null;
-    console.log(`[quota] ${report || "none"} :: ${testInfo.titlePath.at(-1)}`);
-  }, { auto: true }],
 });
 
 /** 回读服务端的返回值，顺带把非 2xx 变成带响应体的明确失败。 */

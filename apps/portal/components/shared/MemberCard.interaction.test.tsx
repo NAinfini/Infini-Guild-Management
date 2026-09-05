@@ -1,9 +1,7 @@
 import {
-  PERMISSIONS,
   type ClassCatalogItem,
   type MemberProfile,
-  type Permission,
-  type User,
+  type MemberSummary,
   type UserBadge,
 } from "@guild/shared";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
@@ -35,7 +33,7 @@ function render(ui: ReactElement, options?: RenderOptions): RenderResult {
 
 const motionHarness = vi.hoisted(() => ({
   reducedMotion: false,
-  springs: [] as Array<{ set: ReturnType<typeof vi.fn> }>,
+  springs: [] as Array<{ set: ReturnType<typeof vi.fn>; jump: ReturnType<typeof vi.fn> }>,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -63,14 +61,17 @@ vi.mock("motion/react", async () => {
         return <span ref={ref} {...props}>{children}</span>;
       }),
     },
-    useReducedMotion: () => motionHarness.reducedMotion,
     useSpring: () => {
-      const spring = { set: vi.fn() };
+      const spring = { set: vi.fn(), jump: vi.fn() };
       motionHarness.springs.push(spring);
       return spring;
     },
   };
 });
+
+vi.mock("@portal/hooks/useReducedMotionPreference", () => ({
+  useReducedMotionPreference: () => motionHarness.reducedMotion,
+}));
 
 vi.mock("./ClassIcon", () => ({
   ClassIcon: ({ item }: { item: { label: string } }) => (
@@ -97,18 +98,14 @@ const secondaryClassCatalogItem: ClassCatalogItem = {
   sort_order: 1,
 };
 
-const noPermissions = Object.fromEntries(
-  PERMISSIONS.map((permission) => [permission, false]),
-) as Record<Permission, boolean>;
 
-const user: User = {
+const user: MemberSummary = {
   id: "user-1",
   display_name: "Aster",
   role: "member",
   role_name: "Guild Member",
   role_color: null,
   role_level: 1,
-  permissions: noPermissions,
   is_active: true,
   deleted_at: null,
   created_at: now,
@@ -281,5 +278,14 @@ describe("MemberCard protected runtime interaction", () => {
     });
 
     expect(motionHarness.springs.every(({ set }) => set.mock.calls.length === 0)).toBe(true);
+  });
+
+  it("immediately neutralizes springs when reduced motion becomes active", () => {
+    const { rerender } = render(<MemberCard user={user} profile={profile} />);
+    motionHarness.reducedMotion = true;
+    rerender(<MemberCard user={user} profile={{ ...profile }} />);
+    motionHarness.springs.slice(-5).forEach((spring, index) => {
+      expect(spring.jump).toHaveBeenCalledWith(index === 2 ? 1 : 0);
+    });
   });
 });

@@ -1,20 +1,21 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event, MemberDirectoryEntry } from "@guild/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { localDateKey } from "../utils/datetime";
 import { useEventsData } from "./data/useEventsData";
+import { useMemberAvailabilitySummary, useMemberDirectory } from "./data/useMemberDirectory";
 import { fetchEventDetailBatch } from "../services/EventService";
 import { queryKeys } from "../api/query-keys";
-import { buildAvailabilityHeatData } from "../utils/availability";
+import { buildAvailabilityHeatDataFromSummary } from "../utils/availability";
 import {
   sanitizeEventsRouteSearch,
   type EventStatusFilter,
   type EventsRouteSearch,
 } from "../utils/event-navigation";
 import { userScopedStorageKey } from "../session-storage";
-type MemberEntry = { user: User; profile: MemberProfile };
+type MemberEntry = MemberDirectoryEntry;
 
 const EVENTS_LAST_SEEN_KEY = "events.last_seen_at";
 
@@ -84,17 +85,15 @@ export function useEventsFiltering({ currentUserId, externalView = false }: UseE
     updateSearch({ date: value });
   }, [updateSearch]);
 
-  const { eventsQuery, eventsQueryData, eventsHasMore, eventsLoadingMore, onLoadMoreEvents, usersQuery } = useEventsData({
+  const { eventsQuery, eventsQueryData, eventsHasMore, eventsLoadingMore, onLoadMoreEvents } = useEventsData({
     eventType,
     status: eventStatus,
     searchQuery,
     pinnedOnly,
     lockedOnly,
-    publicMemberProjection: externalView || !currentUserId,
   });
 
   const events = eventsQueryData;
-  const users = usersQuery.data?.data ?? [];
 
   const sortedEvents = useMemo(() => {
     return [...events].sort((left, right) => {
@@ -144,6 +143,24 @@ export function useEventsFiltering({ currentUserId, externalView = false }: UseE
   const eventDetails = useMemo(() => {
     return eventPreviewDetailsQuery.data ?? [];
   }, [eventPreviewDetailsQuery.data]);
+
+  const previewMemberIds = useMemo(() => [...new Set(eventDetails.flatMap((detail) => [
+    ...detail.participants.map((participant) => participant.user_id),
+    ...(detail.poll?.options.flatMap((option) => option.voter_ids) ?? []),
+    ...(detail.raffle_winners?.map((winner) => winner.user_id) ?? []),
+  ]))], [eventDetails]);
+  const memberDirectory = useMemberDirectory({
+    currentUserId,
+    publicMemberProjection: externalView || !currentUserId,
+    enabled: false,
+    selectedIds: previewMemberIds,
+  });
+  const users = memberDirectory.entries;
+  const availabilitySummaryQuery = useMemberAvailabilitySummary({
+    currentUserId,
+    enabled: Boolean(currentUserId) && !externalView,
+  });
+  const canUseAvailabilitySummary = Boolean(currentUserId) && !externalView;
 
   const eventMembersMap = useMemo(() => {
     const membersByEventId = new Map<string, MemberEntry[]>();
@@ -195,7 +212,12 @@ export function useEventsFiltering({ currentUserId, externalView = false }: UseE
     return byDay;
   }, [sortedEvents]);
 
-  const availabilityHeatData = useMemo(() => buildAvailabilityHeatData(users), [users]);
+  const availabilityHeatData = useMemo(
+    () => buildAvailabilityHeatDataFromSummary(
+      canUseAvailabilitySummary ? availabilitySummaryQuery.data : undefined,
+    ),
+    [availabilitySummaryQuery.data, canUseAvailabilitySummary],
+  );
 
   const hasAnyFilter =
     Boolean(eventType) || eventStatus !== "active" || pinnedOnly || lockedOnly || Boolean(searchQuery.trim());
@@ -253,7 +275,10 @@ export function useEventsFiltering({ currentUserId, externalView = false }: UseE
     selectedDateKey,
     setSelectedDate,
     eventsQuery,
-    usersQuery,
+    users,
+    memberDirectory,
+    availabilitySummaryQuery,
+    availabilitySummaryError: canUseAvailabilitySummary && availabilitySummaryQuery.isError,
     previewDetailsQuery: eventPreviewDetailsQuery,
     sortedEvents,
     eventFlags,

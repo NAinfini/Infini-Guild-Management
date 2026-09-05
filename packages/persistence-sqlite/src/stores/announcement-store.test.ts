@@ -32,6 +32,14 @@ class RejectSnapshotExecutor implements SqlExecutor {
     private readonly rejects: (statement: SqlBatchStatement) => boolean,
   ) {}
 
+  read(statement: Parameters<SqlExecutor["read"]>[0]): Promise<SqlResult> {
+    return this.delegate.read(statement);
+  }
+
+  readBatch(statements: Parameters<SqlExecutor["readBatch"]>[0]): Promise<readonly SqlResult[]> {
+    return this.delegate.readBatch(statements);
+  }
+
   async execute(statement: SqlStatement): Promise<SqlResult> {
     return this.delegate.execute(statement);
   }

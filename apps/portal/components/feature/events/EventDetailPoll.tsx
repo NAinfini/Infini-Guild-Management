@@ -1,4 +1,4 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event, MemberDirectoryEntry } from "@guild/shared";
 import { Button } from "@portal/components/ui/button";
 import { Progress } from "@portal/components/ui/progress";
 import { ChartBarIcon, CheckIcon } from "@portal/components/icons";
@@ -6,7 +6,7 @@ import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-type MemberEntry = { user: User; profile: MemberProfile };
+type MemberEntry = MemberDirectoryEntry;
 
 type EventDetailPollProps = {
   event: Event;

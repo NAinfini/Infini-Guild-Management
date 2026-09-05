@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { useRetainedQueryData } from "./useRetainedQueryData";
 import { galleryItemEtag, type CursorResponse, type GalleryItem } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { formatDateTimeWithTimeZone, localDayEndIso, localDayStartIso } from "../utils/datetime";
@@ -159,7 +160,9 @@ export function useGalleryPageController() {
     return () => uploadAbortRef.current?.abort();
   }, []);
 
+  const retainedListData = useRetainedQueryData();
   const galleryQuery = useInfiniteQuery({
+    ...retainedListData,
     queryKey: queryKeys.gallery.list(
       sortOrder,
       typeFilter ?? "all",

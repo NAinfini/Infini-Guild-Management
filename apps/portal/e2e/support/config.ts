@@ -14,7 +14,7 @@ import { resolve } from "node:path";
  */
 /*
  * 槽位 0 的端口，其余槽位依次 +1。导出而不是留成模块私有：playwright.config.ts
- * 起 wrangler 时要用同一个基准算 `--port`，各写各的就会出现「健康检查打 8887、
+ * 起 workerd 时要用同一个基准算端口，各写各的就会出现「健康检查打 8887、
  * 服务却起在 8787」这种只表现为 webServer 超时、看不出原因的错配。
  */
 export const E2E_PORT_BASE = Number(process.env.E2E_PORT_BASE ?? 8787);
@@ -82,14 +82,14 @@ const supportDir = import.meta.dirname;
 /** globalSetup 写、各 project 读的一次性状态目录（已在 .gitignore 中）。 */
 export const STATE_DIR = resolve(supportDir, "..", ".state");
 export const ARTIFACTS_DIR = resolve(supportDir, "..", ".artifacts");
-/** Wrangler stdout/stderr survives failed E2E runs for postmortem inspection. */
+/** Worker stdout/stderr survives failed E2E runs for postmortem inspection. */
 export const SERVER_LOG_DIR = resolve(supportDir, "..", ".logs");
 
 export function slotStateDirFor(slot: number): string {
   return resolve(STATE_DIR, "slots", `slot-${slot}`);
 }
 
-/** Wrangler 的 D1、R2、DO 和限流状态按槽位完全隔离。 */
+/** D1、R2、DO 和限流状态按槽位完全隔离；目录与 Wrangler 离线迁移一致。 */
 export function persistDirForSlot(slot: number): string {
   return resolve(slotStateDirFor(slot), "wrangler");
 }

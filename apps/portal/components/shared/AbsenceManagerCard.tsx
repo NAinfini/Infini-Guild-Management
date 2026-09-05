@@ -5,7 +5,7 @@ import { Button } from "@portal/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@portal/components/ui/card";
 import { Input } from "@portal/components/ui/input";
 import { Label } from "@portal/components/ui/label";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMemberAbsences } from "../../hooks/useMemberAbsences";
@@ -58,10 +58,7 @@ export function AbsenceManagerCard({ userId }: AbsenceManagerCardProps) {
       </CardHeader>
       <CardContent className="absence-manager-card__content">
         {absencesQuery.isLoading ? (
-          <div className="absence-manager-card__list" aria-label={t("absence.title")}>
-            <Skeleton className="absence-manager-card__skeleton" />
-            <Skeleton className="absence-manager-card__skeleton" />
-          </div>
+          <LoadingIndicator />
         ) : absences.length === 0 ? (
           <p className="absence-manager-card__empty">{t("absence.empty")}</p>
         ) : (

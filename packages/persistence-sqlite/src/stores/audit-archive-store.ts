@@ -162,7 +162,7 @@ export class SqliteAuditArchiveStore implements AuditArchiveStore {
   }
 
   async inspectBacklog(before: string) {
-    const pendingAt = allRows(await this.sql.execute({
+    const pendingAt = allRows(await this.sql.read({
       method: "all",
       columns: ["pending_at"],
       sql: `SELECT logs.occurred_at AS pending_at
@@ -183,7 +183,7 @@ export class SqliteAuditArchiveStore implements AuditArchiveStore {
   }
 
   async inspectExpiredBacklog(completedBefore: string) {
-    const pendingAt = allRows(await this.sql.execute({
+    const pendingAt = allRows(await this.sql.read({
       method: "all",
       columns: ["pending_at"],
       sql: `SELECT completed_at AS pending_at FROM audit_archives
@@ -199,7 +199,7 @@ export class SqliteAuditArchiveStore implements AuditArchiveStore {
   }
 
   async listExpired(completedBefore: string, limit: number): Promise<readonly AuditArchiveManifest[]> {
-    return allRows(await this.sql.execute({
+    return allRows(await this.sql.read({
       method: "all",
       sql: `${manifestSelect()} WHERE status = 'ready' AND completed_at <= ?
         ORDER BY completed_at, id LIMIT ?`,
@@ -226,7 +226,7 @@ export class SqliteAuditArchiveStore implements AuditArchiveStore {
   }
 
   async listMonths(): Promise<readonly string[]> {
-    return allRows(await this.sql.execute({
+    return allRows(await this.sql.read({
       method: "all",
       sql: `SELECT DISTINCT month FROM audit_archives
         WHERE status = 'ready' ORDER BY month DESC LIMIT ?`,
@@ -239,7 +239,7 @@ export class SqliteAuditArchiveStore implements AuditArchiveStore {
   }
 
   async listReady(month: string): Promise<readonly AuditArchiveManifest[]> {
-    return allRows(await this.sql.execute({
+    return allRows(await this.sql.read({
       method: "all",
       sql: `${manifestSelect()} WHERE status = 'ready' AND month = ?
         ORDER BY created_at, id LIMIT ?`,
@@ -248,7 +248,7 @@ export class SqliteAuditArchiveStore implements AuditArchiveStore {
   }
 
   async getReady(id: string): Promise<AuditArchiveManifest | null> {
-    const row = oneRow(await this.sql.execute({
+    const row = oneRow(await this.sql.read({
       method: "get",
       sql: `${manifestSelect()} WHERE status = 'ready' AND id = ?`,
       params: [id],
@@ -262,7 +262,7 @@ export class SqliteAuditArchiveStore implements AuditArchiveStore {
     month: string,
     objectKey: string,
   ): Promise<AuditArchiveClaim> {
-    const rows = allRows(await this.sql.execute({
+    const rows = allRows(await this.sql.read({
       method: "all",
       sql: `SELECT logs.id, logs.request_id, logs.actor_kind, logs.actor_id, logs.actor_label,
           logs.subject_type, logs.subject_id, logs.subject_label, logs.action, logs.payload_json,

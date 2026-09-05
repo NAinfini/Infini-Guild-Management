@@ -1,4 +1,4 @@
-import type { MemberProfile, User } from "@guild/shared";
+import type { MemberProfile, MemberSummary, MemberListSort, MemberManagementStats } from "@guild/shared";
 import {
   adminUpdateProfileSchema,
   absenceWindowQuerySchema,
@@ -6,9 +6,8 @@ import {
   memberProfileSchema,
   memberProfileMediaRevisionToken,
   memberProfileRevisionEtag,
-  permissionSetToRecord,
+  memberSummarySchema,
   updateProfileSchema,
-  userSchema,
 } from "@guild/shared";
 import { isReservedSystemTestIdentityName } from "@guild/shared/config/system-test";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
@@ -30,7 +29,7 @@ import type {
   MemberWireRecord,
   RosterPage,
 } from "./member-types";
-import { assertPortableLikeSearch } from "../../portable-search.js";
+
 import { sanitizeInlineHtml } from "./inline-html";
 
 const EMPTY_MEDIA: MemberMediaRecord = {
@@ -45,15 +44,14 @@ export function resolveMemberProjection(context: RequestContext, externalView: b
   return context.authorization.has(PERMISSION_ID.ADMIN_USERS_VIEW) ? "admin" : "member";
 }
 
-export function buildUserWire(record: MemberRecord["user"]): User {
-  return userSchema.parse({
+export function buildMemberSummary(record: MemberRecord["user"]): MemberSummary {
+  return memberSummarySchema.parse({
     id: record.id,
     display_name: record.display_name,
     role: record.roleId,
     role_name: record.roleName,
     role_color: record.roleColor,
     role_level: record.roleLevel,
-    permissions: permissionSetToRecord(new Set()),
     is_active: record.isActive,
     deleted_at: record.deletedAt,
     created_at: record.createdAt,
@@ -89,7 +87,7 @@ export function buildProfileWire(
 
 export function buildMemberWire(view: MemberView): MemberWireRecord {
   return {
-    user: buildUserWire(view.record.user),
+    user: buildMemberSummary(view.record.user),
     profile: buildProfileWire(view.record.profile, view.media, view.projection),
     badges: view.record.badges,
     ...(view.projection === "admin" || view.includeEditRevisions ? {
@@ -121,6 +119,10 @@ export class MemberService {
     search?: string;
     roleId?: string;
     classId?: string;
+    classIds?: readonly string[];
+    sort?: MemberListSort;
+    direction?: "asc" | "desc";
+    searchScope?: "name" | "management";
     active?: boolean;
     includeTotal: boolean;
     externalView: boolean;
@@ -130,8 +132,16 @@ export class MemberService {
     page: number;
     limit: number;
     totalPages: number;
+    stats?: MemberManagementStats;
   }>> {
     const projection = resolveMemberProjection(context, input.externalView);
+    if (projection === "public" && input.sort === "last_login_at") {
+      throw new AppError({ code: "FORBIDDEN", status: 403, message: "Last login ordering is not available in the public roster" });
+    }
+    if (input.searchScope === "management") context.authorization.require(PERMISSION_ID.ADMIN_USERS_VIEW);
+    if (input.searchScope === "management" && projection !== "admin") {
+      throw new AppError({ code: "FORBIDDEN", status: 403, message: "Management search requires an internal administrator view" });
+    }
     if (projection === "public" && input.limit > LIMITS.pagination.publicUsers) {
       throw new AppError({
         code: "VALIDATION_ERROR",
@@ -139,14 +149,18 @@ export class MemberService {
         message: `Public roster limit must not exceed ${LIMITS.pagination.publicUsers}`,
       });
     }
-    const search = input.search?.trim().toLowerCase() ?? "";
-    assertPortableLikeSearch(search, "Member search");
+    const search = input.search?.trim().replace(/[A-Z]/g, (letter) => letter.toLowerCase()) ?? "";
+
     const page = await this.options.store.listRoster({
       page: input.page,
       limit: input.limit,
       search,
       ...(input.roleId === undefined ? {} : { roleId: input.roleId }),
       ...(input.classId === undefined ? {} : { classId: input.classId }),
+      ...(input.classIds === undefined ? {} : { classIds: input.classIds }),
+      sort: input.sort ?? "created_at",
+      direction: input.direction ?? "asc",
+      searchScope: input.searchScope ?? "name",
       active: projection === "admin" ? input.active : true,
       includeTotal: input.includeTotal,
       projection,
@@ -160,6 +174,38 @@ export class MemberService {
         projection,
       })),
     };
+  }
+
+  async directory(context: RequestContext, input: Readonly<{
+    search?: string;
+    limit: number;
+    cursor?: Readonly<{ displayName: string; userId: string }>;
+    ids?: readonly string[];
+    externalView: boolean;
+  }>) {
+    const search = input.search?.trim().replace(/[A-Z]/g, (letter) => letter.toLowerCase()) ?? "";
+
+    const result = await this.options.store.listDirectory({
+      ...input,
+      search,
+      projection: resolveMemberProjection(context, input.externalView),
+    });
+    const last = result.data.at(-1);
+    return {
+      data: result.data,
+      next_cursor: result.hasMore && last
+        ? JSON.stringify({ displayName: last.user.display_name, userId: last.user.id })
+        : null,
+    };
+  }
+
+  async planning(context: RequestContext, userIds: readonly string[], externalView: boolean) {
+    return { data: await this.options.store.listPlanningMembers(userIds, resolveMemberProjection(context, externalView)) };
+  }
+
+  async availabilitySummary(context: RequestContext) {
+    context.authorization.requireAuthenticated();
+    return this.options.store.getAvailabilitySummary();
   }
 
   async detail(context: RequestContext, userId: string, externalView = false): Promise<MemberView> {

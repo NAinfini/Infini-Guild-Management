@@ -78,33 +78,24 @@ function querySaveButton() {
   return screen.queryByRole("button", { name: "siteConfig.action.saveAll" });
 }
 
-describe("AdminSiteConfigSection layout", () => {
-  it("renders the four configuration regions without a second-level nav", () => {
-    const { container } = renderSiteConfig();
+describe("AdminSiteConfigSection", () => {
+  it("names the four configuration areas", () => {
+    renderSiteConfig();
 
-    expect(container.querySelector(".site-config")).toBeInTheDocument();
-    expect(container.querySelectorAll(".site-config > .site-config-card")).toHaveLength(4);
-    expect(container.querySelector(".site-config-rail")).not.toBeInTheDocument();
-    expect(container.querySelectorAll('a[href^="#site-config-"]')).toHaveLength(0);
-    expect(container.querySelector("#site-config-branding")).toHaveClass("site-config-card");
-    expect(container.querySelector("#site-config-features")).toHaveClass("site-config-card");
-    expect(container.querySelector("#site-config-oauth")).toHaveClass("site-config-card");
-    expect(container.querySelector("#site-config-limits")).toHaveClass("site-config-card");
+    for (const title of ["siteConfig.branding.title", "siteConfig.policy.features", "siteConfig.oauth.title", "siteConfig.policy.limits"]) {
+      expect(screen.getByText(title)).toBeVisible();
+    }
   });
 
   it("lists feature switches and OAuth provider cards separately", () => {
-    const { container } = renderSiteConfig();
+    renderSiteConfig();
 
-    const featureCount = Object.keys(DEFAULT_FEATURE_FLAGS).length;
-    expect(container.querySelectorAll("#site-config-features .site-config-feature-row")).toHaveLength(featureCount);
-    expect(container.querySelectorAll('#site-config-features .site-config-feature-row [role="switch"]')).toHaveLength(featureCount);
-    expect(container.querySelectorAll("#site-config-oauth .site-config-provider-card")).toHaveLength(
-      Object.keys(DEFAULT_SITE_OAUTH_SETTINGS).length,
-    );
-    expect(container.querySelectorAll('#site-config-oauth .site-config-provider-card [role="switch"]')).toHaveLength(
-      Object.keys(DEFAULT_SITE_OAUTH_SETTINGS).length,
-    );
-    expect(container.querySelector(".site-config-feature-grid")).not.toBeInTheDocument();
+    for (const feature of Object.keys(DEFAULT_FEATURE_FLAGS)) {
+      expect(screen.getByRole("switch", { name: `siteConfig.feature.${feature}` })).toBeInTheDocument();
+    }
+    for (const provider of Object.keys(DEFAULT_SITE_OAUTH_SETTINGS)) {
+      expect(screen.getByRole("switch", { name: `siteConfig.oauth.provider.${provider}` })).toBeInTheDocument();
+    }
   });
 
   it("moves descriptive site config copy into info hover cards", () => {

@@ -27,7 +27,7 @@ export class SqliteWikiStore implements WikiStore {
   constructor(private readonly sql: SqlExecutor) {}
 
   async listCategories(): Promise<Readonly<{ records: readonly WikiCategoryRecord[]; stateToken: string }>> {
-    const [stateResult, categoryResult] = await this.sql.batch([
+    const [stateResult, categoryResult] = await this.sql.readBatch([
       {
         method: "get",
         columns: ["revision_token"],
@@ -165,7 +165,7 @@ export class SqliteWikiStore implements WikiStore {
   async listArticles(query: WikiArticleListQuery): Promise<PaginatedResponse<WikiArticle>> {
     const { where, params } = articleWhere(query);
     const order = articleOrder(query.sort);
-    const [countResult, listResult] = await this.sql.batch([
+    const [countResult, listResult] = await this.sql.readBatch([
       {
         method: "get",
         columns: ["total"],
@@ -192,7 +192,7 @@ export class SqliteWikiStore implements WikiStore {
 
   async getArticleBySlug(slug: string, readScope: ContentReadScope): Promise<WikiArticleRecord | null> {
     const visibility = articleVisibility(readScope, "articles");
-    const row = oneRow(await this.sql.execute({
+    const row = oneRow(await this.sql.read({
       method: "get",
       sql: `${selectArticle(true)} WHERE articles.slug = ? AND articles.deleted_at IS NULL AND ${visibility.sql} LIMIT 1`,
       params: [slug, ...visibility.params],
@@ -216,7 +216,7 @@ export class SqliteWikiStore implements WikiStore {
   }
 
   async getArticleById(id: string, includeDeleted = false): Promise<WikiArticleRecord | null> {
-    const row = oneRow(await this.sql.execute({
+    const row = oneRow(await this.sql.read({
       method: "get",
       sql: `${selectArticle(true)} WHERE articles.id = ?${includeDeleted ? "" : " AND articles.deleted_at IS NULL"} LIMIT 1`,
       params: [id],
@@ -282,7 +282,7 @@ export class SqliteWikiStore implements WikiStore {
     articleId: string,
     query: Parameters<WikiStore["listRevisions"]>[1],
   ): Promise<readonly WikiRevisionListItem[]> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "all",
       sql: `${selectRevision(false)} WHERE revisions.article_id = ?
         ${query.beforeRevision === undefined ? "" : "AND revisions.revision < ?"}
@@ -293,7 +293,7 @@ export class SqliteWikiStore implements WikiStore {
   }
 
   async getRevision(articleId: string, revision: number): Promise<WikiRevisionRecord | null> {
-    const row = oneRow(await this.sql.execute({
+    const row = oneRow(await this.sql.read({
       method: "get",
       sql: `${selectRevision(true)} WHERE revisions.article_id = ? AND revisions.revision = ? LIMIT 1`,
       params: [articleId, revision],
@@ -310,7 +310,7 @@ export class SqliteWikiStore implements WikiStore {
       throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Wiki media must contain at most 50 unique assets" });
     }
     if (mediaIds.length === 0) return [];
-    const result = oneRow(await this.sql.execute({
+    const result = oneRow(await this.sql.read({
       method: "get",
       sql: `SELECT count(*) FROM media_assets AS assets
         WHERE assets.id IN (SELECT value FROM json_each(?))

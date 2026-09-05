@@ -1332,6 +1332,7 @@ describe("AdminApiTestEngine request preparation", () => {
       "wiki.articles.edit": true,
       "wiki.articles.delete": true,
       "admin.users.edit": true,
+      "admin.users.role": true,
       "admin.users.delete": true,
       "admin.invite.manage": true,
       "gallery.upload": true,
@@ -1350,6 +1351,18 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).toContain("POST /api/admin/users");
     expect(endpointKeys).toContain("POST /api/auth/register/:inviteCode");
     expect(endpointKeys).toContain("POST /api/guild-war/save-teams");
+  });
+
+  it("requires role assignment to run member smoke tests that create a disposable account", () => {
+    const filtered = filterApiCategoriesForPermissions(buildApiCategories((key) => key), {
+      "admin.users.edit": true,
+      "admin.users.delete": true,
+      "admin.users.activate": true,
+      "admin.users.password": true,
+    });
+
+    expect(filtered.flatMap((category) => category.endpoints)
+      .filter((endpoint) => endpoint.path.startsWith("/api/admin/users"))).toEqual([]);
   });
 
   it("prepares storage lifecycle requests only against disposable storage fixtures", () => {

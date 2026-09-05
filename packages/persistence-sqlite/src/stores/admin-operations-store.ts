@@ -91,7 +91,7 @@ export class SqliteAdminOperationsStore implements AdminOperationsStore, Schedul
 
   async read(observedAt: string) {
     assertIso(observedAt, "Admin operations observation time");
-    const [statuses, leases, media, audit] = await this.sql.batch([
+    const [statuses, leases, media, audit] = await this.sql.readBatch([
       {
         method: "all",
         columns: [

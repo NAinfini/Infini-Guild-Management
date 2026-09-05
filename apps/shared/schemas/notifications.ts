@@ -71,6 +71,10 @@ export const inboxNotificationListResponseSchema = z.object({
   unread_count: z.number().int().nonnegative(),
 }).strict();
 
+export const inboxNotificationUnreadCountResponseSchema = z.object({
+  unread_count: z.number().int().nonnegative(),
+}).strict();
+
 export const markInboxNotificationsReadSchema = z.object({
   ids: z.array(z.string().min(1).max(200)).min(1).max(50).optional(),
   all: z.literal(true).optional(),

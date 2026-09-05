@@ -1,6 +1,6 @@
 # Security policy
 
-[Documentation home](../README.md)
+[Documentation home](../README.md) · [中文版本](./SECURITY.zh.md)
 
 ## Supported version
 

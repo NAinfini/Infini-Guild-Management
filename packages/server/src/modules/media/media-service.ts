@@ -97,7 +97,11 @@ export interface MediaStore {
   ): Promise<MediaReadFacts | null>;
   claimGarbage(before: string, limit: number): Promise<readonly ClaimedMediaDeletion[]>;
   inspectGarbageBacklog(before: string): Promise<ScheduledJobBacklog>;
-  finalizeDeletion(mediaId: string, claimToken: string, audit: AuditEventWrite): Promise<void>;
+  finalizeDeletions(deletions: readonly Readonly<{
+    mediaId: string;
+    claimToken: string;
+    audit: AuditEventWrite;
+  }>[]): Promise<readonly string[]>;
 }
 
 export type ImageUpload = Readonly<{ full: Uint8Array; view: Uint8Array }>;
@@ -283,18 +287,32 @@ export class MediaService {
   ): Promise<Readonly<{ deleted: number }>> {
     const claims = await this.store.claimGarbage(before, MEDIA_GARBAGE_COLLECTION_BATCH_SIZE);
     let deleted = 0;
+    const deletedBlobs: ClaimedMediaDeletion[] = [];
     const failures: Array<Readonly<{ mediaId: string; error: unknown }>> = [];
     for (const claim of claims) {
       try {
         await this.blobs.delete([...claim.objectKeys]);
-        await this.store.finalizeDeletion(
-          claim.mediaId,
-          claim.claimToken,
-          createAudit(claim.mediaId),
-        );
-        deleted += 1;
+        deletedBlobs.push(claim);
       } catch (error) {
         failures.push({ mediaId: claim.mediaId, error });
+      }
+    }
+    if (deletedBlobs.length > 0) {
+      try {
+        const finalized = new Set(await this.store.finalizeDeletions(deletedBlobs.map((claim) => ({
+          mediaId: claim.mediaId,
+          claimToken: claim.claimToken,
+          audit: createAudit(claim.mediaId),
+        }))));
+        deleted = finalized.size;
+        for (const claim of deletedBlobs) {
+          if (!finalized.has(claim.mediaId)) failures.push({
+            mediaId: claim.mediaId,
+            error: new AppError({ code: "CONFLICT", status: 409, message: "Media deletion claim expired" }),
+          });
+        }
+      } catch (error) {
+        for (const claim of deletedBlobs) failures.push({ mediaId: claim.mediaId, error });
       }
     }
     if (failures.length > 0) {
@@ -317,18 +335,33 @@ export class MediaService {
     const reservations = pending.map(({ reservation }) => reservation);
     await this.store.reserveUploads(reservations, context.requestId);
     try {
-      for (const { reservation, data } of pending) {
-        for (const variant of reservation.variants) {
-          const bytes = data.get(variant.variant);
-          if (!bytes) throw new Error(`Missing ${variant.variant} upload bytes`);
-          await this.blobs.putIfAbsent(variant.objectKey, {
-            body: bytesToStream(bytes),
-            size: variant.byteSize,
-            contentType: variant.contentType,
-            sha256: variant.sha256,
-          });
+      const writes = pending.flatMap(({ reservation, data }) => reservation.variants.map((variant) => ({ variant, data })));
+      let next = 0;
+      const failures: unknown[] = [];
+      const writeNext = async () => {
+        while (failures.length === 0) {
+          const write = writes[next++];
+          if (!write) return;
+          try {
+            const { variant, data } = write;
+            const bytes = data.get(variant.variant);
+            if (!bytes) throw new Error(`Missing ${variant.variant} upload bytes`);
+            await this.blobs.putIfAbsent(variant.objectKey, {
+              body: bytesToStream(bytes),
+              size: variant.byteSize,
+              contentType: variant.contentType,
+              sha256: variant.sha256,
+            });
+          } catch (error) {
+            failures.push(error);
+          }
         }
-      }
+      };
+      // All started writes must settle before a lifecycle transition; otherwise
+      // GC could delete a reservation before a late object upload completes.
+      await Promise.all(Array.from({ length: Math.min(4, writes.length) }, writeNext));
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) throw new AggregateError(failures, "Multiple media object writes failed");
       await this.store.markStaged(reservations.map(({ id }) => id), context.now);
     } catch (cause) {
       let uploadFailure = cause;

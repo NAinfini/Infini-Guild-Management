@@ -80,25 +80,6 @@
   min-block-size: 0;
 }
 
-.admin-suspense-skeleton {
-  display: grid;
-  gap: var(--space-sm);
-}
-
-.admin-suspense-skeleton__head {
-  display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: var(--space-sm);
-}
-
-.admin-suspense-skeleton__head [data-slot="skeleton"] {
-  height: 28px;
-}
-
-.admin-suspense-skeleton__row {
-  height: 18px;
-}
-
 .admin-no-access-alert {
   max-width: 42rem;
 }
@@ -701,10 +682,6 @@
   display: grid;
   gap: var(--space-xs);
   padding: var(--space-sm);
-}
-
-.admin-md__skeleton {
-  min-block-size: 40px;
 }
 
 /* 整行负责选中/悬停底色；编辑、拖拽和删除仍是并列按钮，避免嵌套交互元素。 */

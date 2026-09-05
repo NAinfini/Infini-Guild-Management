@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { inboxNotificationSchema, type UpdateNotificationPreferences } from "@guild/shared";
 import { applyAppMigrations } from "../testing/app-migrations.js";
 import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
@@ -64,6 +64,33 @@ afterEach(() => {
 });
 
 describe("SqliteNotificationInboxStore", () => {
+  it("counts retained unread rows for one member with a single aggregate read", async () => {
+    const { database } = fixture();
+    const sql = new SqliteTestExecutor(database);
+    const read = vi.spyOn(sql, "read");
+    const batch = vi.spyOn(sql, "batch");
+    const store = new SqliteNotificationInboxStore(sql);
+    const cutoff = new Date(Date.parse(NOW) - 3 * 24 * 60 * 60_000).toISOString();
+    const expired = new Date(Date.parse(cutoff) - 1).toISOString();
+    insertInbox(database, ADMIN, "notification-current", NOW, null);
+    insertInbox(database, ADMIN, "notification-boundary", cutoff, null);
+    insertInbox(database, ADMIN, "notification-expired", expired, null);
+    insertInbox(database, ADMIN, "notification-read", NOW, NOW);
+    insertInbox(database, MEMBER, "notification-other-user", NOW, null);
+
+    await expect(store.countUnread({ userId: ADMIN, now: NOW })).resolves.toBe(2);
+
+    expect(read).toHaveBeenCalledOnce();
+    expect(read).toHaveBeenCalledWith(expect.objectContaining({
+      method: "get",
+      columns: ["unread_count"],
+      sql: expect.stringMatching(/^SELECT COUNT\(\*\)/u),
+      params: [ADMIN, cutoff],
+    }));
+    expect(batch).not.toHaveBeenCalled();
+    expect(readAt(database, "notification-current")).toBeNull();
+  });
+
   it("fans one published source out to a 200-member guild", () => {
     const { database } = fixture();
     for (let index = 0; index < 198; index += 1) {

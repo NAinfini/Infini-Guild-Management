@@ -7,6 +7,7 @@ import type {
   inboxChangedPushMessageSchema,
   inboxNotificationListResponseSchema,
   inboxNotificationSchema,
+  inboxNotificationUnreadCountResponseSchema,
   memberOnlinePushMessageSchema,
   pushMessageSchema,
 } from "../schemas/notifications";
@@ -15,7 +16,7 @@ import type {
   importantNoticeAudienceRoleSchema,
   importantNoticeSchema,
 } from "../schemas/important-notices";
-import type { userSchema, memberProfileSchema } from "../schemas/user";
+import type { userSchema, memberSummarySchema, memberProfileSchema, userDetailResponseSchema, memberDirectoryEntrySchema, memberPlanningEntrySchema, memberListSortSchema, memberManagementStatsSchema, usersListResponseSchema, memberDirectoryResponseSchema, memberAvailabilitySummarySchema } from "../schemas/user";
 import type { eventSchema, eventClassQuotaSchema, eventClassQuotaInputSchema, eventParticipantSchema, eventPollSchema, eventRaffleWinnerSchema, recurringTemplateSchema } from "../schemas/event";
 import type {
   announcementAttachmentSchema,
@@ -54,6 +55,15 @@ import type {
 } from "../schemas/badge";
 
 export type User = z.infer<typeof userSchema>;
+export type MemberSummary = z.infer<typeof memberSummarySchema>;
+export type UserDetailResponse = z.infer<typeof userDetailResponseSchema>;
+export type MemberDirectoryEntry = z.infer<typeof memberDirectoryEntrySchema>;
+export type MemberPlanningEntry = z.infer<typeof memberPlanningEntrySchema>;
+export type MemberListSort = z.infer<typeof memberListSortSchema>;
+export type MemberManagementStats = z.infer<typeof memberManagementStatsSchema>;
+export type UsersListResponse = z.infer<typeof usersListResponseSchema>;
+export type MemberDirectoryResponse = z.infer<typeof memberDirectoryResponseSchema>;
+export type MemberAvailabilitySummary = z.infer<typeof memberAvailabilitySummarySchema>;
 export type MemberProfile = z.infer<typeof memberProfileSchema>;
 export type Event = z.infer<typeof eventSchema>;
 export type EventParticipant = z.infer<typeof eventParticipantSchema>;
@@ -115,6 +125,7 @@ export type HeartbeatAckMessage = z.infer<typeof heartbeatAckMessageSchema>;
 export type InboxChangedPushMessage = z.infer<typeof inboxChangedPushMessageSchema>;
 export type InboxNotification = z.infer<typeof inboxNotificationSchema>;
 export type InboxNotificationListResponse = z.infer<typeof inboxNotificationListResponseSchema>;
+export type InboxNotificationUnreadCountResponse = z.infer<typeof inboxNotificationUnreadCountResponseSchema>;
 export type PushMessage = z.infer<typeof pushMessageSchema>;
 export type ImportantNotice = z.infer<typeof importantNoticeSchema>;
 export type ImportantNoticeActive = z.infer<typeof importantNoticeActiveSchema>;

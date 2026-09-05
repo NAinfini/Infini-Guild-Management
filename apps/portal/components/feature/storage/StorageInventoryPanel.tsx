@@ -17,7 +17,7 @@ import {
   InputGroupInput,
 } from "@portal/components/ui/input-group";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import {
   ContentFilterGroup,
   ContentFilterOption,
@@ -29,7 +29,7 @@ import { resolveMediaUrl } from "@portal/utils/media";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
-import type { StorageBatchDraft } from "./StorageBatchPanel";
+import type { StorageBatchDraft } from "./storage-batch-draft";
 import { StorageItemCard } from "./StorageItemCard";
 import { StorageLedgerPanel } from "./StorageLedgerPanel";
 
@@ -190,9 +190,7 @@ export function StorageInventoryPanel({
 
         <div className="storage-inventory-main__body">
           {itemsQuery.isLoading ? (
-            <div className="storage-loading-list">
-              {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="storage-loading storage-loading--row" />)}
-            </div>
+            <LoadingIndicator />
           ) : null}
 
           {!itemsQuery.isLoading && itemsBlockingError ? (

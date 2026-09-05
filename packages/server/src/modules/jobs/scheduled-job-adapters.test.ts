@@ -37,7 +37,7 @@ describe("scheduled job domain adapters", () => {
       expect(audit({ subjectType: "recurring_template", subjectId: "template-1", action: "update" }))
         .toMatchObject({ actorId: "system:scheduler" });
       return {
-        materialized: [{ templateId: "template-1", eventIds: ["event-1"], createdEventIds: ["event-1"] }],
+        materialized: [{ templateId: "template-1", eventIds: ["event-1", "event-2"], createdEventIds: ["event-1", "event-2"] }],
         inspected: 1,
         hasMore: false,
         nextTemplateCursor: null,
@@ -53,7 +53,7 @@ describe("scheduled job domain adapters", () => {
       maxTemplates: 2,
       maxOccurrencesPerTemplate: 10,
       audit: createSchedulerAuditFactory("recurrence", NOW),
-    })).resolves.toEqual({ processed: 1, hasMore: false, nextTemplateCursor: null });
+    })).resolves.toEqual({ processed: 2, hasMore: false, nextTemplateCursor: null });
     expect(publish.mock.calls.map(([message]) => message)).toEqual([
       expect.objectContaining({
         type: "entity_changed",
@@ -70,14 +70,14 @@ describe("scheduled job domain adapters", () => {
 
   it("publishes only the IDs actually archived by the bounded store", async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
-    const archiveDue = vi.fn().mockResolvedValue({ eventIds: ["event-1"], hasMore: true });
+    const archiveDue = vi.fn().mockResolvedValue({ eventIds: ["event-1", "event-2"], hasMore: true });
     const inspectBacklog = vi.fn().mockResolvedValue(backlog);
     const job = new ScheduledEventAutoArchiveJob({ archiveDue, inspectBacklog }, { publish });
     await expect(job.run({
       now: NOW,
       limit: 50,
       audit: createSchedulerAuditFactory("archive", NOW),
-    })).resolves.toEqual({ processed: 1, hasMore: true });
+    })).resolves.toEqual({ processed: 2, hasMore: true });
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({
       entity_id: "event-1",
       hint: "event_archived",
@@ -95,7 +95,10 @@ describe("scheduled job domain adapters", () => {
         action: "publish",
       })).toMatchObject({ actorId: "system:scheduler" });
       return {
-        announcements: [{ id: "announcement-1", title: "Notice", publishedAt: NOW }],
+        announcements: [
+          { id: "announcement-1", title: "Notice", publishedAt: NOW },
+          { id: "announcement-2", title: "Notice 2", publishedAt: NOW },
+        ],
         hasMore: false,
       };
     });
@@ -106,7 +109,7 @@ describe("scheduled job domain adapters", () => {
       now: NOW,
       limit: 50,
       audit: createSchedulerAuditFactory("announcement", NOW),
-    })).resolves.toEqual({ processed: 1, hasMore: false });
+    })).resolves.toEqual({ processed: 2, hasMore: false });
     expect(publish.mock.calls.map(([message]) => message)).toEqual([
       {
         type: "entity_changed",
@@ -226,6 +229,77 @@ describe("scheduled job domain adapters", () => {
       before: "2026-05-01T00:00:00.000Z",
       expiredBefore: "2025-08-09T12:00:00.000Z",
     })).resolves.toEqual(backlog);
+  });
+
+  it.each(["recurrence", "archive", "announcement", "raffle"] as const)(
+    "preserves all committed %s records and reports failed batched refreshes",
+    async (kind) => {
+      const publish = vi.fn().mockRejectedValue(new Error("push unavailable"));
+      const audit = createSchedulerAuditFactory(kind, NOW);
+      let result;
+      if (kind === "recurrence") {
+        const job = new ScheduledRecurrenceMaterializationJob({
+          materializeDueBatch: vi.fn().mockResolvedValue({
+            materialized: [{ templateId: "template-1", eventIds: ["event-1", "event-2"], createdEventIds: ["event-1", "event-2"] }],
+            inspected: 1, hasMore: false, nextTemplateCursor: null,
+          }),
+        }, { publish });
+        result = await job.run({ now: NOW, afterTemplateId: null, maxTemplates: 2, maxOccurrencesPerTemplate: 10, audit });
+      } else if (kind === "archive") {
+        result = await new ScheduledEventAutoArchiveJob({
+          archiveDue: vi.fn().mockResolvedValue({ eventIds: ["event-1", "event-2"], hasMore: false }),
+          inspectBacklog: vi.fn(),
+        }, { publish }).run({ now: NOW, limit: 50, audit });
+      } else if (kind === "announcement") {
+        result = await new ScheduledAnnouncementPublishJob({
+          publishDue: vi.fn().mockResolvedValue({
+            announcements: ["announcement-1", "announcement-2"].map((id) => ({ id, title: id, publishedAt: NOW })),
+            hasMore: false,
+          }),
+          inspectBacklog: vi.fn(),
+        }, { publish }).run({ now: NOW, limit: 50, audit });
+      } else {
+        const drawRaffle = vi.fn().mockResolvedValue(undefined);
+        result = await new ScheduledRaffleAutoDrawJob({
+          listDue: vi.fn().mockResolvedValue({
+            raffles: ["raffle-1", "raffle-2"].map((eventId) => ({
+              eventId, title: eventId, winnerCount: 1, drawnByUserId: "owner", updatedAt: NOW, participantIds: ["member"],
+            })),
+            hasMore: false,
+          }),
+          drawRaffle,
+          inspectBacklog: vi.fn(),
+        }, { publish }).run({ now: NOW, limit: 2, audit });
+        expect(drawRaffle).toHaveBeenCalledTimes(2);
+      }
+      expect(result).toMatchObject({
+        processed: 2, hasMore: false,
+        warning: expect.stringContaining("Database changes committed; live refresh failed: entity_changed: push unavailable"),
+      });
+      expect(publish).toHaveBeenCalledTimes(kind === "recurrence" || kind === "announcement" ? 2 : 1);
+      if (kind === "recurrence" || kind === "announcement") {
+        expect(result.warning).toContain("inbox_changed: push unavailable");
+      }
+    },
+  );
+
+  it("invalidates committed raffle results even if a later database draw fails", async () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+    const drawRaffle = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("database unavailable"));
+    const job = new ScheduledRaffleAutoDrawJob({
+      listDue: vi.fn().mockResolvedValue({
+        raffles: ["raffle-1", "raffle-2"].map((eventId) => ({
+          eventId, title: eventId, winnerCount: 1, drawnByUserId: "owner", updatedAt: NOW, participantIds: ["member"],
+        })),
+        hasMore: false,
+      }),
+      drawRaffle,
+      inspectBacklog: vi.fn(),
+    }, { publish });
+    await expect(job.run({ now: NOW, limit: 2, audit: createSchedulerAuditFactory("partial-raffle", NOW) }))
+      .rejects.toThrow("Raffle batch committed 1 draw(s) before failing: database unavailable");
+    expect(publish).toHaveBeenCalledOnce();
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ entity_id: "raffle-1" }));
   });
 
   it("propagates media garbage-collection failures instead of reporting completed work", async () => {

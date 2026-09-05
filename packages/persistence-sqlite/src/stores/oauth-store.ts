@@ -113,7 +113,7 @@ export class SqliteOAuthStore implements OAuthStore {
   }
 
   async findIdentity(providerValue: OAuthProvider, providerSubject: string): Promise<ExternalIdentity | null> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "get",
       columns: ["id", "user_id", "provider", "provider_subject", "created_at", "last_used_at"],
       sql: `SELECT id, user_id, provider, provider_subject, created_at, last_used_at
@@ -132,7 +132,7 @@ export class SqliteOAuthStore implements OAuthStore {
   }
 
   async listIdentities(userId: string): Promise<readonly ExternalIdentity[]> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "all",
       columns: ["id", "user_id", "provider", "provider_subject", "created_at", "last_used_at"],
       sql: `SELECT id, user_id, provider, provider_subject, created_at, last_used_at

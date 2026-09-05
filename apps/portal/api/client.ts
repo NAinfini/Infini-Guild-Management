@@ -43,8 +43,10 @@ export function isApiRequestError(error: unknown): error is ApiRequestError {
 const INTERNAL_SERVER_MESSAGE_PATTERN = /D1_ERROR|SQLITE_ERROR|no such table|no such column/i;
 const JSON_CACHE_MAX = 100;
 const jsonResponseCache = new Map<string, CachedJsonResponse>();
+let sessionCacheRevision = 0;
 
 export function resetApiSessionCache(): void {
+  sessionCacheRevision += 1;
   jsonResponseCache.clear();
 }
 
@@ -135,6 +137,7 @@ export async function apiRequest<TResponse>(
   init: ApiRequestInit = {},
 ): Promise<TResponse> {
   const url = input;
+  const cacheRevision = sessionCacheRevision;
   const {
     bodyJson,
     ifMatch,
@@ -178,9 +181,11 @@ export async function apiRequest<TResponse>(
 
   if (response.status === 304) {
     if (cacheKey && cachedResponse) {
-      // Refresh recency: move entry to the end of insertion order
-      jsonResponseCache.delete(cacheKey);
-      jsonResponseCache.set(cacheKey, cachedResponse);
+      // A response started under an earlier identity must not repopulate this cache.
+      if (cacheRevision === sessionCacheRevision) {
+        jsonResponseCache.delete(cacheKey);
+        jsonResponseCache.set(cacheKey, cachedResponse);
+      }
       return cachedResponse.data as TResponse;
     }
     throw new ApiRequestError("Cached response unavailable", { status: 304 });
@@ -190,7 +195,7 @@ export async function apiRequest<TResponse>(
     await handleErrorResponse(response);
   }
 
-  if (method !== "GET") {
+  if (method !== "GET" && cacheRevision === sessionCacheRevision) {
     const basePath = url.split("?")[0]!.split("/").slice(0, 4).join("/");
     for (const key of jsonResponseCache.keys()) {
       if (key.startsWith(basePath)) jsonResponseCache.delete(key);
@@ -211,7 +216,7 @@ export async function apiRequest<TResponse>(
   }
 
   const etag = response.headers.get("ETag");
-  if (cacheKey && etag) {
+  if (cacheKey && etag && cacheRevision === sessionCacheRevision) {
     if (jsonResponseCache.size >= JSON_CACHE_MAX) {
       const oldest = jsonResponseCache.keys().next().value;
       if (oldest !== undefined) jsonResponseCache.delete(oldest);

@@ -13,6 +13,7 @@ export class ApplicationRuntimeHealth implements RuntimeHealthPort {
 
   async read(_context: RequestContext): Promise<RuntimeHealthSnapshot> {
     await Promise.all([
+      // Database health requires the writer lane to respond even when readers still work.
       this.dependencies.sql.execute({ sql: "SELECT 1", method: "get" }),
       this.dependencies.blobs.head("health/probe"),
     ]);

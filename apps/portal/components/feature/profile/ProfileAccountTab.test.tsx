@@ -5,6 +5,9 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@portal/api/client";
 import { queryKeys } from "@portal/api/query-keys";
+import enProfile from "@portal/i18n/en/profile.json";
+import zhProfile from "@portal/i18n/zh/profile.json";
+import { createInstance } from "i18next";
 import { ProfileAccountTab } from "./ProfileAccountTab";
 import { useSiteConfigStore } from "../../../stores/site-config";
 
@@ -30,6 +33,7 @@ const notificationMocks = vi.hoisted(() => ({
   notifyError: vi.fn(),
   notifySuccess: vi.fn(),
 }));
+const translationMocks = vi.hoisted(() => ({ t: (key: string) => key }));
 
 vi.mock("../../../services/AuthService", () => ({
   ...authApi,
@@ -37,7 +41,7 @@ vi.mock("../../../services/AuthService", () => ({
 }));
 vi.mock("../../../utils/notifications", () => notificationMocks);
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
+  useTranslation: () => ({ t: translationMocks.t, i18n: { language: "en" } }),
 }));
 
 function renderAccountWithClient(onLogout = vi.fn()) {
@@ -57,20 +61,34 @@ function renderAccount(onLogout = vi.fn()) {
   return onLogout;
 }
 
+async function submitPasswordChange() {
+  const user = userEvent.setup();
+  const t = translationMocks.t;
+  await screen.findByDisplayValue("member-login");
+  await user.type(screen.getByLabelText(t("account.field.newPassword")), "New-password");
+  await user.type(screen.getByLabelText(t("account.field.confirmNewPassword")), "New-password");
+  await user.click(screen.getByRole("button", { name: t("button.changePassword") }));
+  await user.type(await screen.findByLabelText(t("account.field.currentPassword")), "current-password");
+  await user.click(screen.getByRole("button", { name: t("account.confirm.submit") }));
+}
+
 describe("ProfileAccountTab", () => {
   beforeEach(() => {
+    translationMocks.t = (key: string) => key;
     useSiteConfigStore.setState({ oauth: { ...DEFAULT_SITE_OAUTH_SETTINGS } });
     authApi.getAccountSecurity.mockReset().mockResolvedValue(accountSecurity);
     authApi.changePassword.mockReset().mockResolvedValue({ ok: true });
+    authApi.changeLoginName.mockReset().mockResolvedValue({ ok: true });
+    authApi.resendEmailVerification.mockReset().mockResolvedValue({ ok: true });
     notificationMocks.notifyError.mockReset();
     notificationMocks.notifySuccess.mockReset();
   });
 
-  it("shows a loading skeleton before account security is available", () => {
+  it("announces loading before account security is available", () => {
     authApi.getAccountSecurity.mockImplementation(() => new Promise(() => undefined));
     renderAccount();
 
-    expect(screen.getByLabelText("common:message.loading")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
     expect(screen.queryByText("account.section.oauth")).not.toBeInTheDocument();
   });
 
@@ -224,7 +242,7 @@ describe("ProfileAccountTab", () => {
     expect(screen.getByRole("button", { name: "button.changePassword" })).toBeEnabled();
   });
 
-  it("rejects a common password with an explanation and accepts a non-common eight-character password", async () => {
+  it("accepts a formerly blocked password when length, composition, and confirmation match", async () => {
     const user = userEvent.setup();
     renderAccount();
     await screen.findByDisplayValue("member-login");
@@ -232,27 +250,85 @@ describe("ProfileAccountTab", () => {
     const confirmation = screen.getByLabelText("account.field.confirmNewPassword");
     await user.type(password, "Password1!");
     await user.type(confirmation, "Password1!");
-    expect(password).toHaveAccessibleDescription(/auth:validation.password.uncommon/);
-    expect(screen.getByRole("button", { name: "button.changePassword" })).toBeDisabled();
-    await user.clear(password);
-    await user.type(password, "Violet7!");
-    await user.clear(confirmation);
-    await user.type(confirmation, "Violet7!");
+    expect(password).toHaveAttribute("aria-invalid", "false");
     expect(screen.getByRole("button", { name: "button.changePassword" })).toBeEnabled();
   });
 
-  it("keeps a current-password rejection specific to the account action", async () => {
-    authApi.changePassword.mockRejectedValue(new ApiRequestError("Current password is incorrect", { status: 401 }));
+  it.each([
+    ["en", "Could not verify your identity. Check your current password. If it is correct, sign in again and retry."],
+    ["zh", "无法验证身份，请检查当前密码。若密码正确，请重新登录后再试。"],
+  ])("localizes current-password rejections in %s", async (language, expected) => {
+    const i18n = createInstance();
+    await i18n.init({
+      lng: language,
+      resources: { en: { profile: enProfile }, zh: { profile: zhProfile } },
+      defaultNS: "profile",
+      keySeparator: false,
+    });
+    translationMocks.t = (key: string) => i18n.t(key);
+    authApi.changePassword.mockRejectedValue(new ApiRequestError("Current password is incorrect", {
+      status: 401,
+      errorCode: "UNAUTHORIZED",
+    }));
+    renderAccount();
+    await submitPasswordChange();
+
+    await waitFor(() => expect(notificationMocks.notifyError).toHaveBeenCalledWith(expected));
+    expect(notificationMocks.notifyError).not.toHaveBeenCalledWith("Current password is incorrect");
+  });
+
+  it.each([
+    [400, "account.message.invalidInput"],
+    [403, "common:errors.forbidden"],
+    [429, "account.message.rateLimited"],
+    [503, "common:errors.serviceUnavailable"],
+    [500, "message.passwordChangeFailed"],
+  ])("maps a credential error status %i without exposing server text", async (status, expectedKey) => {
+    authApi.changePassword.mockRejectedValue(new ApiRequestError("Untranslated server detail", { status }));
+    renderAccount();
+    await submitPasswordChange();
+
+    await waitFor(() => expect(notificationMocks.notifyError).toHaveBeenCalledWith(expectedKey));
+    expect(notificationMocks.notifyError).not.toHaveBeenCalledWith("Untranslated server detail");
+  });
+
+  it("uses localized feedback for errors without an API status", async () => {
+    authApi.changePassword.mockRejectedValue(new Error("Untranslated client detail"));
+    renderAccount();
+    await submitPasswordChange();
+
+    await waitFor(() => expect(notificationMocks.notifyError).toHaveBeenCalledWith("message.passwordChangeFailed"));
+  });
+
+  it("explains a taken login name in localized feedback", async () => {
+    authApi.changeLoginName.mockRejectedValue(new ApiRequestError("Login name already taken", {
+      status: 409,
+      errorCode: "CONFLICT",
+    }));
     const user = userEvent.setup();
     renderAccount();
-
-    await screen.findByDisplayValue("member-login");
-    await user.type(screen.getByLabelText("account.field.newPassword"), "New-password");
-    await user.type(screen.getByLabelText("account.field.confirmNewPassword"), "New-password");
-    await user.click(screen.getByRole("button", { name: "button.changePassword" }));
-    await user.type(await screen.findByLabelText(/account\.field\.currentPassword/), "current-password");
+    const loginName = await screen.findByDisplayValue("member-login");
+    await user.clear(loginName);
+    await user.type(loginName, "MemberLogin2");
+    await user.click(screen.getByRole("button", { name: "account.action.changeLoginName" }));
+    await user.type(await screen.findByLabelText("account.field.currentPassword"), "current-password");
     await user.click(screen.getByRole("button", { name: "account.confirm.submit" }));
 
-    await waitFor(() => expect(notificationMocks.notifyError).toHaveBeenCalledWith("Current password is incorrect"));
+    await waitFor(() => expect(notificationMocks.notifyError).toHaveBeenCalledWith("account.message.loginNameTaken"));
+  });
+
+  it("explains why an email verification cannot be resent in localized feedback", async () => {
+    authApi.getAccountSecurity.mockResolvedValue({ ...accountSecurity, email_available: true });
+    authApi.resendEmailVerification.mockRejectedValue(new ApiRequestError("No email verification can be resent yet", {
+      status: 409,
+      errorCode: "CONFLICT",
+    }));
+    const user = userEvent.setup();
+    renderAccount();
+    await user.click(await screen.findByRole("button", { name: "account.action.resendEmail" }));
+    await user.type(await screen.findByLabelText("account.field.currentPassword"), "current-password");
+    await user.click(screen.getByRole("button", { name: "account.confirm.submit" }));
+
+    await waitFor(() => expect(notificationMocks.notifyError).toHaveBeenCalledWith("account.message.emailResendUnavailable"));
   });
 });

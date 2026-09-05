@@ -56,17 +56,6 @@
   --domain-mix-tint: 9%;
   --domain-mix-edge: 58%;
 
-  /* 三团环境光的浓度，受对比度预算约束——见 :root 里 --ambient-field 那段。
-   * 浅色模式的天花板由「--text-muted 压在 --surface-base 上」定：干净时只有
-   * 5.41，离 4.5 的下限只剩 0.91 的余量，三团一叠就吃光。12/10/9 实测最差
-   * 4.55，是这条线上还站得住的最浓一档。
-   * 板子不吃光之后 raised / overlay 退出了预算，但浅色模式一分没多出来：
-   * base(#FAF9F5) 本来就比 raised(#FFFFFF) 暗，浅色的约束方一直是它。
-   * 真正松开的是深色——那边的约束方原本是 raised。 */
-  --ambient-mix-domain: 12%;
-  --ambient-mix-companion: 10%;
-  --ambient-mix-accent: 9%;
-
   /* ── 分类色序（--series-*）──
    *
    * 「一组并排的同类项，彼此需要区分开」时按位次取色，不表达任何状态。
@@ -151,17 +140,6 @@
 
   --domain-mix-tint: 15%;
   --domain-mix-edge: 64%;
-
-  /* 深色模式的约束方原本是 --surface-raised：板子也铺着光，而 raised(#1C1C22)
-   * 比 base(#141418) 亮，muted 压在被照过的 raised 上先掉出 4.5。板子不吃光
-   * 之后 raised 退出预算，天花板整体抬高——16/15 两团可以换成 20/16/14 三团，
-   * 实测最差 4.68。
-   * 上限仍由最亮的一支域色定：event 取 info-bright (#7DD3FC)，它把面往上提得
-   * 比其余八支都多。新增的五支一律压在 0.33 的亮度线上，就是为了不再造第二个
-   * 这样的离群点。 */
-  --ambient-mix-domain: 20%;
-  --ambient-mix-companion: 16%;
-  --ambient-mix-accent: 14%;
 
   --series-accent: var(--accent-on-surface);
   --series-1: var(--palette-teal-500);
@@ -257,11 +235,6 @@
   --meter-fill: var(--accent-on-surface);
   --meter-track: var(--surface-sunken);
 
-  /* Loading placeholders use the recess level from the page-state contract. A small
-   * text mix keeps that recess legible on both the page field and raised cards. */
-  --skeleton-fill: color-mix(in srgb, var(--text-primary) 5%, var(--surface-sunken));
-  --skeleton-edge: color-mix(in srgb, var(--text-primary) 5%, transparent);
-
   /* ── Secondary brand accent（与模式、与 accent 选择都无关）──
    *
    * tokens.css 的 --palette-bronze-warm 不随 [data-theme] 或 [data-accent]
@@ -319,7 +292,7 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
- * 当前区域（--domain / --domain-companion）
+ * 当前区域（--domain）
  *
  * 站点分九个区。路由归属写在 routes 元数据里，由外壳落成 <html data-domain>，
  * 与 data-theme / data-accent 同一个元素。这一点是刻意的：下面的派生 token 用
@@ -327,28 +300,22 @@
  * 算完了，之后只会被继承、不会被子元素上新的 --domain 重算。三个属性同挂
  * :root，派生才成立。
  *
- * 每个区还带一支伴色，供环境光的第二团用（见 --ambient-field）。伴色不是挑的，
- * 是「色环上的下一支」——这条规则让九个区各自读到一个不同的配色对，而不必再
- * 手挑九次；也保证伴色离本区至少 25°，两团不会糊成一团。
- *
- * 未标注区域的路由（仪表盘、登录、404）沿用品牌色与强调色：那几页是「站点
- * 本身」，不属于任何内容分区，正好让用户选的强调色在首屏露出来。不留空值：
+ * 未标注区域的路由（仪表盘、登录、404）沿用品牌色：这些页面不属于内容分区。不留空值：
  * 硬规则 1 禁止 var() 兜底，所以默认必须在这里显式给出。
  * ═══════════════════════════════════════════════════════════════ */
 :root {
   --domain: var(--brand-fill);
-  --domain-companion: var(--accent-fill);
 }
 
-[data-domain="announce"] { --domain: var(--domain-announce); --domain-companion: var(--domain-ops); }
-[data-domain="ops"] { --domain: var(--domain-ops); --domain-companion: var(--domain-gallery); }
-[data-domain="gallery"] { --domain: var(--domain-gallery); --domain-companion: var(--domain-event); }
-[data-domain="event"] { --domain: var(--domain-event); --domain-companion: var(--domain-wiki); }
-[data-domain="wiki"] { --domain: var(--domain-wiki); --domain-companion: var(--domain-war); }
-[data-domain="war"] { --domain: var(--domain-war); --domain-companion: var(--domain-personal); }
-[data-domain="personal"] { --domain: var(--domain-personal); --domain-companion: var(--domain-admin); }
-[data-domain="admin"] { --domain: var(--domain-admin); --domain-companion: var(--domain-roster); }
-[data-domain="roster"] { --domain: var(--domain-roster); --domain-companion: var(--domain-announce); }
+[data-domain="announce"] { --domain: var(--domain-announce); }
+[data-domain="ops"] { --domain: var(--domain-ops); }
+[data-domain="gallery"] { --domain: var(--domain-gallery); }
+[data-domain="event"] { --domain: var(--domain-event); }
+[data-domain="wiki"] { --domain: var(--domain-wiki); }
+[data-domain="war"] { --domain: var(--domain-war); }
+[data-domain="personal"] { --domain: var(--domain-personal); }
+[data-domain="admin"] { --domain: var(--domain-admin); }
+[data-domain="roster"] { --domain: var(--domain-roster); }
 
 :root {
   /* 区域色的三种用法，整站只此一份配方：
@@ -360,184 +327,6 @@
   --domain-edge: color-mix(in srgb, var(--domain) var(--domain-mix-edge), transparent);
   --domain-ink: var(--domain);
 
-  /* 页面环境层：三团低饱和光晕——区域色、区域伴色、用户选的强调色。
-   * 只画在地面上，所以换路由时整页底色会跟着换，而不是每张卡各画各的。 */
-  --ambient-domain: color-mix(in srgb, var(--domain) var(--ambient-mix-domain), transparent);
-  --ambient-companion: color-mix(in srgb, var(--domain-companion) var(--ambient-mix-companion), transparent);
-  --ambient-accent: color-mix(in srgb, var(--accent-fill) var(--ambient-mix-accent), transparent);
-
-  /* 压角色。用比工作区低一档的 sunken 而不是黑：深浅两个模式下 sunken 都比
-   * base 暗，同一条配方两边都成立，不必给浅色模式另写一份反向的。 */
-  --ambient-vignette: color-mix(in srgb, var(--surface-sunken) 62%, transparent);
-
-  /* ── 环境光 --ambient-field ─────────────────────────────────
-   *
-   * 三团光加一层压角，整站只此一份配方。放在这里而不是外壳里，是因为原料就在
-   * 上面几行；分居两个文件时，改浓度和改半径永远要跳着看。
-   *
-   * ── 只画在地面上 ──
-   * 光是打在地板上的，板子压在光上面，本身不透光。之前板也铺同一张图，两个
-   * 后果：一是全站正文的实际背景都被光改过，对比度预算得按「被照过的表面」
-   * 算，把浓度压在肉眼几乎看不见的一档；二是这张图贴着视口，板越高、板内的
-   * 明暗落差越大，一张顶到内容区底边的卡下半张会读成一块彩色。
-   * 收回地面之后不需要 background-attachment: fixed 了——只有一个消费点在画
-   * 它，没有第二张图要对齐（页头是例外，见 AppShell.css）。
-   *
-   * ── 三团怎么摆的 ──
-   * 之前是两团分居对角、半径又差不多，合起来读出来就是一条直的对角渐变——
-   * 「左下一个色渐到右上一个色」的基础款。
-   *
-   * 现在三团各贴一条边，圆心两两拉开约 120°：域色在左下 (6%,116%)、伴色在
-   * 右侧偏下 (114%,58%)、强调色在上方偏左 (42%,-14%)。三个圆心不共线，光场
-   * 因此有一处弯，不再能被读成一条直线。半径也各不相同，避免三条衰减同步。
-   *
-   * 第三团还有个作用：每个区读到的是「区域色 + 伴色」一个配色对，而不是单色。
-   * 九个区因此给出九组明显不同的底，而不是九个只差色相的同一张图。
-   *
-   * 圆心全在视口外，谁都到不了自己的满值；21×21 采样下 441 个点全部有色，
-   * 均值是峰值的 0.85——满屏都有光，没有死平的一角。
-   *
-   * ── 压角 ──
-   * 压角是「地面」的做法：把地板往下压，光才读得出方向。它最暗的一端必须落在
-   * 光最弱的一角。实测最弱在左上（8.1%，最强是屏幕中部 18.5%）。
-   * 角度仍是全站唯一的那一档 160deg（架构守卫只放行这一个角度，全站材质渐变
-   * 必须读成同一个光源方向）；掉头的是色标而不是角度——压角写在渐变的起点、
-   * 到 56% 处透明，起点正是 160deg 轴的左上那一端。
-   *
-   * ── 预算 ──
-   * 这层光压在全站地面正文底下，每个字的实际背景都被它改过，所以浓度不是随手
-   * 调的观感参数：最弱的一档 --text-muted 压在被照亮／压暗后的地面上仍须过 4.5。
-   *
-   * 预算不再用「峰值代数」估算。三团互相叠加的残余算不出闭式，而压角那一层
-   * 旧版根本没进预算——两个洞。现在直接在视口上打 21×21 网格，逐点按 CSS 的
-   * 合成顺序把四层叠起来，遍历 9 域 × 9 伴 × 4 强调的全部组合取最差：
-   * 浅色 4.55、深色 4.68，两个模式都留了余量。这套采样是
-   * theme-tokens.test.ts 的「ambient contrast budget」一组的可执行副本。
-   *
-   * 预算只覆盖地面 --surface-base。raised / overlay 退出了——板子不吃光；
-   * sunken 本来就不在——侧栏、输入框、进度槽自己画不透明底，光到不了它们背后。
-   * 同理，--brand-tint 与 --domain-tint 都是压在 raised 上的色渍，也不再受
-   * 这层光影响。
-   *
-   * 圆心会漂（见下面 --ambient-drift-*），但上面那个最差值不会跟着变：每团只
-   * 许沿着「离视口更远」的方向漂，见各 @keyframes 的说明。 */
-  --ambient-layer-domain:
-    radial-gradient(120% 105% at var(--ambient-x1) var(--ambient-y1),
-      var(--ambient-domain), transparent 100%);
-  --ambient-layer-companion:
-    radial-gradient(112% 118% at var(--ambient-x2) var(--ambient-y2),
-      var(--ambient-companion), transparent 100%);
-  --ambient-layer-accent:
-    radial-gradient(118% 108% at var(--ambient-x3) var(--ambient-y3),
-      var(--ambient-accent), transparent 100%);
-
-  --ambient-field:
-    var(--ambient-layer-domain),
-    var(--ambient-layer-companion),
-    var(--ambient-layer-accent),
-    linear-gradient(160deg, var(--ambient-vignette), transparent 56%);
-
-  /* L2 台面的材质，整站只此一份配方。
-   *
-   * 板子是不透明的一块，不带光——理由见上面「只画在地面上」。面板的材质仍旧
-   * 只能从这个 token 出，不许手写 `background: var(--surface-raised)`：那是
-   * 把阶梯档当材质用，同一句话在两个层里各有一份真相，改一处漏一处。
-   *
-   * 要染色的板（拖放悬停）直接写自己的台面色，不必再叠一层光。 */
+  /* 共享面板使用不透明的 raised 表面，内容不受页面装饰影响。 */
   --plate-fill: var(--surface-raised);
-
-  /* 三团各自漂，慢到单看一眼是静止的，隔一会儿再看已经换了一处——这是它要的
-     效果，不是要人盯着看的动画。
-
-     steps(200) 不是为了做出台阶感，是为了不按 60Hz 重画。坐标一变，整张地面
-     都要重画；而单程 26.5s 只走 22% 视口宽，60Hz 下每帧挪不到 0.4px，绝大多数
-     帧根本没有可见变化。切成 200 步后每步 0.11% 视口宽——2560px 宽的屏上约
-     3px，而这团光的横向半径超过一整个视口，圆心挪 3px 对任何一个像素的影响都
-     在 0.05 个色阶以下，看不出来；重画频率却从 60Hz 降到每层约 7.5Hz。
-     代价是失掉 ease-in-out 的软折返；折返发生在半个周期的中点上，匀速通过和
-     缓入缓出在这个尺度上分不出来。 */
-  animation:
-    ambient-drift-domain 53s steps(200) infinite,
-    ambient-drift-companion 67s steps(200) infinite,
-    ambient-drift-accent 43s steps(200) infinite;
-}
-
-/* 圆心坐标单独注册，因为未注册的自定义属性在动画里是跳变的（50% 处直接换值）。
-   注册成 <percentage> 之后才会插值，三团才是「漂」而不是「闪」。
-
-   initial-value 就是静止位置，也是它唯一的出处——不在 :root 里再写一遍，也不用
-   var() 兜底（硬规则 1 禁止 var() 兜底，理由正是「一个值两个出处」）。代价是
-   @property 成了硬依赖：不支持它的引擎会把坐标当成无效值，整条 --ambient-field
-   连带失效。各引擎 2024 年中都已支持，仓库也没有更早的浏览器基线。 */
-@property --ambient-x1 {
-  syntax: "<percentage>";
-  inherits: true;
-  initial-value: 6%;
-}
-
-@property --ambient-y1 {
-  syntax: "<percentage>";
-  inherits: true;
-  initial-value: 116%;
-}
-
-@property --ambient-x2 {
-  syntax: "<percentage>";
-  inherits: true;
-  initial-value: 114%;
-}
-
-@property --ambient-y2 {
-  syntax: "<percentage>";
-  inherits: true;
-  initial-value: 58%;
-}
-
-@property --ambient-x3 {
-  syntax: "<percentage>";
-  inherits: true;
-  initial-value: 42%;
-}
-
-@property --ambient-y3 {
-  syntax: "<percentage>";
-  inherits: true;
-  initial-value: -14%;
-}
-
-/* 只写 50%：0% 和 100% 自动取上面的静止值，来回一趟天然接得上，不用把同一组
-   坐标写两遍。三段周期取 53 / 67 / 43，两两互质，合成周期以小时计，看不出
-   「又回到刚才那一帧」。
-
-   每团只许沿着「离视口更远」的方向漂，另一轴随便走：离圆心最近的那个视口内的
-   点就在圆心正对面，另一轴的差为零，椭圆距离退化成单轴的 |Δ|/r。所以
-   · 域色贴下边，纵向只许 ≥116%，横向自由；
-   · 伴色贴右边，横向只许 ≥114%，纵向自由；
-   · 强调色贴上边，纵向只许 ≤-14%，横向自由。
-   于是整段动画不会让任何一处比静止时更亮，上面算出的最差对比度原样成立。 */
-@keyframes ambient-drift-domain {
-  50% {
-    --ambient-x1: 28%;
-    --ambient-y1: 122%;
-  }
-}
-
-@keyframes ambient-drift-companion {
-  50% {
-    --ambient-x2: 120%;
-    --ambient-y2: 34%;
-  }
-}
-
-@keyframes ambient-drift-accent {
-  50% {
-    --ambient-x3: 62%;
-    --ambient-y3: -20%;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    animation: none;
-  }
 }

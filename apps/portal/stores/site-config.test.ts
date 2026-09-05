@@ -24,7 +24,7 @@ const siteConfig: PublicSiteConfig = {
 describe("applyPublicSiteConfig", () => {
   beforeEach(() => {
     document.head.innerHTML = '<link rel="icon" href="/guild-logo.svg">';
-    document.body.innerHTML = '<span id="splash-title"></span>';
+    document.body.innerHTML = '<span id="splash-title"></span><img id="splash-emblem" src="/guild-logo.svg" alt="">';
     useSiteConfigStore.setState({
       siteName: "",
       siteDescription: "",
@@ -50,5 +50,6 @@ describe("applyPublicSiteConfig", () => {
 
     expect(setHref).toHaveBeenCalledOnce();
     expect(favicon).toHaveAttribute("href", "/guild-logo.webp");
+    expect(document.getElementById("splash-emblem")).toHaveAttribute("src", "/guild-logo.webp");
   });
 });

@@ -171,11 +171,10 @@ const writableVideoUrlSchema = z
     message: "Video URL must be from an allowed host (YouTube, Bilibili, Vimeo, TikTok, Douyin)",
   });
 
-export const userSchema = z.object({
+export const memberSummarySchema = z.object({
   id: z.string(),
   display_name: z.string(),
   role: z.string().min(1),
-  permissions: z.record(permissionKeySchema, z.boolean()),
   is_active: z.boolean(),
   deleted_at: z.string().nullable(),
   created_at: z.string(),
@@ -183,6 +182,11 @@ export const userSchema = z.object({
   // 从未登录过、以及未登录者看到的对外视图，都是 null。
   last_login_at: z.string().nullable(),
 }).extend(roleMetadataSchema.shape);
+
+// Effective permissions belong to the authenticated session, not member projections.
+export const userSchema = memberSummarySchema.extend({
+  permissions: z.record(permissionKeySchema, z.boolean()),
+});
 
 export const memberProfileSchema = z.object({
   user_id: z.string(),
@@ -296,10 +300,22 @@ export const adminMemberEditRevisionsSchema = z.object({
 }).strict();
 
 export const userDetailResponseSchema = z.object({
-  user: userSchema,
+  user: memberSummarySchema,
   profile: memberProfileSchema,
   badges: z.array(userBadgeSchema),
   edit_revisions: adminMemberEditRevisionsSchema.optional(),
+}).strict();
+
+export const memberListSortSchema = z.enum([
+  "created_at", "display_name", "power", "class", "role", "last_login_at", "is_active",
+]);
+
+export const memberManagementStatsSchema = z.object({
+  total: z.number().int().min(0),
+  active: z.number().int().min(0),
+  inactive: z.number().int().min(0),
+  management_access: z.number().int().min(0),
+  directory_total: z.number().int().min(0),
 }).strict();
 
 export const usersListResponseSchema = z.object({
@@ -308,6 +324,30 @@ export const usersListResponseSchema = z.object({
   page: z.number().int().positive(),
   limit: z.number().int().positive(),
   total_pages: z.number().int().min(1),
+  stats: memberManagementStatsSchema.optional(),
+}).strict();
+
+export const memberDirectoryEntrySchema = z.object({
+  user: memberSummarySchema.pick({ id: true, display_name: true }),
+  profile: memberProfileSchema.pick({ classes: true, power: true, avatar_media_id: true }),
+}).strict();
+
+export const memberDirectoryResponseSchema = z.object({
+  data: z.array(memberDirectoryEntrySchema),
+  next_cursor: z.string().nullable(),
+}).strict();
+
+export const memberPlanningEntrySchema = memberDirectoryEntrySchema.extend({
+  profile: memberDirectoryEntrySchema.shape.profile.extend(memberProfileSchema.pick({
+    title_html: true, availability: true, vacation_start: true, vacation_end: true, notes: true,
+  }).shape),
+}).strict();
+
+export const memberPlanningResponseSchema = z.object({ data: z.array(memberPlanningEntrySchema) }).strict();
+
+export const memberAvailabilitySummarySchema = z.object({
+  hourly_counts: z.array(z.array(z.number().int().min(0)).length(24)).length(7),
+  member_count: z.number().int().min(0),
 }).strict();
 
 export const usersStatsResponseSchema = z.object({

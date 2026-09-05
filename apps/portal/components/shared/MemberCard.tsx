@@ -1,8 +1,9 @@
-import type { MemberProfile, User, UserBadge } from "@guild/shared";
+import type { MemberProfile, MemberSummary, UserBadge } from "@guild/shared";
 import { IconPhoto, IconVideo } from "@tabler/icons-react";
 import DOMPurify from "dompurify";
-import { motion, useReducedMotion, useSpring } from "motion/react";
-import { memo, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { motion, useSpring } from "motion/react";
+import { memo, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useReducedMotionPreference } from "@portal/hooks/useReducedMotionPreference";
 import { useTranslation } from "react-i18next";
 import { resolveMediaUrl as resolvePortalMediaUrl } from "../../utils/media";
 import { parseAvailabilityRanges } from "../../utils/availability";
@@ -56,7 +57,7 @@ export const MemberBadgeChip = memo(function MemberBadgeChip({ badge }: { badge:
 });
 
 type MemberCardProps = {
-  user: User;
+  user: MemberSummary;
   profile: MemberProfile;
   badges?: UserBadge[];
   onClick?: () => void;
@@ -81,7 +82,7 @@ export function isOnVacation(profile: MemberProfile): boolean {
 
 /* 导出给资料页的名片预览用：那张卡的排版和这里不一样，但「在线 / 离线 / 休假」
    必须是同一套判定，否则同一个人在两处显示成两种状态。 */
-export function getMemberStatus(user: User, profile: MemberProfile): MemberStatus {
+export function getMemberStatus(user: MemberSummary, profile: MemberProfile): MemberStatus {
   if (!user.is_active) {
     return "inactive";
   }
@@ -138,7 +139,16 @@ export const MemberCard = memo(function MemberCard({
   const scale = useSpring(1, TILT_SPRING);
   const specularX = useSpring(0, TILT_SPRING);
   const specularY = useSpring(0, TILT_SPRING);
-  const prefersReducedMotion = useReducedMotion();
+  const prefersReducedMotion = useReducedMotionPreference();
+
+  useEffect(() => {
+    if (!prefersReducedMotion) return;
+    rotateX.jump(0);
+    rotateY.jump(0);
+    scale.jump(1);
+    specularX.jump(0);
+    specularY.jump(0);
+  }, [prefersReducedMotion, rotateX, rotateY, scale, specularX, specularY]);
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (prefersReducedMotion || event.pointerType !== "mouse") return;

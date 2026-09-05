@@ -1,7 +1,7 @@
-import type { AdminRole, User } from "@guild/shared";
-import type { APIRequestContext } from "@playwright/test";
+import { usersListResponseSchema, type AdminRole, type User, type UsersListResponse } from "@guild/shared";
+import type { APIRequestContext, Page, Request } from "@playwright/test";
 import { isRoleAssignableToUser } from "../../utils/permissions";
-import { readJson } from "./test";
+import { expect, readJson } from "./test";
 
 /*
  * 一次性成员：成员管理相关用例的统一靶子。
@@ -89,4 +89,63 @@ export async function createThrowawayMember(
     password: created.temporary_password,
     role: assignedRole,
   };
+}
+
+/** 新查询只读当前页；响应完成后继续观察，防止又串行拉取后续整页。 */
+export async function expectMemberListPage(
+  page: Page,
+  query: Record<string, string | null>,
+  action: () => Promise<unknown>,
+): Promise<UsersListResponse> {
+  const expected = { include_total: "true", ...query };
+  const calls: Request[] = [];
+  const writes: string[] = [];
+  const record = (request: Request) => {
+    const path = new URL(request.url()).pathname;
+    if (path === "/api/users") calls.push(request);
+    if (path.startsWith("/api/") && request.method() !== "GET") writes.push(`${request.method()} ${path}`);
+  };
+  page.on("request", record);
+  try {
+    const pending = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === "GET"
+        && url.pathname === "/api/users"
+        && Object.entries(expected).every(([key, value]) => url.searchParams.get(key) === value);
+    });
+    await action();
+    const response = await pending;
+    expect(response.status(), `成员分页请求失败：${await response.text()}`).toBe(200);
+    const result = usersListResponseSchema.parse(await response.json());
+    expect(result.page).toBe(Number(query.page));
+    expect(result.limit).toBe(Number(query.limit));
+    expect(result.data.length, "每次响应不得超过请求页大小").toBeLessThanOrEqual(result.limit);
+    expect(new Set(result.data.map((row) => row.user.id)).size, "同一页不应出现重复成员").toBe(result.data.length);
+    await page.waitForTimeout(350);
+    expect(calls, "一个新查询只应请求当前页，不能顺带遍历整个成员目录").toHaveLength(1);
+    expect(Object.fromEntries(new URL(calls[0]!.url()).searchParams)).toEqual(
+      Object.fromEntries(Object.entries(expected).filter(([, value]) => value !== null)),
+    );
+    expect(writes, "浏览成员列表不得写库").toEqual([]);
+    return result;
+  } finally {
+    page.off("request", record);
+  }
+}
+
+/** 等防抖查询及其结果落地后，后续纯交互才能单独计算网络请求。 */
+export async function searchAdminMembers(page: Page, search: string): Promise<UsersListResponse> {
+  const result = await expectMemberListPage(page, {
+    page: "1", limit: "20", search_scope: "management", sort: "created_at", direction: "asc",
+    search: search.trim() || null,
+  }, () => page.getByRole("textbox", { name: "Search members", exact: true }).fill(search));
+  await expect(page.locator(".admin-stat__value").first()).toHaveText(String(result.stats!.total));
+  if (result.data.length > 0) {
+    await expect(page.getByRole("row", {
+      name: `${result.data[0]!.user.display_name} member row`, exact: true,
+    })).toBeVisible();
+  } else {
+    await expect(page.getByRole("row", { name: /member row$/ })).toHaveCount(0);
+  }
+  return result;
 }

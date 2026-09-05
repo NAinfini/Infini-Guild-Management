@@ -1,4 +1,4 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event, MemberDirectoryEntry } from "@guild/shared";
 import { Button } from "@portal/components/ui/button";
 import { Card, CardContent } from "@portal/components/ui/card";
 import { CalendarTimeIcon } from "@portal/components/icons";
@@ -8,7 +8,7 @@ import { EmptyState } from "../../shared/EmptyState";
 import { EventCard } from "./EventCard";
 import "./EventCardsView.css";
 
-type MemberEntry = { user: User; profile: MemberProfile };
+type MemberEntry = MemberDirectoryEntry;
 
 type EventCardsViewProps = {
   events: Event[];

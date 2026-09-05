@@ -21,7 +21,7 @@ import { Button } from "@portal/components/ui/button";
 import { Input } from "@portal/components/ui/input";
 import { Label } from "@portal/components/ui/label";
 import { ScrollArea } from "@portal/components/ui/scroll-area";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { PlusIcon, SaveIcon, TrashIcon } from "@portal/components/icons";
 import { useAdminClassTagsController } from "@portal/hooks/useAdminClassTagsController";
@@ -219,9 +219,7 @@ export function AdminClassTagsSection({ masterNavigation }: { masterNavigation?:
               </Alert>
             ) : null}
             {controller.query.isLoading ? (
-              Array.from({ length: 5 }).map((_, index) => (
-                <Skeleton key={index} className="admin-md__skeleton" />
-              ))
+              <LoadingIndicator />
             ) : listBlockingError ? (
               <EmptyState
                 status="error"

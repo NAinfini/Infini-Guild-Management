@@ -503,9 +503,9 @@
 }
 
 /* 倾斜与缩放的关闭不在这里——那两个是 JS 写的内联 transform，CSS 覆盖不到，
- * 由 MemberCard.tsx 的 useReducedMotion() 在源头上不派发。这里只关掉纯 CSS
+ * 由 MemberCard.tsx 的 useReducedMotionPreference() 在源头上不派发。这里只关掉纯 CSS
  * 的两处过渡；辉光与高光本身（静态的颜色差）保留，否则悬停就完全没有反馈了。 */
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .member-card { transition: none; }
   .member-card__spec { transition: none; }
   /* 光环停在起始角，冷/紫/暖还是落在左/下/右——不转，但悬停仍然亮起来。 */

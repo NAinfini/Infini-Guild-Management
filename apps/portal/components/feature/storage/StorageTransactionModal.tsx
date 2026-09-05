@@ -1,7 +1,9 @@
-import { LIMITS, type CreateStorageTransactionPayload, type StorageItem, type User } from "@guild/shared";
+import { LIMITS, type CreateStorageTransactionPayload, type StorageItem, type MemberDirectoryEntry } from "@guild/shared";
 import { ArrowRightIcon, PhotoOffIcon, XIcon } from "@portal/components/icons";
 import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
+import type { MemberDirectoryLoadError } from "@portal/hooks/data/useMemberDirectory";
 import {
   Dialog,
   DialogClose,
@@ -19,12 +21,13 @@ import {
   SelectValue,
 } from "@portal/components/ui/select";
 import { Textarea } from "@portal/components/ui/textarea";
+import { RetryableLoadError } from "@portal/components/shared/RetryableLoadError";
 import { resolveMediaUrl } from "@portal/utils/media";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 type TransactionMode = CreateStorageTransactionPayload["type"];
-type UserOption = { user: User };
+type UserOption = Pick<MemberDirectoryEntry, "user">;
 
 type StorageTransactionModalProps = {
   opened: boolean;
@@ -36,10 +39,17 @@ type StorageTransactionModalProps = {
   itemsHasMore?: boolean;
   itemsLoadingMore?: boolean;
   itemSearch?: string;
+  userSearch?: string;
+  usersHasMore?: boolean;
+  usersLoadingMore?: boolean;
+  usersLoading?: boolean;
+  userLoadError?: MemberDirectoryLoadError | null;
   defaultRecipientUserId?: string;
   isSaving: boolean;
   onItemSearchChange?: (value: string) => void;
   onLoadMoreItems?: () => void;
+  onUserSearchChange?: (value: string) => void;
+  onLoadMoreUsers?: () => void;
   onClose: () => void;
   onSubmit: (itemId: string, payload: CreateStorageTransactionPayload) => void;
 };
@@ -60,10 +70,17 @@ export function StorageTransactionModal({
   itemsHasMore = false,
   itemsLoadingMore = false,
   itemSearch,
+  userSearch = "",
+  usersHasMore = false,
+  usersLoadingMore = false,
+  usersLoading = false,
+  userLoadError = null,
   defaultRecipientUserId,
   isSaving,
   onItemSearchChange,
   onLoadMoreItems,
+  onUserSearchChange,
+  onLoadMoreUsers,
   onClose,
   onSubmit,
 }: StorageTransactionModalProps) {
@@ -71,6 +88,7 @@ export function StorageTransactionModal({
   const [itemId, setItemId] = useState<string | null>(null);
   const [selectedItemSnapshot, setSelectedItemSnapshot] = useState<StorageItem | null>(null);
   const [recipientUserId, setRecipientUserId] = useState<string | null>(null);
+  const [selectedUserSnapshot, setSelectedUserSnapshot] = useState<UserOption["user"] | null>(null);
   const [type, setType] = useState<TransactionMode>("intake");
   const [quantity, setQuantity] = useState<number | string>(1);
   const [note, setNote] = useState("");
@@ -81,15 +99,19 @@ export function StorageTransactionModal({
   const selectedItem = itemId
     ? items.find((item) => item.id === itemId) ?? selectedItemSnapshot
     : null;
-  const selectedUser = users.find(({ user }) => user.id === recipientUserId)?.user ?? null;
+  const selectedUser = users.find(({ user }) => user.id === recipientUserId)?.user
+    ?? (selectedUserSnapshot?.id === recipientUserId ? selectedUserSnapshot : null);
   const itemOptions = useMemo(
     () => items.map((item) => ({ value: item.id, label: `${item.name} (${item.quantity})` })),
     [items],
   );
-  const userOptions = useMemo(
-    () => users.map(({ user }) => ({ value: user.id, label: user.display_name })),
-    [users],
-  );
+  const userOptions = useMemo(() => {
+    const options = users.map(({ user }) => ({ value: user.id, label: user.display_name }));
+    if (selectedUserSnapshot && !options.some((option) => option.value === selectedUserSnapshot.id)) {
+      options.unshift({ value: selectedUserSnapshot.id, label: selectedUserSnapshot.display_name });
+    }
+    return options;
+  }, [selectedUserSnapshot, users]);
   const numericQuantity = toNumber(quantity);
   const hasValidQuantity = Number.isInteger(numericQuantity);
   const safeQuantity = hasValidQuantity ? numericQuantity : 0;
@@ -158,6 +180,7 @@ export function StorageTransactionModal({
     setItemId(nextItem?.id ?? null);
     setSelectedItemSnapshot(nextItem);
     setRecipientUserId(null);
+    setSelectedUserSnapshot(null);
     setType(nextType);
     setQuantity(nextType === "adjust" ? nextItem?.quantity ?? 0 : 1);
     setNote("");
@@ -336,34 +359,59 @@ export function StorageTransactionModal({
               {canManageStock && showsRecipient ? (
                 <div className="storage-field">
                   <Label>{type === "intake" ? t("field.memberOptional") : t("field.member")}</Label>
-                  <Select
-                    value={recipientUserId}
-                    items={userOptions}
-                    onValueChange={(value) => {
-                      const nextRecipientUserId = value ?? null;
-                      if (nextRecipientUserId === recipientUserId) return;
-                      idempotencyKeyRef.current = crypto.randomUUID();
-                      setRecipientUserId(nextRecipientUserId);
-                    }}
-                  >
-                    <SelectTrigger
-                      aria-label={type === "intake" ? t("field.memberOptional") : t("field.member")}
-                      className="storage-field__control"
+                  {onUserSearchChange ? (
+                    <Input
+                      type="search"
+                      value={userSearch}
+                      aria-label={t("filter.searchMembers")}
+                      placeholder={t("filter.searchMembers")}
+                      onChange={(event) => onUserSearchChange(event.currentTarget.value)}
+                    />
+                  ) : null}
+                  {userLoadError ? (
+                    <RetryableLoadError
+                      pending={userLoadError.retrying}
+                      onRetry={() => { void userLoadError.retry(); }}
+                    />
+                  ) : null}
+                  {usersLoading && userOptions.length === 0 ? (
+                    <LoadingIndicator />
+                  ) : userLoadError && userOptions.length === 0 ? null : (
+                    <Select
+                      value={recipientUserId}
+                      items={userOptions}
+                      onValueChange={(value) => {
+                        const nextRecipientUserId = value ?? null;
+                        if (nextRecipientUserId === recipientUserId) return;
+                        idempotencyKeyRef.current = crypto.randomUUID();
+                        setRecipientUserId(nextRecipientUserId);
+                        setSelectedUserSnapshot(users.find(({ user }) => user.id === nextRecipientUserId)?.user ?? null);
+                      }}
                     >
-                      <SelectValue
-                        placeholder={userOptions.length === 0
-                          ? t("empty.noUsers")
-                          : type === "intake"
-                            ? t("field.noMember")
-                            : t("field.selectMember")}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {userOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                      <SelectTrigger
+                        aria-label={type === "intake" ? t("field.memberOptional") : t("field.member")}
+                        className="storage-field__control"
+                      >
+                        <SelectValue
+                          placeholder={userOptions.length === 0
+                            ? t("empty.noUsers")
+                            : type === "intake"
+                              ? t("field.noMember")
+                              : t("field.selectMember")}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {userOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {usersHasMore && onLoadMoreUsers && !userLoadError ? (
+                    <Button size="sm" variant="ghost" loading={usersLoadingMore} onClick={onLoadMoreUsers}>
+                      {t("action.loadMore")}
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
               <div className="storage-field">

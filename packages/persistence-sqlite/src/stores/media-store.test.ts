@@ -1,10 +1,10 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MediaReservation } from "@guild/server/modules/media";
+import { MediaService, type MediaReservation } from "@guild/server/modules/media";
 import type { BlobStore } from "@guild/kernel";
 import { createAuthorizationContext, createRequestContext, MAX_SQL_BATCH_STATEMENTS } from "@guild/kernel";
 import { LIMITS } from "@guild/shared/config/limits";
-import { createSchedulerAuditFactory } from "@guild/server/modules/jobs";
+import { createSchedulerAuditFactory, ScheduledJobCoordinator, ScheduledMediaGarbageCollectionJob } from "@guild/server/modules/jobs";
 import { SystemTestService } from "@guild/server/modules/system-test";
 import { applyAppMigrations } from "../testing/app-migrations.js";
 import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
@@ -12,6 +12,8 @@ import { assertMediaAttachments } from "./media-link-statements.js";
 import { SqliteMediaStore } from "./media-store.js";
 import { SqliteSystemTestArtifactCleaner } from "./system-test-artifact-cleaner.js";
 import { SqliteSystemTestStore } from "./system-test-store.js";
+import { SqliteScheduledJobLeaseStore } from "./scheduled-job-lease-store.js";
+import { SqliteAdminOperationsStore } from "./admin-operations-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const MEDIA_ID = "abcdefghijklmnopqrstu";
@@ -520,15 +522,15 @@ describe("SqliteMediaStore shared asset links", () => {
     ) VALUES (?, 'event_image', 'image', 'deleting', ?, ?, ?, ?)`);
     insert.run(MEDIA_ID, "claim-success", "2026-08-09T12:10:00.000Z", NOW, NOW);
     const store = new SqliteMediaStore(new SqliteTestExecutor(database));
-    await store.finalizeDeletion(
-      MEDIA_ID,
-      "claim-success",
-      createSchedulerAuditFactory("media-success", NOW)({
+    await expect(store.finalizeDeletions([{
+      mediaId: MEDIA_ID,
+      claimToken: "claim-success",
+      audit: createSchedulerAuditFactory("media-success", NOW)({
         subjectType: "media_cleanup",
         subjectId: MEDIA_ID,
         action: "delete",
       }),
-    );
+    }])).resolves.toEqual([MEDIA_ID]);
     expect(database.prepare("SELECT id FROM media_assets WHERE id = ?").get(MEDIA_ID)).toBeUndefined();
     expect(database.prepare("SELECT actor_id FROM audit_log WHERE subject_id = ?").get(MEDIA_ID))
       .toMatchObject({ actor_id: "system:scheduler" });
@@ -538,17 +540,98 @@ describe("SqliteMediaStore shared asset links", () => {
     database.exec(`CREATE TRIGGER reject_media_cleanup_audit
       BEFORE INSERT ON audit_log WHEN NEW.subject_id = '${failedId}'
       BEGIN SELECT RAISE(ABORT, 'media audit rejected'); END;`);
-    await expect(store.finalizeDeletion(
-      failedId,
-      "claim-failure",
-      createSchedulerAuditFactory("media-failure", NOW)({
+    const otherId = mediaId(3);
+    insert.run(otherId, "claim-other", "2026-08-09T12:10:00.000Z", NOW, NOW);
+    await expect(store.finalizeDeletions([{
+      mediaId: otherId,
+      claimToken: "claim-other",
+      audit: createSchedulerAuditFactory("media-other", NOW)({ subjectType: "media_cleanup", subjectId: otherId, action: "delete" }),
+    }, {
+      mediaId: failedId,
+      claimToken: "claim-failure",
+      audit: createSchedulerAuditFactory("media-failure", NOW)({
         subjectType: "media_cleanup",
         subjectId: failedId,
         action: "delete",
       }),
-    )).rejects.toThrow("media audit rejected");
+    }])).rejects.toThrow("media audit rejected");
     expect(database.prepare("SELECT id FROM media_assets WHERE id = ?").get(failedId))
       .toMatchObject({ id: failedId });
+    expect(database.prepare("SELECT id FROM media_assets WHERE id = ?").get(otherId)).toMatchObject({ id: otherId });
+    expect(database.prepare("SELECT id FROM audit_log WHERE subject_id = ?").get(otherId)).toBeUndefined();
+  });
+
+  it("finalizes only matching claim tokens and resolves user audit labels at commit", async () => {
+    const database = new DatabaseSync(":memory:");
+    databases.push(database);
+    database.exec("PRAGMA foreign_keys = ON");
+    applyAppMigrations(database);
+    database.prepare("INSERT INTO users (id, display_name, role_id, revision_token) VALUES ('actor', 'Current name', 'member', 'actor-revision-token')").run();
+    const insert = database.prepare(`INSERT INTO media_assets (
+      id, purpose, media_type, state, delete_claim_token, delete_claim_until, created_at, updated_at
+    ) VALUES (?, 'event_image', 'image', 'deleting', ?, '2026-08-09T12:10:00.000Z', ?, ?)`);
+    insert.run(MEDIA_ID, "current-claim", NOW, NOW);
+    insert.run(SECOND_MEDIA_ID, "another-claim", NOW, NOW);
+    const sql = new SqliteTestExecutor(database);
+    const store = new SqliteMediaStore(sql);
+    const audit = createSchedulerAuditFactory("claims", NOW);
+    await expect(store.finalizeDeletions([
+      { mediaId: MEDIA_ID, claimToken: "current-claim", audit: {
+        ...audit({ subjectType: "media_cleanup", subjectId: MEDIA_ID, action: "delete" }),
+        actorKind: "user", actorId: "actor", actorLabel: "Stale name",
+      } },
+      { mediaId: SECOND_MEDIA_ID, claimToken: "old-claim", audit: audit({ subjectType: "media_cleanup", subjectId: SECOND_MEDIA_ID, action: "delete" }) },
+    ])).resolves.toEqual([MEDIA_ID]);
+    expect(sql.batches.at(-1)).toHaveLength(2);
+    expect(database.prepare("SELECT actor_label FROM audit_log WHERE subject_id = ?").get(MEDIA_ID))
+      .toMatchObject({ actor_label: "Current name" });
+    expect(database.prepare("SELECT id FROM media_assets WHERE id = ?").get(SECOND_MEDIA_ID)).toBeDefined();
+    expect(database.prepare("SELECT id FROM audit_log WHERE subject_id = ?").get(SECOND_MEDIA_ID)).toBeUndefined();
+  });
+
+  it("drains forty assets within the Free D1 invocation query budget and retains the exact backlog", async () => {
+    const database = new DatabaseSync(":memory:");
+    databases.push(database);
+    database.exec("PRAGMA foreign_keys = ON");
+    applyAppMigrations(database);
+    const insertAsset = database.prepare(`INSERT INTO media_assets (
+      id, purpose, media_type, state, expires_at, created_at, updated_at
+    ) VALUES (?, 'event_image', 'image', 'staged', ?, ?, ?)`);
+    const insertVariant = database.prepare(`INSERT INTO media_variants (
+      media_id, variant, object_key, content_type, byte_size, sha256, width, height
+    ) VALUES (?, 'view', ?, 'image/webp', 10, ?, 1, 1)`);
+    for (let index = 1; index <= 41; index += 1) {
+      const id = mediaId(index);
+      insertAsset.run(id, "2026-08-08T12:00:00.000Z", NOW, NOW);
+      insertVariant.run(id, `media/${id}/view.webp`, "b".repeat(64));
+    }
+    const sql = new SqliteTestExecutor(database);
+    const execute = vi.spyOn(sql, "execute");
+    const batch = vi.spyOn(sql, "batch");
+    const read = vi.spyOn(sql, "read");
+    const readBatch = vi.spyOn(sql, "readBatch");
+    const blobs = { delete: vi.fn().mockResolvedValue(undefined) } as unknown as BlobStore;
+    const unusedJob = { run: vi.fn(), inspectBacklog: vi.fn() };
+    const outcome = await new ScheduledJobCoordinator({
+      leases: new SqliteScheduledJobLeaseStore(sql),
+      statuses: new SqliteAdminOperationsStore(sql),
+      mediaGarbageCollection: new ScheduledMediaGarbageCollectionJob(new MediaService(new SqliteMediaStore(sql), blobs)),
+      recurrenceMaterialization: unusedJob, announcementPublish: unusedJob, raffleAutoDraw: unusedJob,
+      eventAutoArchive: unusedJob, auditArchive: unusedJob, sessionCleanup: unusedJob, systemTestCleanup: unusedJob,
+      now: () => new Date(NOW), monotonicNow: () => 0, createLeaseToken: () => "media-budget-lease-token",
+    }).run("media-gc");
+    expect(outcome).toMatchObject({
+      status: "completed", processed: 40, batches: 4, hasMore: true,
+      backlog: { pendingCount: 1, countPrecision: "exact", oldestPendingAt: "2026-08-08T12:00:00.000Z" },
+    });
+    const queries = execute.mock.calls.length + read.mock.calls.length
+      + [...batch.mock.calls, ...readBatch.mock.calls].reduce((sum, [statements]) => sum + statements.length, 0);
+    expect(queries).toBe(43);
+    expect(queries).toBeLessThanOrEqual(50);
+    expect(blobs.delete).toHaveBeenCalledTimes(40);
+    expect(database.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE subject_type = 'media_cleanup'").get())
+      .toMatchObject({ count: 40 });
+    expect(database.prepare("SELECT COUNT(*) AS count FROM media_assets").get()).toMatchObject({ count: 1 });
   });
 
   it("claims a bounded garbage-collection batch with one shared claim token", async () => {

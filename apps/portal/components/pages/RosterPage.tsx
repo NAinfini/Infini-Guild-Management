@@ -5,7 +5,7 @@ import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { UsersIcon } from "@portal/components/icons";
 import { Button } from "@portal/components/ui/button";
 import { Card, CardContent } from "@portal/components/ui/card";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useRosterPageController } from "../../hooks/useRosterPageController";
 import { resolveMediaUrl } from "../../utils/media";
@@ -26,10 +26,10 @@ export function RosterPage() {
   const navigate = useNavigate();
   const controller = useRosterPageController();
 
-  useLoadWarningToast(controller.usersQuery.isError, t("common:loadErrorRetry"));
+  useLoadWarningToast(controller.usersQuery.isError || controller.selectedQuery.isError, t("common:loadErrorRetry"));
 
-  const { sortedRows, pageRows, currentPage, pageCount, debouncedSearch, classFilter, sortMode } = controller;
-  const rosterUnavailable = controller.usersQuery.isError && sortedRows.length === 0;
+  const { totalCount, pageRows, currentPage, pageCount, debouncedSearch, classFilter, sortMode } = controller;
+  const rosterUnavailable = controller.usersQuery.isError && pageRows.length === 0;
 
   const handleCardFocus = (entry: RosterEntry) => {
     controller.playHoverAudio(entry);
@@ -58,7 +58,7 @@ export function RosterPage() {
             audioVolume={controller.audioVolume}
             onAudioVolumeChange={controller.setAudioVolumeState}
             renderedCount={pageRows.length}
-            totalCount={sortedRows.length}
+            totalCount={totalCount}
           />
         )}
       >
@@ -79,12 +79,8 @@ export function RosterPage() {
               </CardContent>
             </Card>
           ) : controller.usersQuery.isLoading ? (
-            <div className="roster-loading-grid" aria-busy="true">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <Skeleton key={index} className="roster-loading-card" />
-              ))}
-            </div>
-          ) : sortedRows.length === 0 ? (
+            <LoadingIndicator />
+          ) : pageRows.length === 0 ? (
             <Card className="roster-empty-card">
               <CardContent className="roster-empty-card__content">
                 <EmptyState
@@ -108,7 +104,7 @@ export function RosterPage() {
             </Card>
           ) : null}
 
-          {sortedRows.length > 0 ? (
+          {pageRows.length > 0 ? (
             <RosterGrid
               key={currentPage}
               rows={pageRows}
@@ -185,7 +181,7 @@ export function RosterPage() {
             if (controller.selected.user.id === controller.sessionUser.id) {
               void navigate({ to: "/profile" });
             } else {
-              void navigate({ to: "/admin", search: { member: controller.selected.user.display_name } });
+              void navigate({ to: "/admin", search: { member: controller.selected.user.id } });
             }
           }}
         />

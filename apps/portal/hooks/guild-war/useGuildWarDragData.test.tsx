@@ -1,5 +1,4 @@
-import type { GuildWarActiveResponse } from "@guild/shared";
-import type { UsersListResponse } from "../../services/UserService";
+import type { GuildWarActiveResponse, MemberPlanningEntry } from "@guild/shared";
 import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
@@ -34,7 +33,7 @@ const initialData = {
 
 function useDragDataHarness(
   activeData: GuildWarActiveResponse,
-  usersData?: UsersListResponse["data"],
+  usersData?: MemberPlanningEntry[],
 ) {
   const [teamDraftNames, setTeamDraftNames] = useState<Record<string, string>>({});
   const [, setTeamDraftNotes] = useState<Record<string, string>>({});
@@ -105,7 +104,7 @@ describe("useGuildWarDragData", () => {
         friday: [],
         saturday: [],
       },
-    } as const;
+    };
     const usersData = [{
       user: {
         id: "user-1",
@@ -114,14 +113,14 @@ describe("useGuildWarDragData", () => {
       profile: {
         power: 8200,
         classes: ["Mage"],
+        avatar_media_id: null,
         title_html: "<strong>Coordinator</strong>",
         availability,
         vacation_start: "2026-08-20",
         vacation_end: "2026-08-24",
         notes: "Prefers late-night wars",
       },
-      badges: [],
-    }] as unknown as UsersListResponse["data"];
+    }] satisfies MemberPlanningEntry[];
 
     const { result } = renderHook(() => useDragDataHarness(activeData, usersData));
     const detail = result.current.activeMemberDetailByUserId.get("user-1");

@@ -1,6 +1,5 @@
 import type {
   FeatureFlags,
-  MemberProfile,
   User,
 } from "@guild/shared";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -10,20 +9,21 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   redirect,
   retainSearchParams,
   useRouter,
 } from "@tanstack/react-router";
 import { userCanAccessAdmin } from "./utils/permissions";
-import { Suspense, lazy, useEffect, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
-import { apiRequest } from "./api/client";
 import { queryClient } from "./api/query-client";
 import { AppShell } from "./components/layout/AppShell";
+import { LoadingIndicator } from "./components/ui/loading-indicator";
 import { SystemStatusPage } from "./components/pages/SystemStatusPage";
 import { createRouteSessionResolver } from "./router-session";
-import { transitionSession } from "./session-transition";
+import { getSessionSnapshot, resolveSessionSnapshot, type PortalSession } from "./session-transition";
 import { useAuthStore } from "./stores/auth";
 import { useSiteConfigStore } from "./stores/site-config";
 import { EVENTS_ROUTE_SEARCH_SCHEMA } from "./utils/event-navigation";
@@ -35,19 +35,11 @@ import {
   startRouteProgress,
 } from "./components/ui/route-progress";
 
-type AuthSessionResponse = { user: User; profile: MemberProfile; session_scope: "normal" | "password_change" };
-
 const routeSessionResolver = createRouteSessionResolver({
-  getCachedSession: () => {
-    const store = useAuthStore.getState();
-    return store.user && store.profile && store.sessionScope
-      ? { user: store.user, profile: store.profile, session_scope: store.sessionScope }
-      : null;
-  },
+  getCachedSession: getSessionSnapshot,
   isSessionResolved: () => useAuthStore.getState().sessionResolved,
   markSessionResolved: () => useAuthStore.getState().markSessionResolved(),
-  requestSession: () => apiRequest<AuthSessionResponse>("/api/auth/me"),
-  transitionSession: (session) => transitionSession(queryClient, session, { broadcast: false }),
+  requestSession: () => resolveSessionSnapshot(queryClient, undefined, { broadcast: false }),
 });
 
 const PORTAL_PREVIEW_SEARCH_SCHEMA = z.object({
@@ -112,7 +104,7 @@ type AuthenticatedRouteLocation = {
 
 async function requireAuthenticatedSession(
   location: AuthenticatedRouteLocation,
-): Promise<AuthSessionResponse> {
+): Promise<PortalSession> {
   const hadCachedSession = Boolean(useAuthStore.getState().user);
   const session = await ensureSession();
   if (!session) {
@@ -159,262 +151,80 @@ async function requireFeatureMutationPermission(
   }
 }
 
-const LazyAdminPage = lazy(() => import("./components/pages/AdminPage").then((mod) => ({ default: mod.AdminPage })));
-const LazyAnnouncementsPage = lazy(() =>
+const LazyAdminPage = lazyRouteComponent(() => import("./components/pages/AdminPage").then((mod) => ({ default: mod.AdminPage })));
+const LazyAnnouncementsPage = lazyRouteComponent(() =>
   import("./components/pages/AnnouncementsPage").then((mod) => ({ default: mod.AnnouncementsPage })),
 );
-const LazyDashboardPage = lazy(() =>
+const LazyDashboardPage = lazyRouteComponent(() =>
   import("./components/pages/DashboardPage").then((mod) => ({ default: mod.DashboardPage })),
 );
-const LazyLandingPage = lazy(() =>
+const LazyLandingPage = lazyRouteComponent(() =>
   import("./components/pages/LandingPage").then((mod) => ({ default: mod.LandingPage })),
 );
-const LazyEventsPage = lazy(() => import("./components/pages/EventsPage").then((mod) => ({ default: mod.EventsPage })));
-const LazyEventDetailPage = lazy(() =>
+const LazyEventsPage = lazyRouteComponent(() => import("./components/pages/EventsPage").then((mod) => ({ default: mod.EventsPage })));
+const LazyEventDetailPage = lazyRouteComponent(() =>
   import("./components/pages/EventDetailPage").then((mod) => ({ default: mod.EventDetailPage })),
 );
-const LazyEventEditorPage = lazy(() =>
+const LazyEventEditorPage = lazyRouteComponent(() =>
   import("./components/pages/EventEditorPage").then((mod) => ({ default: mod.EventEditorPage })),
 );
-const LazyRecurringTemplatesPage = lazy(() =>
+const LazyRecurringTemplatesPage = lazyRouteComponent(() =>
   import("./components/pages/RecurringTemplatesPage").then((mod) => ({ default: mod.RecurringTemplatesPage })),
 );
-const LazyRecurringTemplateEditorPage = lazy(() =>
+const LazyRecurringTemplateEditorPage = lazyRouteComponent(() =>
   import("./components/pages/RecurringTemplateEditorPage").then((mod) => ({ default: mod.RecurringTemplateEditorPage })),
 );
-const LazyGalleryPage = lazy(() => import("./components/pages/GalleryPage").then((mod) => ({ default: mod.GalleryPage })));
-const LazyStoragePage = lazy(() => import("./components/pages/StoragePage").then((mod) => ({ default: mod.StoragePage })));
-const LazyStorageManagePage = lazy(() =>
+const LazyGalleryPage = lazyRouteComponent(() => import("./components/pages/GalleryPage").then((mod) => ({ default: mod.GalleryPage })));
+const LazyStoragePage = lazyRouteComponent(() => import("./components/pages/StoragePage").then((mod) => ({ default: mod.StoragePage })));
+const LazyStorageManagePage = lazyRouteComponent(() =>
   import("./components/pages/StorageManagePage").then((mod) => ({ default: mod.StorageManagePage })),
 );
-const LazyGuildWarPage = lazy(() =>
+const LazyGuildWarPage = lazyRouteComponent(() =>
   import("./components/pages/GuildWarPage").then((mod) => ({ default: mod.GuildWarPage })),
 );
-const LazyMyProfilePage = lazy(() =>
+const LazyMyProfilePage = lazyRouteComponent(() =>
   import("./components/pages/MyProfilePage").then((mod) => ({ default: mod.MyProfilePage })),
 );
-const LazyLoginPage = lazy(() => import("./components/pages/LoginPage").then((mod) => ({ default: mod.LoginPage })));
-const LazyRegisterPage = lazy(() =>
+const LazyLoginPage = lazyRouteComponent(() => import("./components/pages/LoginPage").then((mod) => ({ default: mod.LoginPage })));
+const LazyRegisterPage = lazyRouteComponent(() =>
   import("./components/pages/RegisterPage").then((mod) => ({ default: mod.RegisterPage })),
 );
-const LazyCompletePasswordResetPage = lazy(() =>
+const LazyCompletePasswordResetPage = lazyRouteComponent(() =>
   import("./components/pages/CompletePasswordResetPage").then((mod) => ({ default: mod.CompletePasswordResetPage })),
 );
-const LazyVerifyEmailPage = lazy(() =>
+const LazyVerifyEmailPage = lazyRouteComponent(() =>
   import("./components/pages/VerifyEmailPage").then((mod) => ({ default: mod.VerifyEmailPage })),
 );
-const LazySettingsPage = lazy(() =>
+const LazySettingsPage = lazyRouteComponent(() =>
   import("./components/pages/SettingsPage").then((mod) => ({ default: mod.SettingsPage })),
 );
-const LazyToolsPage = lazy(() => import("./components/pages/ToolsPage").then((mod) => ({ default: mod.ToolsPage })));
-const LazyWikiPage = lazy(() => import("./components/pages/WikiPage").then((mod) => ({ default: mod.WikiPage })));
-const LazyRosterPage = lazy(() =>
+const LazyToolsPage = lazyRouteComponent(() => import("./components/pages/ToolsPage").then((mod) => ({ default: mod.ToolsPage })));
+const LazyWikiPage = lazyRouteComponent(() => import("./components/pages/WikiPage").then((mod) => ({ default: mod.WikiPage })));
+const LazyRosterPage = lazyRouteComponent(() =>
   import("./components/pages/RosterPage").then((mod) => ({ default: mod.RosterPage })),
 );
 
-function RouteLoadingFallback(): ReactNode {
-  const { t } = useTranslation("common");
-
-  return (
-    <span className="sr-only" role="status" aria-live="polite">
-      {t("message.loading")}
-    </span>
-  );
-}
-
-function LandingRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyLandingPage />
-    </Suspense>
-  );
-}
-
-function DashboardRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyDashboardPage />
-    </Suspense>
-  );
-}
-
-function AnnouncementsRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyAnnouncementsPage />
-    </Suspense>
-  );
-}
-
-function EventsRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyEventsPage />
-    </Suspense>
-  );
-}
-
-function GuildWarRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyGuildWarPage />
-    </Suspense>
-  );
-}
-
-function GalleryRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyGalleryPage />
-    </Suspense>
-  );
-}
-
-function StorageRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyStoragePage />
-    </Suspense>
-  );
-}
-
-function StorageManageRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyStorageManagePage />
-    </Suspense>
-  );
-}
-
-function WikiRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyWikiPage />
-    </Suspense>
-  );
-}
-
-function MyProfileRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyMyProfilePage />
-    </Suspense>
-  );
-}
-
-function ToolsRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyToolsPage />
-    </Suspense>
-  );
-}
-
-function RosterRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyRosterPage />
-    </Suspense>
-  );
-}
-
-function AdminRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyAdminPage />
-    </Suspense>
-  );
-}
-
-function LoginRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyLoginPage />
-    </Suspense>
-  );
-}
-
-function RegisterRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyRegisterPage />
-    </Suspense>
-  );
-}
-
-function EventDetailRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyEventDetailPage />
-    </Suspense>
-  );
-}
-
 function EventCreateRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyEventEditorPage mode="create" />
-    </Suspense>
-  );
+  return <LazyEventEditorPage mode="create" />;
 }
+EventCreateRoutePage.preload = () => LazyEventEditorPage.preload?.();
 
 function EventEditRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyEventEditorPage mode="edit" />
-    </Suspense>
-  );
+  return <LazyEventEditorPage mode="edit" />;
 }
-
-function RecurringTemplatesRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyRecurringTemplatesPage />
-    </Suspense>
-  );
-}
+EventEditRoutePage.preload = () => LazyEventEditorPage.preload?.();
 
 function RecurringTemplateCreateRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyRecurringTemplateEditorPage mode="create" />
-    </Suspense>
-  );
+  return <LazyRecurringTemplateEditorPage mode="create" />;
 }
+RecurringTemplateCreateRoutePage.preload = () => LazyRecurringTemplateEditorPage.preload?.();
 
 function RecurringTemplateEditRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyRecurringTemplateEditorPage mode="edit" />
-    </Suspense>
-  );
+  return <LazyRecurringTemplateEditorPage mode="edit" />;
 }
+RecurringTemplateEditRoutePage.preload = () => LazyRecurringTemplateEditorPage.preload?.();
 
-function CompletePasswordResetRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyCompletePasswordResetPage />
-    </Suspense>
-  );
-}
-
-function VerifyEmailRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazyVerifyEmailPage />
-    </Suspense>
-  );
-}
-
-function SettingsRoutePage() {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <LazySettingsPage />
-    </Suspense>
-  );
-}
-
-async function ensureSession(): Promise<AuthSessionResponse | null> {
+async function ensureSession(): Promise<PortalSession | null> {
   return routeSessionResolver.resolve();
 }
 
@@ -453,6 +263,25 @@ function RouteErrorFallback(): ReactNode {
       title={title}
       description={t("errors.pageUnavailable.description")}
       action={{ label: t("action.retry"), onClick: () => void router.invalidate() }}
+    />
+  );
+}
+
+function UnauthorizedPage(): ReactNode {
+  const { t } = useTranslation("common");
+  const title = t("unauthorized.title");
+
+  useEffect(() => {
+    document.title = `401 - ${title}`;
+  }, [title]);
+
+  return (
+    <SystemStatusPage
+      kind="unauthorized"
+      code="401"
+      title={title}
+      description={t("unauthorized.description")}
+      action={{ label: t("action.goToLogin"), href: "/login" }}
     />
   );
 }
@@ -511,27 +340,27 @@ const rootRoute = createRootRoute({
 const publicSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
-  component: SettingsRoutePage,
+  component: LazySettingsPage,
 });
 
 const publicToolsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tools",
   beforeLoad: () => requireRouteFeature("tools"),
-  component: ToolsRoutePage,
+  component: LazyToolsPage,
 });
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
   validateSearch: (search) => LOGIN_SEARCH_SCHEMA.parse(search),
-  component: LoginRoutePage,
+  component: LazyLoginPage,
 });
 
 const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/register/$inviteCode",
-  component: RegisterRoutePage,
+  component: LazyRegisterPage,
 });
 
 // Same page without a code in the URL: it asks for the invite code first. This
@@ -540,7 +369,13 @@ const registerRoute = createRoute({
 const registerEntryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/register",
-  component: RegisterRoutePage,
+  component: LazyRegisterPage,
+});
+
+const unauthorizedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/401",
+  component: UnauthorizedPage,
 });
 
 const forbiddenRoute = createRoute({
@@ -571,13 +406,13 @@ const homeRoute = createRoute({
   beforeLoad: () => {
     if (useAuthStore.getState().user) throw redirect({ to: "/dashboard" });
   },
-  component: LandingRoutePage,
+  component: LazyLandingPage,
 });
 
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/dashboard",
-  component: DashboardRoutePage,
+  component: LazyDashboardPage,
 });
 
 const eventsRoute = createRoute({
@@ -585,7 +420,7 @@ const eventsRoute = createRoute({
   path: "/events",
   beforeLoad: () => requireRouteFeature("events"),
   validateSearch: (search) => EVENTS_ROUTE_SEARCH_SCHEMA.parse(search),
-  component: EventsRoutePage,
+  component: LazyEventsPage,
 });
 
 const eventDetailRoute = createRoute({
@@ -594,7 +429,7 @@ const eventDetailRoute = createRoute({
   beforeLoad: () => {
     requireRouteFeature("events");
   },
-  component: EventDetailRoutePage,
+  component: LazyEventDetailPage,
 });
 
 const eventCreateRoute = createRoute({
@@ -616,7 +451,7 @@ const recurringTemplatesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/events/recurring",
   beforeLoad: ({ location }) => requireEventMutationPermission("events.templates", location),
-  component: RecurringTemplatesRoutePage,
+  component: LazyRecurringTemplatesPage,
 });
 
 const recurringTemplateCreateRoute = createRoute({
@@ -636,7 +471,7 @@ const recurringTemplateEditRoute = createRoute({
 const rosterRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/roster",
-  component: RosterRoutePage,
+  component: LazyRosterPage,
 });
 
 const profileRoute = createRoute({
@@ -648,7 +483,7 @@ const profileRoute = createRoute({
       throw redirect({ to: "/403" });
     }
   },
-  component: MyProfileRoutePage,
+  component: LazyMyProfilePage,
 });
 
 const completePasswordResetRoute = createRoute({
@@ -659,7 +494,7 @@ const completePasswordResetRoute = createRoute({
     const session = await ensureSession();
     if (!session || session.session_scope !== "password_change") throw redirect({ to: "/" });
   },
-  component: CompletePasswordResetRoutePage,
+  component: LazyCompletePasswordResetPage,
 });
 
 const verifyEmailRoute = createRoute({
@@ -669,7 +504,7 @@ const verifyEmailRoute = createRoute({
     const session = await ensureSession();
     if (!session || session.session_scope !== "normal") throw redirect({ to: "/" });
   },
-  component: VerifyEmailRoutePage,
+  component: LazyVerifyEmailPage,
 });
 
 const announcementsRoute = createRoute({
@@ -677,7 +512,7 @@ const announcementsRoute = createRoute({
   path: "/announcements",
   beforeLoad: () => requireRouteFeature("announcements"),
   validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
-  component: AnnouncementsRoutePage,
+  component: LazyAnnouncementsPage,
 });
 
 const announcementCreateRoute = createRoute({
@@ -689,7 +524,7 @@ const announcementCreateRoute = createRoute({
     location,
   ),
   validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
-  component: AnnouncementsRoutePage,
+  component: LazyAnnouncementsPage,
 });
 
 const announcementDetailRoute = createRoute({
@@ -697,7 +532,7 @@ const announcementDetailRoute = createRoute({
   path: "/announcements/$announcementId",
   beforeLoad: () => requireRouteFeature("announcements"),
   validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
-  component: AnnouncementsRoutePage,
+  component: LazyAnnouncementsPage,
 });
 
 const guildWarRoute = createRoute({
@@ -705,14 +540,14 @@ const guildWarRoute = createRoute({
   path: "/guild-war",
   beforeLoad: () => requireRouteFeature("guildWar"),
   validateSearch: (search) => GUILD_WAR_SEARCH_SCHEMA.parse(search),
-  component: GuildWarRoutePage,
+  component: LazyGuildWarPage,
 });
 
 const galleryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/gallery",
   beforeLoad: () => requireRouteFeature("gallery"),
-  component: GalleryRoutePage,
+  component: LazyGalleryPage,
 });
 
 const storageRoute = createRoute({
@@ -725,7 +560,7 @@ const storageRoute = createRoute({
       throw redirect({ to: "/403" });
     }
   },
-  component: StorageRoutePage,
+  component: LazyStoragePage,
 });
 
 const storageManageRoute = createRoute({
@@ -742,7 +577,7 @@ const storageManageRoute = createRoute({
       throw redirect({ to: "/storage" });
     }
   },
-  component: StorageManageRoutePage,
+  component: LazyStorageManagePage,
 });
 
 const wikiRoute = createRoute({
@@ -750,7 +585,7 @@ const wikiRoute = createRoute({
   path: "/wiki",
   beforeLoad: () => requireRouteFeature("wiki"),
   validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
-  component: WikiRoutePage,
+  component: LazyWikiPage,
 });
 
 const wikiCreateRoute = createRoute({
@@ -762,7 +597,7 @@ const wikiCreateRoute = createRoute({
     location,
   ),
   validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
-  component: WikiRoutePage,
+  component: LazyWikiPage,
 });
 
 const wikiSlugRoute = createRoute({
@@ -770,7 +605,7 @@ const wikiSlugRoute = createRoute({
   path: "/wiki/$slug",
   beforeLoad: () => requireRouteFeature("wiki"),
   validateSearch: (search) => CONTENT_SEARCH_SCHEMA.parse(search),
-  component: WikiRoutePage,
+  component: LazyWikiPage,
 });
 
 const ADMIN_SEARCH_SCHEMA = z.object({
@@ -807,7 +642,7 @@ const adminRoute = createRoute({
       throw redirect({ to: "/403" });
     }
   },
-  component: AdminRoutePage,
+  component: LazyAdminPage,
 });
 
 // Public browsing routes are listed before the authenticated branch so guests
@@ -836,6 +671,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   registerRoute,
   registerEntryRoute,
+  unauthorizedRoute,
   forbiddenRoute,
   maintenanceRoute,
   // User, moderator, and admin-only features stay locked behind session checks.
@@ -849,12 +685,24 @@ const routeTree = rootRoute.addChildren([
   ]),
 ]);
 
-const router = createRouter({ routeTree, defaultViewTransition: false });
+const router = createRouter({
+  routeTree,
+  defaultViewTransition: false,
+  defaultPendingComponent: LoadingIndicator,
+  // Keep the current route interactive until the target module is ready.
+  defaultPendingMs: Infinity,
+});
 
 router.subscribe("onBeforeLoad", startRouteProgress);
 router.subscribe("onResolved", completeRouteProgress);
 
 export function AppRouter() {
+  useEffect(() => useAuthStore.subscribe((state, previous) => {
+    if (state.user !== previous.user || state.sessionScope !== previous.sessionScope) {
+      void router.invalidate();
+    }
+  }), []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <RouteProgress />

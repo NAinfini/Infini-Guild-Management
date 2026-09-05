@@ -6,17 +6,25 @@
   min-block-size: 0;
 }
 
-.admin-users__skeleton {
-  display: grid;
-  gap: var(--space-sm);
-}
-
 .admin-users__account-status,
 .admin-users__selection-hint {
   margin: 0;
   color: var(--text-muted);
   font-size: var(--text-meta);
   line-height: var(--lh-normal);
+}
+
+.admin-users__account-status {
+  grid-column: 1 / -1;
+  padding: var(--space-md) var(--space-lg) 0;
+}
+
+.admin-users__account-status + .admin-stat {
+  border-inline-start: 0;
+}
+
+.admin-users__selection-hint {
+  margin-top: var(--space-sm);
 }
 
 .admin-users__desktop-table > .admin-users__table-scroll {

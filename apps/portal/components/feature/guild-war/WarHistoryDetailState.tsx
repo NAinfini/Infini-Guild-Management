@@ -1,5 +1,5 @@
 import { Alert } from "@portal/components/ui/alert";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { EmptyState } from "@portal/components/shared/EmptyState";
 
 type WarHistoryDetailStateProps = {
@@ -20,11 +20,7 @@ export function WarHistoryDetailState({
   return (
     <>
       {loading ? (
-        <div className="war-history-detail-panel__loading">
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-18 w-full" />
-          <Skeleton className="h-55 w-full" />
-        </div>
+        <LoadingIndicator />
       ) : null}
       {error ? <Alert variant="destructive">{errorMessage}</Alert> : null}
       {empty ? (

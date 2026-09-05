@@ -124,7 +124,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .entity-navigator__root,
   .entity-navigator__child {
     transition: none;

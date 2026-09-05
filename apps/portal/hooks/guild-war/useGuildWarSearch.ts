@@ -1,4 +1,5 @@
 import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
+import { useReducedMotionPreference } from "../useReducedMotionPreference";
 import type { DragMemberColumn } from "./useGuildWarDragData";
 
 function toMemberDomId(itemId: string): string {
@@ -21,6 +22,7 @@ export function useGuildWarSearch({
   dragColumns,
 }: UseGuildWarSearchParams) {
   const normalizedActiveSearch = activeSearch.trim().toLowerCase();
+  const reducedMotion = useReducedMotionPreference();
 
   const matchedItemIds = useMemo(() => {
     if (!normalizedActiveSearch) return [] as string[];
@@ -48,8 +50,8 @@ export function useGuildWarSearch({
     if (!activeMatchedItemId) return;
     const element = document.getElementById(toMemberDomId(activeMatchedItemId));
     if (!element) return;
-    element.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
-  }, [activeMatchedItemId]);
+    element.scrollIntoView({ block: "center", inline: "nearest", behavior: reducedMotion ? "instant" : "smooth" });
+  }, [activeMatchedItemId, reducedMotion]);
 
   return {
     matchedItemIds,

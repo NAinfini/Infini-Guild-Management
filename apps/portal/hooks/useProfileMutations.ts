@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { MemberProfile, User, UserBadge } from "@guild/shared";
+import type { UserDetailResponse } from "@guild/shared";
 import { useAppError } from "./useAppError";
 import type { UseMediaUploadState } from "./useMediaUpload";
 import type { ProfileDraftSnapshot, ProfileFormStateController } from "./useProfileFormState";
@@ -16,7 +16,7 @@ import {
 import type { ProfileAudioUploadResult, ProfileImageUploadResult } from "../services/UserService";
 import { useAuthStore } from "../stores/auth";
 import { notifySuccess } from "../utils/notifications";
-import { transitionSession } from "../session-transition";
+import { captureSessionRequest, logoutSession } from "../session-transition";
 
 type UseProfileMutationsParams = {
   form: ProfileFormStateController;
@@ -24,29 +24,17 @@ type UseProfileMutationsParams = {
   audioUploader: UseMediaUploadState<ProfileAudioUploadResult>;
 };
 
-type MyProfileDetailCache = {
-  user: User;
-  profile: MemberProfile;
-  badges: UserBadge[];
-  edit_revisions?: {
-    user_revision_token: string;
-    profile_revision_token: string;
-  };
-};
-
 export function useProfileMutations({ form, imageUploader, audioUploader }: UseProfileMutationsParams) {
   const { t } = useTranslation("profile");
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-  const sessionScope = useAuthStore((state) => state.sessionScope);
-  const setSession = useAuthStore((state) => state.setSession);
-  const setProfile = useAuthStore((state) => state.setProfile);
   const queryClient = useQueryClient();
   const { showError } = useAppError();
   const removingImageIdsRef = useRef(new Set<string>());
   const [removingImageIds, setRemovingImageIds] = useState<ReadonlySet<string>>(new Set());
 
   const saveProfileMutation = useMutation({
+    onMutate: () => captureSessionRequest(),
     mutationFn: async () => {
       if (!user) throw new Error("Missing user session");
       if (!form.profileRevisionToken) throw new Error("Missing profile revision token");
@@ -75,14 +63,14 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       }, form.profileRevisionToken);
       return { profile, submitted, profileRevisionToken };
     },
-    onSuccess: ({ profile: updatedProfile, submitted, profileRevisionToken }) => {
+    onSuccess: ({ profile: updatedProfile, submitted, profileRevisionToken }, _variables, request) => {
+      if (!request?.isCurrent()) return;
       form.acceptServerProfile(updatedProfile, submitted.displayName, submitted, profileRevisionToken);
-      if (user && sessionScope) {
-        setSession({ ...user, display_name: submitted.displayName }, updatedProfile, sessionScope);
-      } else {
-        setProfile(updatedProfile);
+      const current = useAuthStore.getState();
+      if (current.user && current.sessionScope) {
+        current.setSession({ ...current.user, display_name: submitted.displayName }, updatedProfile, current.sessionScope);
       }
-      queryClient.setQueryData<MyProfileDetailCache>(queryKeys.myProfile.detail(user?.id), (current) => (
+      queryClient.setQueryData<UserDetailResponse>(queryKeys.myProfile.detail(user?.id), (current) => (
         current
           ? {
               ...current,
@@ -103,7 +91,8 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       void queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
       notifySuccess(t("message.profileSaved"));
     },
-    onError: (error) => {
+    onError: (error, _variables, request) => {
+      if (!request?.isCurrent()) return;
       showError(error, t("message.profileSaveFailed"));
     },
   });
@@ -145,9 +134,8 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   });
 
   const logoutMutation = useMutation({
-    mutationFn: (_reason?: "expired") => requestLogout(),
-    onSettled: (_data, _error, reason) => {
-      transitionSession(queryClient, null);
+    mutationFn: (_reason?: "expired") => logoutSession(queryClient, requestLogout),
+    onMutate: (reason) => {
       void navigate({
         to: "/login",
         search: reason === "expired" ? { reason } : {},

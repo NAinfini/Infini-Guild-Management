@@ -1,15 +1,16 @@
 import {
   ACTIVE_VISUAL_THEME,
   resolveVisualThemeAssetSource,
-  type VisualPageSceneId,
+  type ResponsiveVisualThemeAsset,
   type VisualStatusSceneId,
-  type VisualThemeAsset,
+  type VisualWorkspaceSceneId,
 } from "../../visual/themes";
 import type { CSSProperties } from "react";
 import { useTheme } from "../../providers/ThemeProvider";
 import "./VisualThemeArtwork.css";
 
-type VisualThemePublicSceneVariant =
+type VisualThemeSceneVariant =
+  | `workspace-${VisualWorkspaceSceneId}`
   | "landing"
   | "access-login"
   | "access-register"
@@ -17,19 +18,17 @@ type VisualThemePublicSceneVariant =
 
 type VisualThemeSceneProps = {
   className?: string;
-  variant?: VisualThemePublicSceneVariant | "navigation" | VisualPageSceneId;
+  variant?: VisualThemeSceneVariant;
   loading?: "eager" | "lazy";
   fetchPriority?: "high" | "low" | "auto";
 };
 
-type ResolvedThemeAsset = Readonly<{
-  desktop: VisualThemeAsset;
-  mobile?: VisualThemeAsset;
-}>;
-
 function resolveThemeAssets(
   variant: NonNullable<VisualThemeSceneProps["variant"]>,
-): ResolvedThemeAsset {
+): ResponsiveVisualThemeAsset {
+  if (variant === "workspace-guild") return ACTIVE_VISUAL_THEME.scenes.workspace.guild;
+  if (variant === "workspace-falls") return ACTIVE_VISUAL_THEME.scenes.workspace.falls;
+  if (variant === "workspace-citadel") return ACTIVE_VISUAL_THEME.scenes.workspace.citadel;
   if (variant === "landing") return ACTIVE_VISUAL_THEME.scenes.landing;
   if (variant === "access-login") return ACTIVE_VISUAL_THEME.scenes.access.login;
   if (variant === "access-register") return ACTIVE_VISUAL_THEME.scenes.access.register;
@@ -37,8 +36,8 @@ function resolveThemeAssets(
   if (variant === "status-error") return ACTIVE_VISUAL_THEME.scenes.status.error;
   if (variant === "status-forbidden") return ACTIVE_VISUAL_THEME.scenes.status.forbidden;
   if (variant === "status-maintenance") return ACTIVE_VISUAL_THEME.scenes.status.maintenance;
-  if (variant === "navigation") return { desktop: ACTIVE_VISUAL_THEME.scenes.navigation };
-  return { desktop: ACTIVE_VISUAL_THEME.scenes.routes[variant] };
+  const unsupportedVariant: never = variant;
+  throw new Error(`Unsupported visual scene: ${unsupportedVariant}`);
 }
 
 export function VisualThemeScene({
@@ -51,12 +50,10 @@ export function VisualThemeScene({
   const assets = resolveThemeAssets(variant);
   const asset = assets.desktop;
   const desktopSource = resolveVisualThemeAssetSource(asset, theme);
-  const mobileSource = assets.mobile
-    ? resolveVisualThemeAssetSource(assets.mobile, theme)
-    : undefined;
+  const mobileSource = resolveVisualThemeAssetSource(assets.mobile, theme);
   const imagePosition = {
     "--visual-theme-object-position": asset.objectPosition,
-    "--visual-theme-mobile-object-position": assets.mobile?.objectPosition ?? asset.objectPosition,
+    "--visual-theme-mobile-object-position": assets.mobile.objectPosition,
   } as CSSProperties;
 
   return (
@@ -66,28 +63,13 @@ export function VisualThemeScene({
       data-visual-theme={ACTIVE_VISUAL_THEME.id}
       data-visual-color-mode={theme}
     >
-      {assets.mobile ? (
-        <picture className="visual-theme-scene__picture">
-          <source
-            media="(max-width: 767px)"
-            srcSet={mobileSource?.src}
-          />
-          <img
-            key={`${desktopSource.src}:${mobileSource?.src}`}
-            src={desktopSource.src}
-            width={asset.width}
-            height={asset.height}
-            alt=""
-            className="visual-theme-scene__environment"
-            loading={loading}
-            fetchPriority={fetchPriority}
-            draggable={false}
-            style={imagePosition}
-          />
-        </picture>
-      ) : (
+      <picture className="visual-theme-scene__picture">
+        <source
+          media="(max-width: 767px)"
+          srcSet={mobileSource.src}
+        />
         <img
-          key={desktopSource.src}
+          key={`${desktopSource.src}:${mobileSource.src}`}
           src={desktopSource.src}
           width={asset.width}
           height={asset.height}
@@ -98,7 +80,7 @@ export function VisualThemeScene({
           draggable={false}
           style={imagePosition}
         />
-      )}
+      </picture>
     </div>
   );
 }

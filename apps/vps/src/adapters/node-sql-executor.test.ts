@@ -1,5 +1,6 @@
 import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { createAppDatabase } from "@guild/persistence-sqlite";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
@@ -82,7 +83,7 @@ describe("NodeSqlExecutor", () => {
       params: ["first", new Uint8Array([4, 5, 6])],
       method: "run",
     });
-    const result = await sql.execute({
+    const result = await sql.read({
       sql: "SELECT value, id, payload FROM rows",
       method: "all",
     });
@@ -96,11 +97,76 @@ describe("NodeSqlExecutor", () => {
       params: [`value-${index}`],
       method: "run",
     })));
-    const reads = await Promise.all(Array.from({ length: 10 }, () => sql.execute({
+    const reads = await Promise.all(Array.from({ length: 10 }, () => sql.read({
       sql: "SELECT COUNT(*) FROM rows",
       method: "get",
     })));
     for (const read of reads) expect(read.rows).toEqual([20]);
+  });
+
+  it("reads CTE snapshots without waiting for a queued writer under a WAL write lock", async () => {
+    const database = tempDatabase();
+    cleanup = database.cleanup;
+    const sql = open(database.path);
+    await sql.execute({ sql: "CREATE TABLE counters (value INTEGER)", method: "run" });
+    await sql.execute({ sql: "INSERT INTO counters VALUES (1)", method: "run" });
+    await sql.read({ sql: "SELECT value FROM counters", method: "get" });
+    const external = new DatabaseSync(database.path);
+    external.exec("BEGIN IMMEDIATE; UPDATE counters SET value = 2");
+    const writing = sql.batch([{ sql: "UPDATE counters SET value = 3", method: "run" }]);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const reading = sql.readBatch([
+        { sql: "WITH snapshot AS (SELECT value FROM counters) SELECT * FROM snapshot", method: "get", columns: ["value"] },
+        { sql: "SELECT value FROM counters", method: "get", columns: ["value"] },
+      ]);
+      const results = await Promise.race([
+        reading,
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error("Read waited for the writer lock")), 1_000);
+        }),
+      ]);
+      expect(results.map((result) => result.rows)).toEqual([[1], [1]]);
+    } finally {
+      clearTimeout(timeout);
+      external.exec("COMMIT");
+      external.close();
+      await writing;
+    }
+    expect((await sql.read({ sql: "SELECT value FROM counters", method: "get" })).rows).toEqual([3]);
+  });
+
+  it("keeps every read batch on one snapshot while another connection commits", async () => {
+    const sql = await fixture();
+    await sql.execute({ sql: "INSERT INTO rows(value) VALUES ('0')", method: "run" });
+    await sql.read({ sql: "SELECT value FROM rows", method: "get" });
+    const snapshots = Promise.all(Array.from({ length: 8 }, () => sql.readBatch([
+      { sql: "SELECT value FROM rows", method: "get", columns: ["value"] },
+      {
+        sql: "WITH RECURSIVE work(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM work WHERE n < 100000) SELECT sum(n) AS total FROM work",
+        method: "get", columns: ["total"],
+      },
+      { sql: "SELECT value FROM rows", method: "get", columns: ["value"] },
+    ])));
+    const writer = (async () => {
+      for (let value = 1; value <= 20; value += 1) {
+        await sql.execute({ sql: "UPDATE rows SET value = ?", params: [String(value)], method: "run" });
+      }
+    })();
+    const [results] = await Promise.all([snapshots, writer]);
+    for (const snapshot of results) expect(snapshot[0]?.rows).toEqual(snapshot[2]?.rows);
+    expect((await sql.read({ sql: "SELECT value FROM rows", method: "get" })).rows).toEqual(["20"]);
+  });
+
+  it("keeps reads protected with no reader workers and recovers from a failed read batch", async () => {
+    const sql = await fixture({ readers: 0 });
+    await expect(sql.readBatch([{ sql: "UPDATE rows SET value = 'bad' RETURNING id", method: "get", columns: ["id"] }]))
+      .rejects.toThrow();
+    await expect(sql.readBatch([{ sql: "SELECT missing_column FROM rows", method: "get", columns: ["missing_column"] }]))
+      .rejects.toThrow();
+    await sql.batch([{ sql: "INSERT INTO rows(value) VALUES ('kept')", method: "run" }]);
+    expect((await sql.readBatch([{ sql: "SELECT value FROM rows", method: "get", columns: ["value"] }]))[0]?.rows)
+      .toEqual(["kept"]);
   });
 
   it("accepts 100 bindings and rejects 101 before preparing SQL", async () => {
@@ -138,8 +204,8 @@ describe("NodeSqlExecutor", () => {
 
   it("rejects new work once the pending queue is full", async () => {
     const sql = await fixture({ maxPending: 1 });
-    const inFlight = sql.execute({ sql: "SELECT 1", method: "get" });
-    await expect(sql.execute({ sql: "SELECT 1", method: "get" }))
+    const inFlight = sql.read({ sql: "SELECT 1", method: "get" });
+    await expect(sql.read({ sql: "SELECT 1", method: "get" }))
       .rejects.toThrow("SQLite operation queue is full");
     await inFlight;
   });
@@ -160,7 +226,7 @@ describe("NodeSqlExecutor", () => {
     await writable.close();
 
     const readOnly = open(database.path, { readOnly: true, readers: 1 });
-    const rows = await readOnly.execute({ sql: "SELECT value FROM rows", method: "all" });
+    const rows = await readOnly.read({ sql: "SELECT value FROM rows", method: "all" });
     expect(rows.rows).toEqual([["kept"]]);
     await expect(readOnly.execute({
       sql: "INSERT INTO rows(value) VALUES (?)",
@@ -191,6 +257,10 @@ describe("NodeSqlExecutor", () => {
     await sql.close();
     await expect(sql.execute({ sql: "SELECT 1", method: "get" }))
       .rejects.toThrow("SQLite executor is closed");
+    await expect(sql.read({ sql: "SELECT 1", method: "get" }))
+      .rejects.toThrow("SQLite executor is closed");
+    await expect(sql.readBatch([{ sql: "SELECT 1 AS value", method: "get", columns: ["value"] }]))
+      .rejects.toThrow("SQLite executor is closed");
     await expect(sql.close()).resolves.toBeUndefined();
   });
 
@@ -215,7 +285,7 @@ describe("NodeSqlExecutor", () => {
     expect(lane.worker?.threadId).toBe(-1);
   });
 
-  it("backs the shared Drizzle sqlite-proxy callback and atomic batch", async () => {
+  it("exposes a read-only Drizzle surface backed by the read lane", async () => {
     const sql = await fixture();
     const rows = sqliteTable("rows", {
       id: integer("id").primaryKey(),
@@ -223,11 +293,12 @@ describe("NodeSqlExecutor", () => {
     });
     const db = createAppDatabase(sql, { schema: { rows } });
 
-    await db.batch([
-      db.insert(rows).values({ id: 1, value: "one" }),
-      db.insert(rows).values({ id: 2, value: "two" }),
+    await sql.batch([
+      { sql: "INSERT INTO rows(id, value) VALUES (1, 'one')", method: "run" },
+      { sql: "INSERT INTO rows(id, value) VALUES (2, 'two')", method: "run" },
     ]);
 
+    expect(Object.keys(db)).toEqual(["select"]);
     await expect(db.select().from(rows).orderBy(rows.id)).resolves.toEqual([
       { id: 1, value: "one" },
       { id: 2, value: "two" },

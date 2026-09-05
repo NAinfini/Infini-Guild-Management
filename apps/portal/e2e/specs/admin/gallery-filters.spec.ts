@@ -57,12 +57,16 @@ function card(page: Page, title: string): Locator {
 
 test("画廊搜索和类型筛选走服务端，并在结果集变化时清掉批量选择", async ({ page, flow }) => {
   const search = field(page, "Search gallery title, description or uploader");
-  await flow.act(() => search.fill(`  VIDEO ${stamp}  `), GALLERY);
+  await flow.act(() => search.fill(`  VIDEO ${stamp}  `), {
+    ...GALLERY, query: { search: `video ${stamp}` },
+  });
   await expect(search).toHaveValue(`  VIDEO ${stamp}  `);
   await expect(card(page, video.title)).toBeVisible();
   await expect(card(page, image.title)).toHaveCount(0);
 
-  await search.fill(String(stamp));
+  await flow.act(() => search.fill(String(stamp)), {
+    ...GALLERY, query: { search: String(stamp) },
+  });
   await expect(card(page, video.title)).toBeVisible();
   await expect(card(page, image.title)).toBeVisible();
 
@@ -73,7 +77,7 @@ test("画廊搜索和类型筛选走服务端，并在结果集变化时清掉�
 
   await flow.act(
     () => selectFilterOption(page, page.locator(".gallery-filters"), "Filter gallery by type", "Image"),
-    GALLERY,
+    { ...GALLERY, query: { search: String(stamp), type: "image" } },
   );
   await expect(card(page, image.title)).toBeVisible();
   await expect(card(page, video.title)).toHaveCount(0);

@@ -21,8 +21,8 @@ vi.mock("react-i18next", async (importOriginal) => {
   };
 });
 
-vi.mock("@portal/hooks/useMediaQuery", () => ({
-  useMediaQuery: () => mocks.reducedMotion,
+vi.mock("@portal/hooks/useReducedMotionPreference", () => ({
+  useReducedMotionPreference: () => mocks.reducedMotion,
 }));
 
 function renderDiceRoller() {
@@ -80,5 +80,20 @@ describe("DiceRollerModal", () => {
       "dice.resultAnnouncement 1d6 1 1",
     );
     expect(screen.getByRole("status").children).toHaveLength(1);
+  });
+
+  it("finishes an active roll when reduced motion becomes requested", () => {
+    vi.useFakeTimers();
+    const { rerender } = renderDiceRoller();
+    fireEvent.click(screen.getByRole("button", { name: "dice.roll" }));
+    expect(document.querySelector(".dice__stage--rolling")).not.toBeNull();
+
+    mocks.reducedMotion = true;
+    rerender(<DiceRollerModal opened onClose={vi.fn()} />);
+    expect(document.querySelector(".dice__stage--rolling")).toBeNull();
+    expect(document.querySelectorAll(".dice__history-item")).toHaveLength(1);
+    act(() => vi.advanceTimersByTime(ROLL_DURATION_MS_FOR_TEST));
+    expect(document.querySelectorAll(".dice__history-item")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("dice.resultAnnouncement 1d6 1 1");
   });
 });

@@ -2,6 +2,7 @@ import type { HeartbeatMessage, PushMessage } from "@guild/shared";
 import { pushMessageSchema } from "@guild/shared";
 import { nanoid } from "nanoid";
 import { useEffect, useRef } from "react";
+import { useAuthStore } from "../stores/auth";
 import { usePushSyncStore } from "../stores/push-sync";
 
 type UsePushSyncOptions = {
@@ -20,6 +21,7 @@ const WS_CLOSE_UNAUTHORIZED = 4401;
 
 export function usePushSync(options: UsePushSyncOptions = {}) {
   const enabled = options.enabled ?? true;
+  const sessionKey = useAuthStore((state) => state.sessionKey);
   const onMessageRef = useRef<((message: PushMessage) => void) | undefined>(options.onMessage);
   const onRefreshRef = useRef<(() => void) | undefined>(options.onRefresh);
   const onUnauthorizedRef = useRef<(() => void) | undefined>(options.onUnauthorized);
@@ -36,6 +38,7 @@ export function usePushSync(options: UsePushSyncOptions = {}) {
     }
 
     let isCleaningUp = false;
+    const isCurrentSession = () => !isCleaningUp && useAuthStore.getState().sessionKey === sessionKey;
     let socket: WebSocket | null = null;
     let reconnectTimeoutId: number | null = null;
     let fallbackPollId: number | null = null;
@@ -46,12 +49,12 @@ export function usePushSync(options: UsePushSyncOptions = {}) {
     const tabId = nanoid(12);
 
     const startFallbackPolling = (immediate: boolean) => {
-      if (fallbackPollId != null) {
+      if (!isCurrentSession() || fallbackPollId != null) {
         return;
       }
       if (immediate) onRefreshRef.current?.();
       fallbackPollId = window.setInterval(() => {
-        onRefreshRef.current?.();
+        if (isCurrentSession()) onRefreshRef.current?.();
       }, FALLBACK_POLL_INTERVAL_MS);
     };
 
@@ -74,7 +77,7 @@ export function usePushSync(options: UsePushSyncOptions = {}) {
     const startHeartbeat = (ws: WebSocket) => {
       stopHeartbeat();
       heartbeatTimerId = window.setInterval(() => {
-        if (ws.readyState !== WebSocket.OPEN) {
+        if (!isCurrentSession() || ws.readyState !== WebSocket.OPEN) {
           stopHeartbeat();
           return;
         }
@@ -90,26 +93,27 @@ export function usePushSync(options: UsePushSyncOptions = {}) {
     };
 
     const connect = () => {
-      if (isCleaningUp || socket !== null) {
+      if (!isCurrentSession() || socket !== null) {
         return;
       }
 
       const wsBase = window.location.origin;
-      socket = new WebSocket(`${wsBase.replace("http", "ws")}/ws`);
+      const connectedSocket = new WebSocket(`${wsBase.replace("http", "ws")}/ws`);
+      socket = connectedSocket;
 
-      socket.onopen = () => {
+      connectedSocket.onopen = () => {
+        if (!isCurrentSession() || socket !== connectedSocket) return;
         retryCount = 0;
         stopFallbackPolling();
         if (hasConnected) {
           onRefreshRef.current?.();
         }
         hasConnected = true;
-        if (socket) {
-          startHeartbeat(socket);
-        }
+        startHeartbeat(connectedSocket);
       };
 
-      socket.onmessage = (event) => {
+      connectedSocket.onmessage = (event) => {
+        if (!isCurrentSession() || socket !== connectedSocket) return;
         try {
           const parsed = pushMessageSchema.safeParse(JSON.parse(event.data));
           if (!parsed.success) return;
@@ -129,13 +133,12 @@ export function usePushSync(options: UsePushSyncOptions = {}) {
         }
       };
 
-      socket.onclose = (event) => {
+      connectedSocket.onclose = (event) => {
+        if (!isCurrentSession() || socket !== connectedSocket) return;
         stopHeartbeat();
         socket = null;
-        if (isCleaningUp) {
-          return;
-        }
         if (event.code === WS_CLOSE_UNAUTHORIZED) {
+          stopFallbackPolling();
           console.warn(`[usePushSync] WebSocket closed with auth error (code ${event.code}). Stopping reconnect.`);
           onUnauthorizedRef.current?.();
           return;
@@ -156,7 +159,7 @@ export function usePushSync(options: UsePushSyncOptions = {}) {
         reconnectTimeoutId = window.setTimeout(connect, delay);
       };
 
-      socket.onerror = () => {
+      connectedSocket.onerror = () => {
         // onclose handles retry behavior
       };
     };
@@ -170,8 +173,14 @@ export function usePushSync(options: UsePushSyncOptions = {}) {
       if (reconnectTimeoutId != null) {
         window.clearTimeout(reconnectTimeoutId);
       }
-      socket?.close();
+      if (socket) {
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onclose = null;
+        socket.onerror = null;
+        socket.close();
+      }
       socket = null;
     };
-  }, [enabled]);
+  }, [enabled, sessionKey]);
 }

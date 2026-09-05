@@ -240,6 +240,7 @@ export class IdentityAdminService {
     temporaryPassword: string;
   }>> {
     const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_USERS_EDIT);
+    context.authorization.require(PERMISSION_ID.ADMIN_USERS_ROLE);
     if (isReservedSystemTestIdentityName(input.loginName) || isReservedSystemTestIdentityName(input.displayName)) {
       throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Name is reserved" });
     }

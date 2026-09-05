@@ -1,10 +1,10 @@
-import { PERMISSIONS, type MemberProfile, type Permission, type User } from "@guild/shared";
+import { type MemberProfile, type MemberSummary } from "@guild/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { RosterGrid } from "./RosterGrid";
 
 vi.mock("../../shared/MemberCard", () => ({
-  MemberCard: ({ user }: { user: User }) => <button type="button">{user.display_name}</button>,
+  MemberCard: ({ user }: { user: MemberSummary }) => <button type="button">{user.display_name}</button>,
 }));
 
 vi.mock("../../../utils/media", () => ({
@@ -12,17 +12,13 @@ vi.mock("../../../utils/media", () => ({
 }));
 
 const now = "2026-07-29T12:00:00.000Z";
-const noPermissions = Object.fromEntries(
-  PERMISSIONS.map((permission) => [permission, false]),
-) as Record<Permission, boolean>;
-const user: User = {
+const user: MemberSummary = {
   id: "user-1",
   display_name: "Aster",
   role: "member",
   role_name: "Member",
   role_color: null,
   role_level: 1,
-  permissions: noPermissions,
   is_active: true,
   deleted_at: null,
   created_at: now,

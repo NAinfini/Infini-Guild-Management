@@ -1,8 +1,56 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { usePreferencesStore } from "@portal/stores/preferences";
 import { GuildWarAnalyticsChartPanel } from "./GuildWarAnalyticsChartPanel";
 
 describe("GuildWarAnalyticsChartPanel", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    usePreferencesStore.getState().resetPreferences();
+  });
+
+  it.each(["player", "radar"])("updates %s animation policy and releases the prior chart when motion changes", (mode) => {
+    const chartProps = vi.fn();
+    const releaseChart = vi.fn();
+    function Chart(props: Record<string, unknown>) {
+      chartProps(props);
+      useEffect(() => releaseChart, []);
+      return <div data-testid="analytics-chart" />;
+    }
+    const chartOption = { series: [{ type: "line", name: "Damage", data: [1, 3] }] };
+    const radarOption = { series: [{ type: "radar", data: [{ value: [1, 3] }] }] };
+    const sourceOption = mode === "radar" ? radarOption : chartOption;
+    usePreferencesStore.getState().setMotionPreference("reduce");
+    render(
+      <GuildWarAnalyticsChartPanel
+        ReactEChartsCore={Chart as never}
+        echarts={{}}
+        themeName="guild-light"
+        chartOption={chartOption}
+        radarOption={radarOption}
+        mode={mode}
+        selectedUsers={["user-1"]}
+        selectedMetrics={["damage"]}
+        expanded={false}
+        onToggleExpanded={vi.fn()}
+        heading={{ kicker: "Player", title: "Damage" }}
+        t={(key) => key}
+      />,
+    );
+    expect(chartProps.mock.lastCall?.[0].option).toEqual({ ...sourceOption, animation: false });
+    expect(releaseChart).not.toHaveBeenCalled();
+
+    act(() => usePreferencesStore.getState().setMotionPreference("system"));
+    expect(chartProps.mock.lastCall?.[0].option).toEqual({ ...sourceOption, animation: true });
+    expect(releaseChart).toHaveBeenCalledTimes(1);
+
+    act(() => usePreferencesStore.getState().setMotionPreference("reduce"));
+    expect(chartProps.mock.lastCall?.[0].option).toEqual({ ...sourceOption, animation: false });
+    expect(releaseChart).toHaveBeenCalledTimes(2);
+    expect(sourceOption).not.toHaveProperty("animation");
+  });
+
   it("replaces a blank chart with an actionable localized empty state", () => {
     const onAction = vi.fn();
     const Chart = vi.fn(() => <div data-testid="analytics-chart" />);

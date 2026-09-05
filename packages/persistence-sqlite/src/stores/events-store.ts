@@ -40,7 +40,7 @@ import type {
 } from "@guild/server/modules/events";
 import { monotonicTimestamp } from "@guild/server/modules/events";
 import type { AppDatabase } from "../database.js";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlRow, SqlValue } from "@guild/kernel";
+import type { SqlBatchStatement, SqlExecutor, SqlReadBatchStatement, SqlResult, SqlRow, SqlValue } from "@guild/kernel";
 import {
   eventClassQuotas,
   eventParticipants,
@@ -580,7 +580,7 @@ export class SqliteEventMediaPort implements EventMediaPort {
     if (ids.length > targetLimit) {
       throw new RangeError(`Event media reads support at most ${targetLimit} targets`);
     }
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "all",
       sql: `SELECT entity_id, media_id
         FROM media_links
@@ -2207,7 +2207,7 @@ export class SqliteEventsStore implements EventsStore {
   private quotaReadStatements(
     ownerKind: "event" | "recurring_template",
     ownerIds: readonly string[],
-  ): SqlBatchStatement[] {
+  ): SqlReadBatchStatement[] {
     const quotaTable = ownerKind === "event" ? "event_class_quotas" : "recurring_template_class_quotas";
     const ownerColumn = ownerKind === "event" ? "event_id" : "template_id";
     const quotaRowLimit = ownerIds.length * LIMITS.content.eventClassQuotas.max;
@@ -2244,7 +2244,7 @@ export class SqliteEventsStore implements EventsStore {
   }
 
   private async readQuotas(ownerKind: "event" | "recurring_template", ownerIds: readonly string[]) {
-    const results = await this.sql.batch(this.quotaReadStatements(ownerKind, ownerIds));
+    const results = await this.sql.readBatch(this.quotaReadStatements(ownerKind, ownerIds));
     return this.quotasFromResults(ownerKind, ownerIds, results);
   }
 

@@ -24,8 +24,9 @@ import {
   type OAuthProvider,
 } from "../../services/AuthService";
 import { useSiteConfigStore } from "../../stores/site-config";
-import { transitionSession } from "../../session-transition";
+import { authenticateSession } from "../../session-transition";
 import { isSafeReturnTo } from "../../utils/auth-navigation";
+import { authValidationFieldErrors } from "../../utils/auth-validation";
 import { AuthPageFrame } from "./AuthPageFrame";
 import "./AuthPages.css";
 
@@ -34,44 +35,6 @@ const LOGIN_FORM_SCHEMA = loginSchema.extend({
 });
 
 type LoginFormValues = z.infer<typeof LOGIN_FORM_SCHEMA>;
-type FieldErrorMap = Record<string, string>;
-
-function firstString(value: unknown): string | null {
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const text = firstString(item);
-      if (text) {
-        return text;
-      }
-    }
-  }
-  return null;
-}
-
-function parseValidationFieldErrors(details: unknown): FieldErrorMap {
-  if (!details || typeof details !== "object") {
-    return {};
-  }
-
-  const detailRecord = details as Record<string, unknown>;
-  const fieldErrorsValue = detailRecord.fieldErrors;
-  if (!fieldErrorsValue || typeof fieldErrorsValue !== "object") {
-    return {};
-  }
-
-  const fieldErrors = fieldErrorsValue as Record<string, unknown>;
-  const mapped: FieldErrorMap = {};
-  for (const [field, value] of Object.entries(fieldErrors)) {
-    const messageText = firstString(value);
-    if (messageText) {
-      mapped[field] = messageText;
-    }
-  }
-  return mapped;
-}
 
 type LoginNoticeTone = "info" | "warning" | "error";
 
@@ -121,9 +84,10 @@ export function LoginPage() {
     .map(([provider]) => provider);
 
   const loginMutation = useMutation({
-    mutationFn: requestLogin,
-    onSuccess: (response) => {
-      transitionSession(queryClient, response);
+    mutationFn: (values: LoginFormValues) => authenticateSession(queryClient, () => requestLogin(values)),
+    onSuccess: (result) => {
+      if (!result?.isCurrent()) return;
+      const response = result.session;
       const fallback = "/";
       const target = isSafeReturnTo(search.returnTo) ? search.returnTo : fallback;
       if (response.session_scope === "password_change") {
@@ -137,13 +101,15 @@ export function LoginPage() {
     },
     onError: (error) => {
       if (isApiRequestError(error) && error.status === 400) {
-        const mapped = parseValidationFieldErrors(error.details);
+        const mapped = authValidationFieldErrors("login", {
+          login_name: loginNameValue, password: passwordValue,
+        }, t, error.details);
         setApiFieldErrors({
           login_name: mapped.login_name ?? undefined,
           password: mapped.password ?? undefined,
         });
         if (!mapped.login_name && !mapped.password) {
-          setSubmitError(error.message);
+          setSubmitError(t("validation.formInvalid"));
         }
         return;
       }
@@ -155,14 +121,14 @@ export function LoginPage() {
         setSubmitError(t("tooManyAttempts"));
         return;
       }
-      setSubmitError(error instanceof Error ? error.message : t("invalidCredentials"));
+      setSubmitError(t("requestFailed"));
     },
   });
 
   const oauthMutation = useMutation({
     mutationFn: (provider: OAuthProvider) => startOAuth(provider),
     onSuccess: ({ authorization_url }) => window.location.assign(authorization_url),
-    onError: (error) => setSubmitError(error instanceof Error ? error.message : t("invalidCredentials")),
+    onError: () => setSubmitError(t("oauth.failed")),
   });
 
   const onSubmit = (values: LoginFormValues) => {
@@ -171,8 +137,11 @@ export function LoginPage() {
     loginMutation.mutate(values);
   };
 
-  const loginNameError = errors.login_name ? t("validation.loginNameRequired") : apiFieldErrors.login_name;
-  const passwordError = errors.password ? t("validation.passwordRequired") : apiFieldErrors.password;
+  const validationMessages = authValidationFieldErrors("login", {
+    login_name: loginNameValue, password: passwordValue,
+  }, t);
+  const loginNameError = errors.login_name ? validationMessages.login_name : apiFieldErrors.login_name;
+  const passwordError = errors.password ? validationMessages.password : apiFieldErrors.password;
 
   return (
     <AuthPageFrame mode="login">
@@ -189,40 +158,37 @@ export function LoginPage() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="login-page__form">
         <div className="login-page__form-stack">
-          <div className={`login-floating-field${loginNameValue.length > 0 ? " login-floating-field--filled" : ""}`}>
-            <div className="login-floating-root">
-              <Input
-                id="login-name"
-                value={loginNameValue}
-                onChange={(event) => setValue("login_name", event.currentTarget.value)}
-                className="login-floating-input"
-                aria-invalid={Boolean(loginNameError)}
-                aria-describedby={loginNameError ? "login-name-error" : undefined}
-                autoComplete="username"
-              />
-              <label className="login-floating-label" htmlFor="login-name">{t("field.loginName")}</label>
-            </div>
+          <div className="login-page__field">
+            <label className="login-page__label" htmlFor="login-name">{t("field.loginName")}</label>
+            <Input
+              id="login-name"
+              value={loginNameValue}
+              onChange={(event) => setValue("login_name", event.currentTarget.value)}
+              aria-invalid={Boolean(loginNameError)}
+              aria-describedby={loginNameError ? "login-name-error" : undefined}
+              autoComplete="username"
+            />
             {loginNameError ? <p id="login-name-error" className="login-page__field-error">{loginNameError}</p> : null}
           </div>
 
           <div
-            className={`login-floating-field${passwordValue.length > 0 ? " login-floating-field--filled" : ""}`}
+            className="login-page__field"
             onClickCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
             onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
             onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
           >
-            <div className="login-floating-root login-page__password-control">
+            <label className="login-page__label" htmlFor="login-password">{t("field.password")}</label>
+            <div className="login-page__password-control">
               <Input
                 id="login-password"
                 type={showPassword ? "text" : "password"}
                 value={passwordValue}
                 onChange={(event) => setValue("password", event.currentTarget.value)}
-                className="login-floating-input login-page__password-input"
+                className="login-page__password-input"
                 aria-invalid={Boolean(passwordError)}
                 aria-describedby={passwordError ? "login-password-error" : undefined}
                 autoComplete="current-password"
               />
-              <label className="login-floating-label" htmlFor="login-password">{t("field.password")}</label>
               <div className="login-page__password-actions">
                 <button
                   type="button"

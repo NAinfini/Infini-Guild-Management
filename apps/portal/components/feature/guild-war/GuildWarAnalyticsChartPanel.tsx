@@ -2,6 +2,7 @@ import { Button } from "@portal/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { ArrowBackUpIcon, ArrowForwardUpIcon } from "@portal/components/icons";
 import { EmptyState } from "@portal/components/shared/EmptyState";
+import { useReducedMotionPreference } from "@portal/hooks/useReducedMotionPreference";
 
 type AnalyticsChartEmptyState = {
   title: string;
@@ -28,8 +29,8 @@ type GuildWarAnalyticsChartPanelProps = {
   ReactEChartsCore: typeof import("echarts-for-react/esm/core").default;
   echarts: unknown;
   themeName: string;
-  chartOption: unknown;
-  radarOption: unknown | null;
+  chartOption: Record<string, unknown>;
+  radarOption: Record<string, unknown> | null;
   mode: string;
   selectedUsers: string[];
   selectedMetrics: string[];
@@ -57,6 +58,7 @@ export function GuildWarAnalyticsChartPanel({
   t,
   emptyState,
 }: GuildWarAnalyticsChartPanelProps) {
+  const reducedMotion = useReducedMotionPreference();
   const option = mode === "radar" && radarOption ? radarOption : chartOption;
   const keyPrefix = mode === "radar" ? "radar" : "chart";
   const height = expanded ? 560 : 420;
@@ -108,10 +110,11 @@ export function GuildWarAnalyticsChartPanel({
           </div>
         ) : (
           <ReactEChartsCore
-            key={`${keyPrefix}-${selectedUsers.join(",")}-${selectedMetrics.join(",")}`}
+            // ECharts can retain an active line animator when only animation changes.
+            key={`${keyPrefix}-${selectedUsers.join(",")}-${selectedMetrics.join(",")}-${reducedMotion}`}
             echarts={echarts}
             theme={themeName}
-            option={option}
+            option={{ ...option, animation: !reducedMotion }}
             /*
              * Every mode and every toggle builds a completely different option —
              * different series count, axes and value formatter. echarts-for-react

@@ -1,4 +1,4 @@
-import type { MemberProfile, User } from "@guild/shared";
+import type { MemberProfile, MemberSummary } from "@guild/shared";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ProfileOverviewCard } from "./ProfileOverviewCard";
@@ -28,7 +28,7 @@ const user = {
   role_name: "Admin",
   role_color: "#ef4444",
   created_at: "2026-01-01T00:00:00.000Z",
-} as unknown as User;
+} as unknown as MemberSummary;
 
 function renderCard(avatarMediaId: string | null, avatarActions = true) {
   return render(

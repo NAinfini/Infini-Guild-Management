@@ -1,5 +1,4 @@
-import { Card } from "@portal/components/ui/card";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Suspense, lazy } from "react";
 import { useTranslation } from "react-i18next";
 import type { GuildWarService } from "../../../services/GuildWarService";
@@ -38,11 +37,7 @@ export function GuildWarAnalyticsTabWrapper({
   return (
     <Suspense
       fallback={
-        <Card className="gap-2 p-4">
-          <div className="flex gap-2"><Skeleton className="h-7 w-1/4" /><Skeleton className="h-7 w-1/4" /></div>
-          <Skeleton className="h-45 w-full rounded-lg" />
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-4.5 w-full" />)}
-        </Card>
+        <LoadingIndicator />
       }
     >
       <LazyGuildWarAnalyticsTab

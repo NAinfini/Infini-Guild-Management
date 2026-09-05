@@ -3,7 +3,7 @@ import { TrashIcon, PlayIcon } from "@portal/components/icons";
 import { Button } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
 import { Checkbox } from "@portal/components/ui/checkbox";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useKeyedPending } from "@portal/hooks/useKeyedPending";
 import { useState } from "react";
@@ -122,21 +122,7 @@ export function GalleryGrid({
 
   if (isLoading && rows.length === 0) {
     return (
-      <div className="gallery-grid" role="list" aria-label={t("aria.galleryLoading")}>
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} role="listitem" className="gallery-grid__item">
-            <Card className="gallery-card">
-              <div className="gallery-card__inner">
-                <Skeleton className="gallery-card__skeleton-media" />
-                <div className="gallery-card__skeleton-copy">
-                  <Skeleton className="gallery-card__skeleton-title" />
-                  <Skeleton className="gallery-card__skeleton-meta" />
-                </div>
-              </div>
-            </Card>
-          </div>
-        ))}
-      </div>
+      <LoadingIndicator />
     );
   }
 
@@ -198,7 +184,7 @@ export function GalleryGrid({
                 className="gallery-preview-button"
                 aria-label={getOpenLabel(item)}
               >
-                <div className="gallery-preview-media">
+                <div className={`gallery-preview-media${item.type === "video" ? " gallery-preview-media--video" : ""}`}>
                   {item.type === "image" ? (
                     <RecoverableImage
                       source={resolveImageUrl(item.media_id)}
@@ -217,16 +203,16 @@ export function GalleryGrid({
                       </span>
                     </>
                   )}
-                  <span className="gallery-preview-copy">
-                    <span className="gallery-preview-uploader">
-                      {item.uploaded_by_name ?? item.uploaded_by}
-                    </span>
-                    <strong className="gallery-preview-title">{item.title || item.id}</strong>
-                    {item.description ? (
-                      <span className="gallery-preview-description">{item.description}</span>
-                    ) : null}
-                  </span>
                 </div>
+                <span className="gallery-preview-copy">
+                  <span className="gallery-preview-uploader">
+                    {item.uploaded_by_name ?? item.uploaded_by}
+                  </span>
+                  <strong className="gallery-preview-title">{item.title || item.id}</strong>
+                  {item.description ? (
+                    <span className="gallery-preview-description">{item.description}</span>
+                  ) : null}
+                </span>
               </button>
               <div className="gallery-card__footer">
                 <div className="gallery-card__meta">

@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@portal/components/ui/select";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Switch } from "@portal/components/ui/switch";
 import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
 import type { ReactNode } from "react";
@@ -228,11 +228,7 @@ export function WikiArticleEditorCard({
 
         <div className="wiki-card-scroll wiki-article-editor-scroll">
           {isLoading ? (
-            <div className="wiki-list-skeletons" aria-busy="true">
-              {Array.from({ length: 7 }).map((_, index) => (
-                <Skeleton key={index} className="wiki-list-skeleton" />
-              ))}
-            </div>
+            <LoadingIndicator />
           ) : null}
           {!isLoading ? (
             <div className="wiki-editor-form">

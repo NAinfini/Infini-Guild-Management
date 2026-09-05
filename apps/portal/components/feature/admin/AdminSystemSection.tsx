@@ -1,4 +1,4 @@
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { ClockIcon, CloudIcon, DatabaseIcon, WifiIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import "./AdminSystemSection.css";
@@ -55,9 +55,7 @@ export function AdminSystemSection({
 
   if (statusLoading) {
     return (
-      <div className="system-health-ledger system-health-ledger--loading">
-        {SERVICES.map((service) => <Skeleton key={service.key} className="h-[46px] w-full rounded-none" />)}
-      </div>
+      <LoadingIndicator />
     );
   }
 

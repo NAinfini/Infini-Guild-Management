@@ -1,16 +1,17 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event, MemberDirectoryEntry } from "@guild/shared";
 import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../../api/query-keys";
 import { useAppError } from "../../hooks/useAppError";
 import { useConfirmDialog } from "../../hooks/useConfirmDialog";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
-import { useEventMemberDirectory } from "../../hooks/data/useEventsData";
+import { useMemberDirectory } from "../../hooks/data/useMemberDirectory";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useEventActions } from "../../hooks/useEventMutations";
 import { useExternalView } from "../../hooks/useExternalView";
 import { fetchEventDetail, isApiRequestError } from "../../services/EventService";
@@ -19,9 +20,10 @@ import { ArchiveIcon, ArchiveOffIcon, ArrowLeftIcon, PencilIcon, TrashIcon } fro
 import { EventDetailContent } from "../feature/events/EventDetailContent";
 import { PageLayout } from "../layout/PageLayout";
 import { EmptyState } from "../shared/EmptyState";
+import { RetryableLoadError } from "../shared/RetryableLoadError";
 import "./EventsPage.css";
 
-type MemberEntry = { user: User; profile: MemberProfile };
+type MemberEntry = MemberDirectoryEntry;
 
 export function EventDetailPage() {
   const { t } = useTranslation("events");
@@ -42,15 +44,19 @@ export function EventDetailPage() {
     staleTime: 30_000,
   });
   const event = detailQuery.data;
-  const requiresMemberDirectory = Boolean(event && (
-    (!event.poll && (canEdit || event.participants.length > 0))
-    || event.poll?.options.some((option) => option.voter_ids.length > 0)
-    || (event.raffle_winners?.length ?? 0) > 0
-  ));
-  const usersQuery = useEventMemberDirectory({
+  const [memberSearch, setMemberSearch] = useState("");
+  const debouncedMemberSearch = useDebouncedValue(memberSearch.trim(), 250);
+  const knownMemberIds = useMemo(() => event ? [...new Set([
+    ...event.participants.map((participant) => participant.user_id),
+    ...(event.poll?.options.flatMap((option) => option.voter_ids) ?? []),
+    ...(event.raffle_winners?.map((winner) => winner.user_id) ?? []),
+  ])] : [], [event]);
+  const memberDirectory = useMemberDirectory({
     currentUserId: user?.id,
     publicMemberProjection: isExternalView || !user,
-    enabled: requiresMemberDirectory,
+    enabled: Boolean(event && canEdit && !event.poll),
+    search: debouncedMemberSearch,
+    selectedIds: knownMemberIds,
   });
   const eventById = useMemo(() => {
     const next = new Map<string, Event>();
@@ -96,7 +102,7 @@ export function EventDetailPage() {
     if (confirmed) mutations.archiveEventById(event.id);
   }, [confirm, event, mutations, t]);
 
-  const allUsers = usersQuery.data?.data ?? [];
+  const allUsers = memberDirectory.entries;
   const members = useMemo<MemberEntry[]>(() => {
     if (!event) return [];
     const usersById = new Map(allUsers.map((entry) => [entry.user.id, entry]));
@@ -109,7 +115,7 @@ export function EventDetailPage() {
   if (detailQuery.isLoading) {
     return (
       <PageLayout className="events-page event-detail-page">
-        <div className="event-route-loading"><Skeleton className="h-9" /><Skeleton className="h-90" /></div>
+        <LoadingIndicator />
       </PageLayout>
     );
   }
@@ -135,7 +141,7 @@ export function EventDetailPage() {
   if (!event) {
     return (
       <PageLayout className="events-page event-detail-page">
-        <div className="event-route-loading"><Skeleton className="h-9" /><Skeleton className="h-90" /></div>
+        <LoadingIndicator />
       </PageLayout>
     );
   }
@@ -153,6 +159,13 @@ export function EventDetailPage() {
               </Button>
             </AlertDescription>
           </Alert>
+        ) : null}
+        {memberDirectory.loadError ? (
+          <RetryableLoadError
+            className={`member-directory-error member-directory-error--${memberDirectory.loadError.kind}`}
+            pending={memberDirectory.loadError.retrying}
+            onRetry={() => { void memberDirectory.loadError?.retry(); }}
+          />
         ) : null}
         <header className="event-route-header event-route-header--sticky">
           <div className="event-route-header__title">
@@ -224,6 +237,11 @@ export function EventDetailPage() {
           votePending={mutations.votePending}
           onDrawRaffle={canEdit ? mutations.drawRaffle : undefined}
           drawRafflePending={mutations.drawRafflePending}
+          memberDirectoryHasMore={memberDirectory.hasMore}
+          memberDirectoryLoadingMore={memberDirectory.isLoadingMore}
+          onMemberSearchChange={setMemberSearch}
+          onLoadMoreMembers={() => { void memberDirectory.loadMore(); }}
+          memberIdentitiesUnavailable={memberDirectory.selectedQuery.isError && members.length === 0 && event.participants.length > 0}
         />
       </div>
     </PageLayout>

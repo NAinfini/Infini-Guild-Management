@@ -247,6 +247,13 @@ test("置顶：点图标只改草稿，发布之后服务端才真的置顶", as
   expect((await readAnnouncement(api, target.id)).pinned, "还没收尾，服务端不该有变化").toBe(false);
 
   await flow.click(publishButton(page), UPDATE);
+  // 提示覆盖右上角的编辑入口；鼠标悬停会暂停自动关闭，先用其关闭按钮收起。
+  const savedToast = page.locator('[data-slot="toast"]').filter({
+    has: page.getByRole("heading", { name: "Announcement saved", exact: true }),
+  });
+  await savedToast.hover();
+  await savedToast.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(savedToast).toHaveCount(0);
   expect((await readAnnouncement(api, target.id)).pinned, "发布之后必须落库成置顶").toBe(true);
 
   // 再点一次是撤销置顶：同样先改草稿，收尾才生效。

@@ -10,7 +10,7 @@ import {
   fetchRoles,
 } from "../../services/AdminService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchAllUsersListWithOptions } from "../../services/UserService";
+import { fetchUsersListWithOptions, type UsersListOptions } from "../../services/UserService";
 import { getAdminCapabilities } from "../../utils/permissions";
 import { fetchAdminSiteConfig } from "../../services/SiteConfigService";
 import type { AdminCapabilities } from "../../utils/permissions";
@@ -33,6 +33,7 @@ type UseAdminDataOptions = {
   auditActorId: string;
   inviteVisibility: InviteVisibility;
   inviteSearch: string;
+  memberList?: UsersListOptions;
 };
 
 export function useAdminData(options: UseAdminDataOptions) {
@@ -51,6 +52,7 @@ export function useAdminData(options: UseAdminDataOptions) {
     auditActorId,
     inviteVisibility,
     inviteSearch,
+    memberList = { page: 1, limit: 20, includeTotal: true, searchScope: "management" },
   } = options;
 
   const rolesQuery = useQuery({
@@ -63,13 +65,12 @@ export function useAdminData(options: UseAdminDataOptions) {
   const roles = rolesQuery.data ?? [];
   const rolePermissions = getAdminCapabilities(roles, userRole);
   const permissions = effectivePermissions ?? rolePermissions;
-  const needsUsers = activeTab === "member" || activeTab === "badges";
   const normalizedAuditSearch = auditSearch.trim();
 
   const usersQuery = useQuery({
-    queryKey: queryKeys.users.directory(viewerKey, "internal"),
-    queryFn: () => fetchAllUsersListWithOptions(),
-    enabled: permissions.canViewUsers && needsUsers,
+    queryKey: queryKeys.users.list(viewerKey, "internal", memberList),
+    queryFn: ({ signal }) => fetchUsersListWithOptions({ ...memberList, signal }),
+    enabled: permissions.canViewUsers && activeTab === "member",
     staleTime: 10 * 60_000,
   });
 

@@ -4,13 +4,9 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
 } from "@portal/components/ui/dropdown-menu";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { IconDotsVertical } from "@tabler/icons-react";
-import {
-  type PaginationState,
-  type SortingState,
-  useTable,
-} from "@tanstack/react-table";
+import { useTable } from "@tanstack/react-table";
 import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
 import {
   dataTableFeatures,
@@ -18,7 +14,6 @@ import {
 } from "@portal/components/shared/data-table-features";
 import {
   useCallback,
-  useEffect,
   useMemo,
   useState,
   type CSSProperties,
@@ -32,11 +27,11 @@ import { DataTablePagination } from "../../shared/DataTablePagination";
 import { useClassCatalog } from "../../../hooks/data/useClassData";
 import { resolveClassCatalogItem } from "../../../utils/class-catalog";
 import { useAuthStore } from "../../../stores/auth";
-import { canManageUserByRoleLevel, userCanAccessAdmin } from "../../../utils/permissions";
+import { canManageUserByRoleLevel } from "../../../utils/permissions";
 import { AdminUserActionMenu } from "./AdminUserActionMenu";
 import { AdminUserPasswordResetDialog } from "./AdminUserPasswordResetDialog";
 import { AdminLoadError } from "./AdminLoadError";
-import { AdminUsersToolbar, type MemberStatusFilter } from "./AdminUsersToolbar";
+import { AdminUsersToolbar } from "./AdminUsersToolbar";
 import type { AdminUsersSectionProps, AdminUserRow } from "./admin-users.types";
 import "./AdminUsersSection.css";
 
@@ -82,42 +77,28 @@ export function AdminUsersSection({
   onOpenMemberDetail,
   onSelectionChange,
   roles,
+  memberStats,
+  totalRows,
+  pagination,
+  onPaginationChange,
+  sorting,
+  onSortingChange,
+  statusFilter,
+  onStatusFilterChange,
   memberSearch,
   onMemberSearchChange,
 }: AdminUsersSectionProps) {
   const { t } = useTranslation(["admin", "auth"]);
   const classCatalog = useClassCatalog();
   const currentUser = useAuthStore((state) => state.user);
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
   const [actionMenu, setActionMenu] = useState<ActionMenuContext | null>(null);
   const [passwordResetUserId, setPasswordResetUserId] = useState<string | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
-  const [statusFilter, setStatusFilter] = useState<MemberStatusFilter>("all");
 
   const selectedIdSet = useMemo(() => new Set(selectedUserIds), [selectedUserIds]);
   const usersById = useMemo(() => new Map(userRows.map((row) => [row.user.id, row])), [userRows]);
-
-  const memberStats = useMemo(() => {
-    let active = 0;
-    let managementAccess = 0;
-    for (const row of userRows) {
-      if (row.user.is_active) active += 1;
-      if (userCanAccessAdmin(row.user)) managementAccess += 1;
-    }
-    return { total: userRows.length, active, inactive: userRows.length - active, managementAccess };
-  }, [userRows]);
-
-  const visibleRows = useMemo(() => {
-    if (statusFilter === "all") return userRows;
-    const wantActive = statusFilter === "active";
-    return userRows.filter((row) => row.user.is_active === wantActive);
-  }, [userRows, statusFilter]);
-
-  useEffect(() => {
-    setPagination((previous) => (previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 }));
-  }, [memberSearch, statusFilter]);
+  const canCreateMember = canEditUsers && canAssignUserRoles && roles.length > 0;
 
   const openActionMenu = useCallback((
     userId: string,
@@ -193,11 +174,15 @@ export function AdminUsersSection({
 
   const table = useTable({
     features: dataTableFeatures,
-    data: visibleRows,
+    data: userRows,
     columns: allColumns,
     state: { sorting, pagination },
-    onSortingChange: setSorting,
-    onPaginationChange: setPagination,
+    onSortingChange,
+    onPaginationChange,
+    manualPagination: true,
+    manualSorting: true,
+    enableMultiSort: false,
+    rowCount: totalRows,
     autoResetPageIndex: false,
     getRowId: (row) => row.user.id,
   });
@@ -320,44 +305,42 @@ export function AdminUsersSection({
       onOpenChange={(open) => { if (!open) closeActionMenu(); }}
     >
       <div className="admin-fill admin-users">
+            <AdminUsersToolbar
+              memberSearch={memberSearch}
+              statusFilter={statusFilter}
+              canCreateMember={canCreateMember}
+              onMemberSearchChange={onMemberSearchChange}
+              onStatusFilterChange={onStatusFilterChange}
+              onOpenCreateMember={onOpenCreateMember}
+            />
         {usersLoading ? (
-          <div className="admin-users__skeleton" aria-hidden="true">
-            {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-[18px]" />)}
-          </div>
+          <LoadingIndicator />
         ) : null}
         {usersError ? <AdminLoadError onRetry={onRetryUsers} /> : null}
         {!usersLoading && !usersError ? (
           <>
-            <AdminUsersToolbar
-              memberSearch={memberSearch}
-              statusFilter={statusFilter}
-              canCreateMember={canEditUsers}
-              onMemberSearchChange={onMemberSearchChange}
-              onStatusFilterChange={setStatusFilter}
-              onOpenCreateMember={onOpenCreateMember}
-            />
 
-            <p className="admin-users__account-status">{t("member.accountStatusDescription")}</p>
 
             <section className="admin-panel admin-stats" aria-label={t("member.filter.status")}>
+              <p className="admin-users__account-status">{t("member.accountStatusDescription")}</p>
               <div className="admin-stat">
-                <div className="admin-stat__value">{memberStats.total}</div>
+                <div className="admin-stat__value">{memberStats?.total ?? "—"}</div>
                 <div className="admin-stat__label">{t("member.stat.total")}</div>
               </div>
               <div className="admin-stat">
-                <div className="admin-stat__value admin-stat__value--ok">{memberStats.active}</div>
+                <div className="admin-stat__value admin-stat__value--ok">{memberStats?.active ?? "—"}</div>
                 <div className="admin-stat__label">{t("member.stat.active")}</div>
               </div>
               <div className="admin-stat">
-                <div className={`admin-stat__value${memberStats.inactive > 0 ? " admin-stat__value--warn" : ""}`}>
-                  {memberStats.inactive}
+                <div className={`admin-stat__value${(memberStats?.inactive ?? 0) > 0 ? " admin-stat__value--warn" : ""}`}>
+                  {memberStats?.inactive ?? "—"}
                 </div>
                 <div className="admin-stat__label">{t("member.stat.inactive")}</div>
               </div>
-              <div className="admin-stat">
-                <div className="admin-stat__value">{memberStats.managementAccess}</div>
+              {memberStats ? <div className="admin-stat">
+                <div className="admin-stat__value">{memberStats.management_access}</div>
                 <div className="admin-stat__label">{t("member.stat.managementAccess")}</div>
-              </div>
+              </div> : null}
             </section>
 
             <section className="admin-panel admin-table-card admin-table-card--fill admin-users__desktop-table">
@@ -378,11 +361,10 @@ export function AdminUsersSection({
                 rowClassName={(row) => selectedIdSet.has(row.original.user.id) ? "admin-users__row-selected" : undefined}
               />
               <div className="admin-table-card__footer">
+                <p className="admin-users__selection-hint">{t("member.selectionHint")}</p>
                 <DataTablePagination table={table} />
               </div>
             </section>
-
-            <p className="admin-users__selection-hint">{t("member.selectionHint")}</p>
 
             <div className="admin-users__mobile-list">
               {table.getRowModel().rows.map((row) => {
@@ -458,7 +440,7 @@ export function AdminUsersSection({
           contextHasProtectedTarget={contextHasProtectedTarget}
           anyActiveInContext={anyActiveInContext}
           anyInactiveInContext={anyInactiveInContext}
-          canEditUsers={canEditUsers}
+          canCreateMember={canCreateMember}
           canAssignUserRoles={canAssignUserRoles}
           canActivateUsers={canActivateUsers}
           canDeleteUsers={canDeleteUsers}

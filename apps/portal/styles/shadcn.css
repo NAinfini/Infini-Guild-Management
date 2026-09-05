@@ -17,7 +17,7 @@
   --muted-foreground: var(--text-muted);
   --interactive: var(--brand-tint);
   --interactive-foreground: var(--brand-on-tint);
-  --destructive: var(--status-danger);
+  --destructive: color-mix(in srgb, var(--status-danger) 70%, var(--text-primary));
   --destructive-foreground: var(--status-on-fill);
   --border: var(--border-subtle);
   --input: var(--border-strong);
@@ -71,12 +71,6 @@
 }
 
 @layer components {
-  [data-slot="skeleton"] {
-    position: relative;
-    overflow: hidden;
-    background: var(--skeleton-fill);
-    box-shadow: inset 0 0 0 1px var(--skeleton-edge);
-  }
 
   [data-slot="button"] {
     position: relative;

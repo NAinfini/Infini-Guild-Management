@@ -32,10 +32,12 @@ describe("application migration ledger gate", () => {
 
 function executor(rows: unknown): SqlExecutor {
   return {
-    execute: async () => {
+    read: async () => {
       if (rows instanceof Error) throw rows;
       return { rows: rows as never };
     },
+    readBatch: async () => [],
+    execute: async () => { throw new Error("Unexpected SQL write"); },
     batch: async () => [],
   };
 }

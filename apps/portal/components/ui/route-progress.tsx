@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { useIsFetching } from "@tanstack/react-query";
 import "./route-progress.css";
 
 let active = false;
@@ -30,7 +31,9 @@ export function completeRouteProgress() {
 }
 
 export function RouteProgress() {
-  const isActive = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const isNavigating = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const fetchingCount = useIsFetching();
+  const isActive = isNavigating || fetchingCount > 0;
 
   return (
     <div className="route-progress" data-active={isActive || undefined} aria-hidden="true">

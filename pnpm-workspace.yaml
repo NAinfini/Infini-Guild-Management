@@ -2,6 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 
+engineStrict: true
 autoInstallPeers: true
 strictPeerDependencies: false
 nodeLinker: hoisted

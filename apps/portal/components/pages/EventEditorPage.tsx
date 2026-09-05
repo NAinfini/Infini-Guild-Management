@@ -1,25 +1,26 @@
 import type { ImageGridEditorItem } from "@portal/types/media";
 import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../../api/query-keys";
 import { useAppError } from "../../hooks/useAppError";
-import { useEventMemberDirectory } from "../../hooks/data/useEventsData";
+import { useMemberAvailabilitySummary } from "../../hooks/data/useMemberDirectory";
 import { useEventEditorMutations } from "../../hooks/useEventMutations";
 import { useAttachmentService } from "../../services/AttachmentService";
 import { EventService, fetchEventDetail, isApiRequestError } from "../../services/EventService";
 import { useAuthStore } from "../../stores/auth";
-import { buildAvailabilityHeatData } from "../../utils/availability";
+import { buildAvailabilityHeatDataFromSummary } from "../../utils/availability";
 import { resolveMediaUrl } from "../../utils/media";
 import { EventFormContent } from "../feature/events/EventFormContent";
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
 import { ArrowLeftIcon } from "../icons";
 import { PageLayout } from "../layout/PageLayout";
 import { EmptyState } from "../shared/EmptyState";
+import { RetryableLoadError } from "../shared/RetryableLoadError";
 import "./EventsPage.css";
 
 function buildAttachmentSnapshot(items: ImageGridEditorItem[]) {
@@ -52,14 +53,16 @@ export function EventEditorPage({ mode }: EventEditorPageProps) {
     () => new EventService({ attachmentService, queryClient }),
     [attachmentService, queryClient],
   );
-  const usersQuery = useEventMemberDirectory({
+  const canUseAvailabilitySummary = Boolean(user);
+  const availabilitySummaryQuery = useMemberAvailabilitySummary({
     currentUserId: user?.id,
-    publicMemberProjection: !user,
-    enabled: Boolean(user),
+    enabled: canUseAvailabilitySummary,
   });
   const availabilityHeatData = useMemo(
-    () => buildAvailabilityHeatData(usersQuery.data?.data ?? []),
-    [usersQuery.data],
+    () => buildAvailabilityHeatDataFromSummary(
+      canUseAvailabilitySummary ? availabilitySummaryQuery.data : undefined,
+    ),
+    [availabilitySummaryQuery.data, canUseAvailabilitySummary],
   );
   const detailQuery = useQuery({
     queryKey: queryKeys.events.detail(eventId ?? ""),
@@ -168,7 +171,7 @@ export function EventEditorPage({ mode }: EventEditorPageProps) {
   const detailRefreshError = mode === "edit" && detailQuery.isError && Boolean(detailQuery.data);
 
   if (mode === "edit" && detailQuery.isLoading) {
-    return <PageLayout className="events-page event-editor-page"><div className="event-route-loading"><Skeleton className="h-9" /><Skeleton className="h-105" /></div></PageLayout>;
+    return <PageLayout className="events-page event-editor-page"><LoadingIndicator /></PageLayout>;
   }
   if (detailBlockingError) {
     const missing = isApiRequestError(detailQuery.error) && detailQuery.error.status === 404;
@@ -191,10 +194,10 @@ export function EventEditorPage({ mode }: EventEditorPageProps) {
     );
   }
   if (mode === "edit" && !detailQuery.data) {
-    return <PageLayout className="events-page event-editor-page"><div className="event-route-loading"><Skeleton className="h-9" /><Skeleton className="h-105" /></div></PageLayout>;
+    return <PageLayout className="events-page event-editor-page"><LoadingIndicator /></PageLayout>;
   }
   if (!editor.editorOpen) {
-    return <PageLayout className="events-page event-editor-page"><Skeleton className="h-105" /></PageLayout>;
+    return <PageLayout className="events-page event-editor-page"><LoadingIndicator /></PageLayout>;
   }
 
   return (
@@ -210,6 +213,12 @@ export function EventEditorPage({ mode }: EventEditorPageProps) {
               </Button>
             </AlertDescription>
           </Alert>
+        ) : null}
+        {canUseAvailabilitySummary && availabilitySummaryQuery.isError ? (
+          <RetryableLoadError
+            pending={availabilitySummaryQuery.isFetching}
+            onRetry={() => { void availabilitySummaryQuery.refetch(); }}
+          />
         ) : null}
         <header className="event-route-header event-route-header--sticky event-editor-page__header">
           <div className="event-route-header__title">

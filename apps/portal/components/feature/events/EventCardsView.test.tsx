@@ -1,4 +1,4 @@
-import { PERMISSIONS, type Event, type MemberProfile, type Permission, type User } from "@guild/shared";
+import { type Event, type MemberProfile, type MemberSummary } from "@guild/shared";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -10,12 +10,9 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("../../shared/MemberRoleAvatar", () => ({
-  MemberRoleAvatar: ({ user }: { user: User }) => <span>{user.display_name}</span>,
+  MemberRoleAvatar: ({ user }: { user: MemberSummary }) => <span>{user.display_name}</span>,
 }));
 
-const noPermissions = Object.fromEntries(
-  PERMISSIONS.map((permission) => [permission, false]),
-) as Record<Permission, boolean>;
 
 function event(overrides: Partial<Event> = {}): Event {
   return {
@@ -45,7 +42,7 @@ function event(overrides: Partial<Event> = {}): Event {
   } as Event;
 }
 
-function member(id: string, name = id): { user: User; profile: MemberProfile } {
+function member(id: string, name = id): { user: MemberSummary; profile: MemberProfile } {
   return {
     user: {
       id,
@@ -54,7 +51,6 @@ function member(id: string, name = id): { user: User; profile: MemberProfile } {
       role_name: "Member",
       role_color: null,
       role_level: 1,
-      permissions: noPermissions,
       is_active: true,
       deleted_at: null,
       created_at: "2026-08-30T12:00:00.000Z",
@@ -84,7 +80,7 @@ function member(id: string, name = id): { user: User; profile: MemberProfile } {
 
 type ViewOptions = {
   events?: Event[];
-  members?: Array<{ user: User; profile: MemberProfile }>;
+  members?: Array<{ user: MemberSummary; profile: MemberProfile }>;
   canCreate?: boolean;
   canEdit?: boolean;
   canArchive?: boolean;

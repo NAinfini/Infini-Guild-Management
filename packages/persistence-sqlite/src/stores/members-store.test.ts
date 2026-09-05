@@ -1,6 +1,6 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
+import { createAuthorizationContext, createRequestContext, MAX_SQL_PARAMETERS } from "@guild/kernel";
 import { createAuditEvent } from "@guild/server/modules/audit";
 import { LIMITS } from "@guild/shared/config/limits";
 import { createAppDatabase } from "../database.js";
@@ -22,6 +22,7 @@ const BASE_SCHEMA = `
     revision_token TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
     last_login_at TEXT
   );
+  CREATE TABLE role_permissions (role_id TEXT NOT NULL REFERENCES roles(id), permission TEXT NOT NULL, PRIMARY KEY(role_id, permission));
   CREATE INDEX idx_users_roster ON users(deleted_at, is_active, created_at, id);
   CREATE INDEX idx_users_roster_all ON users(deleted_at, created_at, id);
   CREATE TABLE member_profiles (
@@ -976,3 +977,112 @@ function plan(database: DatabaseSync, sql: string, ...params: SQLInputValue[]): 
   const rows = database.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...params) as Array<{ detail: string }>;
   return rows.map(({ detail }) => detail).join("\n");
 }
+
+describe("bounded member reads", () => {
+  it.each([21, LIMITS.content.classCatalogSize.max])("matches any of %i catalog classes with one JSON binding and no duplicate members", async (count) => {
+    const { database, executor, store } = harness();
+    const classIds = Array.from({ length: LIMITS.content.classCatalogSize.max }, (_, index) => `filter-class-${index}`);
+    const insertClass = database.prepare("INSERT INTO class_catalog VALUES (?, ?, '#fff', 'vector', 'sword', ?, ?, ?)");
+    classIds.forEach((id, index) => insertClass.run(id, `Filter Class ${index}`, index, NOW, NOW));
+    const assignClass = database.prepare("INSERT INTO member_profile_classes VALUES (?, ?, ?)");
+    assignClass.run("admin-1", classIds[0]!, 0);
+    assignClass.run("admin-1", classIds[20]!, 1);
+    assignClass.run("target-1", classIds.at(-1)!, 0);
+    const filter = classIds.slice(0, count);
+    const before = executor.reads.length;
+
+    const result = await store.listRoster({ page: 1, limit: 24, search: "", classIds: filter, active: true, includeTotal: true, projection: "public" });
+
+    const expectedIds = count === LIMITS.content.classCatalogSize.max ? ["admin-1", "target-1"] : ["admin-1"];
+    expect(result.data.map((entry) => entry.user.id)).toEqual(expectedIds);
+    expect(result.total).toBe(expectedIds.length);
+    const statements = executor.reads.slice(before);
+    expect(statements.every((statement) => (statement.params?.length ?? 0) <= MAX_SQL_PARAMETERS)).toBe(true);
+    const classQueries = statements.filter((statement) => statement.sql.includes("mpc.class_id IN (SELECT value FROM json_each("));
+    expect(classQueries).toHaveLength(2);
+    expect(classQueries.every((statement) => statement.params?.filter((value) => value === JSON.stringify(filter)).length === 1)).toBe(true);
+  });
+
+  it("matches long Chinese names and percent, underscore and backslash as literal substrings", async () => {
+    const { database, store } = harness();
+    const displayName = "天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁";
+    insertUser(database, "long-name", displayName, "member", true, null);
+    database.prepare("UPDATE member_profiles SET notes = ? WHERE user_id = 'target-1'").run("literal%_\\value");
+    const base = { page: 1, limit: 24, projection: "admin" as const, includeTotal: true };
+    expect((await store.listRoster({ ...base, search: displayName })).data.map((entry) => entry.user.id)).toEqual(["long-name"]);
+    expect((await store.listDirectory({ limit: 50, search: displayName, projection: "public" })).data.map((entry) => entry.user.id)).toEqual(["long-name"]);
+    for (const search of ["%", "_", "\\", "literal%_\\value"]) {
+      expect((await store.listRoster({ ...base, search, searchScope: "management" })).data.map((entry) => entry.user.id)).toEqual(["target-1"]);
+    }
+  });
+  it("paginates and sorts a thousand members before hydration, with global filtered management statistics", async () => {
+    const { database, store } = harness();
+    database.exec("INSERT INTO role_permissions VALUES ('admin', 'admin.audit.view')");
+    database.prepare("INSERT INTO class_catalog VALUES ('class-z', 'Alpha', '#fff', 'vector', 'sword', 0, ?, ?), ('class-a', 'Zulu', '#fff', 'vector', 'sword', 10, ?, ?)").run(NOW, NOW, NOW, NOW);
+    for (let index = 0; index < 1000; index++) {
+      const id = `scale-${String(index).padStart(4, "0")}`;
+      insertUser(database, id, `Member ${String(index).padStart(4, "0")}`, "member", index % 2 === 0, null);
+      database.prepare("UPDATE member_profiles SET power = ? WHERE user_id = ?").run(index, id);
+      database.prepare("INSERT INTO member_profile_classes VALUES (?, ?, 0)").run(id, index % 2 ? "class-z" : "class-a");
+    }
+    const base = { search: "", projection: "admin" as const, includeTotal: true, page: 1, limit: 24 };
+    const first = await store.listRoster({ ...base, sort: "power", direction: "desc" });
+    expect(first.data).toHaveLength(24);
+    expect(first.total).toBe(1003);
+    expect(first.data[0]?.user.id).toBe("scale-0999");
+    expect(first.data[23]?.profile.power).toBe(976);
+    const next = await store.listRoster({ ...base, page: 2, sort: "power", direction: "desc" });
+    expect(next.data[0]?.profile.power).toBe(975);
+    const managed = await store.listRoster({ ...base, limit: 20, searchScope: "management", active: true });
+    expect(managed.data).toHaveLength(20);
+    expect(managed.total).toBe(502);
+    expect(managed.stats).toEqual({ total: 1003, active: 502, inactive: 501, management_access: 1, directory_total: 1003 });
+    const classes = await store.listRoster({ ...base, classIds: ["class-z", "class-a"], sort: "class" });
+    expect(classes.total).toBe(1000);
+    expect(classes.data.every((entry) => entry.profile.classes[0] === "class-z")).toBe(true);
+    const lateName = await store.listRoster({ ...base, search: "member 0999", sort: "display_name" });
+    expect(lateName.data.map((entry) => entry.user.id)).toEqual(["scale-0999"]);
+    database.prepare("UPDATE member_profiles SET notes = 'private needle' WHERE user_id = 'scale-0999'").run();
+    expect((await store.listRoster({ ...base, search: "private needle", searchScope: "name" })).total).toBe(0);
+    expect((await store.listRoster({ ...base, search: "private needle", searchScope: "management" })).stats)
+      .toEqual({ total: 1, active: 0, inactive: 1, management_access: 0, directory_total: 1003 });
+  });
+
+  it("returns bounded lightweight directory pages and public ID lookups without private profiles or inactive accounts", async () => {
+    const { database, store } = harness();
+    for (let index = 0; index < 60; index++) insertUser(database, `lookup-${index}`, `Lookup ${String(index).padStart(2, "0")}`, "member", true, null);
+    const first = await store.listDirectory({ limit: 50, search: "lookup", projection: "public" });
+    expect(first.data).toHaveLength(50);
+    expect(first.hasMore).toBe(true);
+    const last = first.data.at(-1)!;
+    const next = await store.listDirectory({ limit: 50, search: "lookup", projection: "public", cursor: { displayName: last.user.display_name, userId: last.user.id } });
+    expect(next.data).toHaveLength(10);
+    expect(next.hasMore).toBe(false);
+    expect(new Set([...first.data, ...next.data].map((entry) => entry.user.id)).size).toBe(60);
+    expect(Object.keys(first.data[0]!.profile).sort()).toEqual(["avatar_media_id", "classes", "power"]);
+    const ids = await store.listDirectory({ limit: 50, search: "", projection: "public", ids: ["inactive-1", "deleted-1", "target-1"] });
+    expect(ids.data.map((entry) => entry.user.id)).toEqual(["target-1"]);
+    await expect(store.listDirectory({ limit: 50, search: "", projection: "admin", ids: Array.from({ length: 101 }, (_, index) => String(index)) })).rejects.toThrow();
+  });
+
+  it("keeps planning data projected by server authority and counts each available member once per UTC hour", async () => {
+    const { database, store } = harness();
+    database.exec(`UPDATE member_profiles SET availability_timezone = 'UTC', title_html = 'Captain', notes = 'private' WHERE user_id IN ('target-1', 'inactive-1', 'deleted-1');
+      INSERT INTO member_availability_windows VALUES ('target-1', 0, 0, 15), ('target-1', 0, 30, 45), ('target-1', 6, 1380, 1440),
+        ('inactive-1', 0, 0, 60), ('deleted-1', 0, 0, 60), ('admin-1', 0, 0, 60)`);
+    const publicRows = await store.listPlanningMembers(["target-1", "inactive-1"], "public");
+    expect(publicRows).toHaveLength(1);
+    expect(publicRows[0]?.profile).toMatchObject({ title_html: "Captain", availability: null, vacation_start: null, vacation_end: null, notes: null });
+    const memberRows = await store.listPlanningMembers(["target-1"], "member");
+    expect(memberRows[0]?.profile.availability?.days.sunday).toHaveLength(2);
+    expect(memberRows[0]?.profile.notes).toBeNull();
+    expect((await store.listPlanningMembers(["target-1"], "admin"))[0]?.profile.notes).toBe("private");
+    const summary = await store.getAvailabilitySummary();
+    expect(summary.member_count).toBe(1);
+    expect(summary.hourly_counts).toHaveLength(7);
+    expect(summary.hourly_counts.every((day) => day.length === 24)).toBe(true);
+    expect(summary.hourly_counts[0]?.[0]).toBe(1);
+    expect(summary.hourly_counts[6]?.[23]).toBe(1);
+    expect(summary.hourly_counts.flat().reduce((sum, value) => sum + value, 0)).toBe(2);
+  });
+});

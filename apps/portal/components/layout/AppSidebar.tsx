@@ -10,7 +10,6 @@ import {
 } from "@portal/components/ui/tooltip";
 import { useSiteConfigStore } from "../../stores/site-config";
 import { LeftOutlined, RightOutlined } from "../../utils/icons";
-import { VisualThemeScene } from "../shared/VisualThemeArtwork";
 import { ViewingAsSelector } from "./ViewingAsSelector";
 
 export const SIDEBAR_WIDTH = 236;
@@ -73,11 +72,6 @@ export function AppSidebar({
       className={`app-sider ${isSidebarCollapsed ? "app-sider--collapsed" : ""}`}
       aria-label={siteName}
     >
-      <VisualThemeScene
-        variant="navigation"
-        className="app-sider__scene"
-      />
-
       <div className="app-brand">
         {isSidebarCollapsed ? (
           <button

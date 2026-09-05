@@ -4,6 +4,7 @@ import {
   createRequestContext,
   secureRandom,
   type NotificationPublisher,
+  type NotificationMessage,
   type ScheduledJobBacklog,
 } from "@guild/kernel";
 import { nanoid } from "nanoid";
@@ -30,6 +31,7 @@ import type {
   RecurrenceMaterializationJob,
   RaffleAutoDrawJob,
   SchedulerAuditFactory,
+  ScheduledJobBatchResult,
   SystemTestCleanupJob,
 } from "./scheduled-jobs.js";
 
@@ -102,6 +104,24 @@ export interface BoundedRaffleAutoDrawStore {
   inspectBacklog(now: string): Promise<ScheduledJobBacklog>;
 }
 
+async function publishCommittedRefresh(
+  notifications: NotificationPublisher,
+  message: NotificationMessage | undefined,
+  inboxChanged = false,
+): Promise<Pick<ScheduledJobBatchResult, "warning">> {
+  if (!message) return {};
+  // These public hints invalidate the entire entity family. One committed ID is
+  // sufficient; the push policy does not filter these hints by entity ID.
+  const messages = inboxChanged ? [message, { type: "inbox_changed" }] : [message];
+  const results = await Promise.allSettled(messages.map(async (entry) => notifications.publish(entry)));
+  const failures = results.flatMap((result, index) => result.status === "rejected"
+    ? [`${messages[index]!.type}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`]
+    : []);
+  return failures.length === 0 ? {} : {
+    warning: `Database changes committed; live refresh failed: ${failures.join("; ")}`.slice(0, 500),
+  };
+}
+
 export class ScheduledRecurrenceMaterializationJob implements RecurrenceMaterializationJob {
   constructor(
     private readonly store: BoundedRecurrenceMaterializationStore,
@@ -117,19 +137,15 @@ export class ScheduledRecurrenceMaterializationJob implements RecurrenceMaterial
       input.audit,
     );
     const eventIds = batch.materialized.flatMap(({ createdEventIds }) => createdEventIds);
-    for (const eventId of eventIds) {
-      await this.notifications.publish({
+    const refresh = await publishCommittedRefresh(this.notifications, eventIds[0] ? {
         type: "entity_changed",
         entity_type: "event",
-        entity_id: eventId,
+        entity_id: eventIds[0],
         updated_at: input.now,
         hint: "event_created",
-      });
-    }
-    if (eventIds.length > 0) {
-      await this.notifications.publish({ type: "inbox_changed" });
-    }
+      } : undefined, true);
     return {
+      ...refresh,
       processed: eventIds.length,
       hasMore: batch.hasMore
         || batch.materialized.some(({ createdEventIds }) => (
@@ -161,16 +177,14 @@ export class ScheduledEventAutoArchiveJob implements EventAutoArchiveJob {
 
   async run(input: Parameters<EventAutoArchiveJob["run"]>[0]) {
     const batch = await this.store.archiveDue(input);
-    for (const eventId of batch.eventIds) {
-      await this.notifications.publish({
+    const refresh = await publishCommittedRefresh(this.notifications, batch.eventIds[0] ? {
         type: "entity_changed",
         entity_type: "event",
-        entity_id: eventId,
+        entity_id: batch.eventIds[0],
         updated_at: input.now,
         hint: "event_archived",
-      });
-    }
-    return { processed: batch.eventIds.length, hasMore: batch.hasMore };
+      } : undefined);
+    return { ...refresh, processed: batch.eventIds.length, hasMore: batch.hasMore };
   }
 
   inspectBacklog(input: Parameters<EventAutoArchiveJob["inspectBacklog"]>[0]) {
@@ -186,19 +200,15 @@ export class ScheduledAnnouncementPublishJob implements AnnouncementPublishJob {
 
   async run(input: Parameters<AnnouncementPublishJob["run"]>[0]) {
     const batch = await this.store.publishDue(input);
-    for (const announcement of batch.announcements) {
-      await this.notifications.publish({
+    const announcement = batch.announcements[0];
+    const refresh = await publishCommittedRefresh(this.notifications, announcement ? {
         type: "entity_changed",
         entity_type: "announcement",
         entity_id: announcement.id,
         updated_at: announcement.publishedAt,
         hint: "announcement_published",
-      });
-    }
-    if (batch.announcements.length > 0) {
-      await this.notifications.publish({ type: "inbox_changed" });
-    }
-    return { processed: batch.announcements.length, hasMore: batch.hasMore };
+      } : undefined, true);
+    return { ...refresh, processed: batch.announcements.length, hasMore: batch.hasMore };
   }
 
   inspectBacklog(input: Parameters<AnnouncementPublishJob["inspectBacklog"]>[0]) {
@@ -222,6 +232,8 @@ export class ScheduledRaffleAutoDrawJob implements RaffleAutoDrawJob {
   async run(input: Parameters<RaffleAutoDrawJob["run"]>[0]) {
     const batch = await this.store.listDue(input.now, input.limit);
     let processed = 0;
+    let refreshMessage: NotificationMessage | undefined;
+    let failure: Error | undefined;
     for (const raffle of batch.raffles) {
       const winnerIds = selectRaffleWinnerIds(
         raffle.participantIds,
@@ -249,18 +261,23 @@ export class ScheduledRaffleAutoDrawJob implements RaffleAutoDrawJob {
         });
       } catch (error) {
         if (error instanceof AppError && error.code === "CONFLICT") continue;
-        throw error;
+        failure = error instanceof Error ? error : new Error(String(error), { cause: error });
+        break;
       }
       processed += 1;
-      await this.notifications.publish({
+      refreshMessage ??= {
         type: "entity_changed",
         entity_type: "event",
         entity_id: raffle.eventId,
         updated_at: updatedAt,
         hint: "raffle_drawn",
-      });
+      };
     }
-    return { processed, hasMore: batch.hasMore };
+    const refresh = await publishCommittedRefresh(this.notifications, refreshMessage);
+    if (failure !== undefined) {
+      throw new Error(`Raffle batch committed ${processed} draw(s) before failing: ${failure.message}${refresh.warning ? `; ${refresh.warning}` : ""}`, { cause: failure });
+    }
+    return { ...refresh, processed, hasMore: batch.hasMore };
   }
 
   inspectBacklog(input: Parameters<RaffleAutoDrawJob["inspectBacklog"]>[0]) {

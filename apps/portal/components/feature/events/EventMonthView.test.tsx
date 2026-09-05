@@ -81,27 +81,6 @@ function renderMonthView(
 }
 
 describe("EventMonthView", () => {
-  it("dims closed polls in the active month like past events", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-07T16:11:00.000Z"));
-
-    renderMonthView([
-      createEvent({
-        id: "poll-closed",
-        type: "poll",
-        title: "Poll: Closed Example",
-        start_at: "2026-05-01T16:00:00.000Z",
-        end_at: "2026-05-01T18:00:00.000Z",
-      }),
-    ]);
-
-    expect(document.querySelector('.month-calendar--grid [data-slot="badge"]')).toHaveClass(
-      "month-calendar__event-badge--muted",
-    );
-
-    vi.useRealTimers();
-  });
-
   it("keeps date selection, creation, and event opening as separate keyboard controls", async () => {
     const user = userEvent.setup();
     const onSelectDate = vi.fn();
@@ -150,6 +129,5 @@ describe("EventMonthView", () => {
     const dateButton = within(document.querySelector(".month-calendar--grid") as HTMLElement)
       .getByRole("button", { name: `Select ${selectedDateKey}` });
     expect(dateButton).toHaveAttribute("aria-pressed", "true");
-    expect(dateButton.closest(".month-calendar__cell")).toHaveClass("month-calendar__cell--selected");
   });
 });

@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAdminData } from "./useAdminData";
-import { useEventMemberDirectory, useEventsData } from "./useEventsData";
+import { useEventsData } from "./useEventsData";
 import { useGuildWarData } from "./useGuildWarData";
 import { useProfileData } from "./useProfileData";
 import { queryKeys } from "../../api/query-keys";
@@ -25,7 +25,7 @@ const serviceMocks = vi.hoisted(() => ({
   fetchRoles: vi.fn(),
   fetchTemplatesList: vi.fn(),
   fetchUserDetail: vi.fn(),
-  fetchAllUsersListWithOptions: vi.fn(),
+  fetchUsersListWithOptions: vi.fn(),
 }));
 
 vi.mock("../../services/EventService", () => ({
@@ -41,7 +41,7 @@ vi.mock("../../services/GuildWarService", () => ({
 }));
 
 vi.mock("../../services/UserService", () => ({
-  fetchAllUsersListWithOptions: serviceMocks.fetchAllUsersListWithOptions,
+  fetchUsersListWithOptions: serviceMocks.fetchUsersListWithOptions,
   fetchUserDetail: serviceMocks.fetchUserDetail,
 }));
 
@@ -84,9 +84,8 @@ describe("portal data hooks", () => {
     }
   });
 
-  it("loads events and users through the service layer", async () => {
+  it("loads events without coupling the list to a member-directory scan", async () => {
     serviceMocks.fetchEventsList.mockResolvedValueOnce({ data: [] });
-    serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     const { result } = renderHook(
@@ -97,15 +96,11 @@ describe("portal data hooks", () => {
           searchQuery: "guild raid",
           pinnedOnly: true,
           lockedOnly: true,
-          publicMemberProjection: false,
         }),
       { wrapper: createWrapper(queryClient) },
     );
 
-    await waitFor(() => {
-      expect(result.current.eventsQuery.isSuccess).toBe(true);
-      expect(result.current.usersQuery.isSuccess).toBe(true);
-    });
+    await waitFor(() => expect(result.current.eventsQuery.isSuccess).toBe(true));
 
     expect(serviceMocks.fetchEventsList).toHaveBeenCalledWith({
       page: 1,
@@ -116,49 +111,8 @@ describe("portal data hooks", () => {
       pinned: true,
       locked: true,
     });
-    expect(serviceMocks.fetchAllUsersListWithOptions).toHaveBeenCalledWith({ externalView: false });
     expect(queryClient.getQueryCache().findAll({ queryKey: queryKeys.events.all })[0]?.queryKey).toContain("user:user-1");
-    expect(queryClient.getQueryCache().findAll({ queryKey: queryKeys.users.all })[0]?.queryKey).toEqual(
-      queryKeys.users.directory("user:user-1", "internal"),
-    );
-  });
-
-  it("uses the capped public member projection when requested", async () => {
-    serviceMocks.fetchEventsList.mockResolvedValueOnce({ data: [] });
-    serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-    const { result } = renderHook(
-      () => useEventsData({
-        status: "active",
-        searchQuery: "",
-        pinnedOnly: false,
-        lockedOnly: false,
-        publicMemberProjection: true,
-      }),
-      { wrapper: createWrapper(queryClient) },
-    );
-
-    await waitFor(() => expect(result.current.usersQuery.isSuccess).toBe(true));
-
-    expect(serviceMocks.fetchAllUsersListWithOptions).toHaveBeenCalledWith({ externalView: true });
-    expect(queryClient.getQueryCache().findAll({ queryKey: queryKeys.users.all })[0]?.queryKey).toEqual(
-      queryKeys.users.directory("user:user-1", "public"),
-    );
-  });
-
-  it("does not fetch the event member directory until a route needs it", () => {
-    const { result } = renderHook(
-      () => useEventMemberDirectory({
-        currentUserId: "user-1",
-        publicMemberProjection: false,
-        enabled: false,
-      }),
-      { wrapper: createWrapper() },
-    );
-
-    expect(result.current.fetchStatus).toBe("idle");
-    expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchUsersListWithOptions).not.toHaveBeenCalled();
   });
 
   it("loads only active guild war queries through the service layer", async () => {
@@ -232,7 +186,7 @@ describe("portal data hooks", () => {
         },
       },
     ]);
-    serviceMocks.fetchAllUsersListWithOptions.mockResolvedValue({ data: [] });
+    serviceMocks.fetchUsersListWithOptions.mockResolvedValue({ data: [] });
     serviceMocks.fetchAdminInviteLinks.mockImplementation(
       ({ cursor }: { cursor?: string }) => Promise.resolve({
         data: [],
@@ -289,7 +243,7 @@ describe("portal data hooks", () => {
     expect(serviceMocks.fetchRoles).toHaveBeenCalled();
     expect(serviceMocks.fetchAdminStatus).toHaveBeenCalled();
     expect(serviceMocks.fetchAdminOperations).toHaveBeenCalled();
-    expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchUsersListWithOptions).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminInviteLinks).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminAuditLog).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminSiteConfig).not.toHaveBeenCalled();
@@ -404,7 +358,7 @@ describe("portal data hooks", () => {
     });
     expect(queryClient.getQueryState(queryKeys.admin.auditLog("raid", "", "", "event", "event-1"))).toBeDefined();
     expect(queryClient.getQueryState(queryKeys.admin.auditLog("  raid  ", "", "", "event", "event-1"))).toBeUndefined();
-    expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchUsersListWithOptions).not.toHaveBeenCalled();
   });
 
   it("forwards a one-sided audit date so the HTTP contract can reject it", async () => {
@@ -474,7 +428,7 @@ describe("portal data hooks", () => {
       expect(result.current.operationsQuery.isSuccess).toBe(true);
     });
 
-    expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchUsersListWithOptions).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminInviteLinks).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminInviteStats).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminAuditLog).not.toHaveBeenCalled();
@@ -527,7 +481,7 @@ describe("portal data hooks", () => {
       expect(result.current.rolesQuery.isSuccess).toBe(true);
     });
 
-    expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchUsersListWithOptions).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminInviteLinks).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminInviteStats).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminAuditLog).not.toHaveBeenCalled();
@@ -591,7 +545,7 @@ describe("portal data hooks", () => {
 
     expect(result.current.rolesQuery.isLoading).toBe(false);
     expect(serviceMocks.fetchRoles).not.toHaveBeenCalled();
-    expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchUsersListWithOptions).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminSiteConfig).toHaveBeenCalled();
     expect(serviceMocks.fetchAdminInviteLinks).not.toHaveBeenCalled();
   });

@@ -15,10 +15,10 @@ const newPasswordInputs = [
 
 describe("new password contracts", () => {
   it.each(newPasswordInputs)("uses the same 8–128-character policy for every new-password flow (%#)", (parse) => {
-    for (const password of ["Violet7!", "Violets!", "Phrase with spaces!", "春夏秋冬Aa!云", "Aa!" + "a".repeat(125)]) {
+    for (const password of ["Violet7!", "Violets!", "Password1!", "Phrase with spaces!", "春夏秋冬Aa!云", "Aa!" + "a".repeat(125)]) {
       expect(parse(password).success).toBe(true);
     }
-    for (const password of ["Short!1", "Aa!" + "a".repeat(126), "violet7!", "VIOLET7!", "Violet77", "Violet7 ", "Password1!"]) {
+    for (const password of ["Short!1", "Aa!" + "a".repeat(126), "violet7!", "VIOLET7!", "Violet77", "Violet7 "]) {
       expect(parse(password).success).toBe(false);
     }
     expect(parse("Violet7!", "different").success).toBe(false);

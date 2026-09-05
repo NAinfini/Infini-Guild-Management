@@ -296,7 +296,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root[data-motion="reduced"] {
   .inspectorContent,
   .drawerContent {
     animation: none;

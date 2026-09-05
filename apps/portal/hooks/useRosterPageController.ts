@@ -1,19 +1,17 @@
-import type { MemberProfile, User, UserBadge } from "@guild/shared";
+import type { MemberProfile, MemberSummary, UserBadge } from "@guild/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useExternalView } from "./useExternalView";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 import { queryKeys } from "../api/query-keys";
-import { fetchAllUsersListWithOptions } from "../services/UserService";
+import { fetchUsersListWithOptions, fetchUserDetail } from "../services/UserService";
 import { useAuthStore } from "../stores/auth";
 import { viewerIdentity } from "../session-storage";
-import { useClassCatalog } from "./data/useClassData";
-import { resolveClassCatalogItem } from "../utils/class-catalog";
 import { resolveMediaUrl } from "../utils/media";
 import { playAudio, stopAudio, setAudioVolume, setAudioMuted, isAudioPlaying, getAudioSrc } from "../utils/audio-player";
 
-export type RosterEntry = { user: User; profile: MemberProfile; badges?: UserBadge[] };
+export type RosterEntry = { user: MemberSummary; profile: MemberProfile; badges?: UserBadge[] };
 
 const ROSTER_FILTERS_KEY = "roster.filters";
 const ROSTER_AUDIO_MUTED_KEY = "roster.audio.muted";
@@ -87,7 +85,6 @@ export function useRosterPageController() {
   const isExternalView = useExternalView();
   const sessionUser = useAuthStore((state) => state.user);
   const usePublicRosterProjection = isExternalView || !sessionUser;
-  const classCatalog = useClassCatalog();
   const { canManage: canManagePermission } = useEffectivePermissions();
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim().toLowerCase();
@@ -102,15 +99,29 @@ export function useRosterPageController() {
   const selectedUserIdRef = useRef(selectedUserId);
   selectedUserIdRef.current = selectedUserId;
 
+  const listOptions = useMemo(() => ({
+    externalView: usePublicRosterProjection,
+    page,
+    limit: ROSTER_PAGE_SIZE,
+    includeTotal: true,
+    search: debouncedSearch,
+    classIds: [...classFilter].sort(),
+    sort: sortMode,
+    direction: sortMode === "power" ? "desc" as const : "asc" as const,
+    searchScope: "name" as const,
+  }), [usePublicRosterProjection, page, debouncedSearch, classFilter, sortMode]);
+  const viewerKey = viewerIdentity(sessionUser?.id);
+  const projection = usePublicRosterProjection ? "public" : "internal";
   const usersQuery = useQuery({
-    queryKey: queryKeys.users.directory(
-      viewerIdentity(sessionUser?.id),
-      usePublicRosterProjection ? "public" : "internal",
-    ),
-    queryFn: () => fetchAllUsersListWithOptions({ externalView: usePublicRosterProjection }),
+    queryKey: queryKeys.users.list(viewerKey, projection, listOptions),
+    queryFn: ({ signal }) => fetchUsersListWithOptions({ ...listOptions, signal }),
     staleTime: 10 * 60_000,
   });
-
+  const selectedQuery = useQuery({
+    queryKey: queryKeys.users.detail(viewerKey, projection, selectedUserId),
+    queryFn: ({ signal }) => fetchUserDetail(selectedUserId!, { externalView: usePublicRosterProjection, signal }),
+    enabled: selectedUserId !== null,
+  });
   useEffect(() => {
     setAudioVolume(audioVolume / 100);
     setAudioMuted(audioMuted);
@@ -166,60 +177,18 @@ export function useRosterPageController() {
     }
   }, [classFilter, sortMode]);
 
-  const rows = usersQuery.data?.data ?? [];
-  const displayRows = useMemo(
-    () => isExternalView
-      ? rows.map((entry) => ({
-          ...entry,
-          profile: { ...entry.profile, notes: null },
-        }))
-      : rows,
-    [isExternalView, rows],
-  );
+  const pageRows = usersQuery.data?.data ?? [];
   const selected = selectedUserId
-    ? displayRows.find((entry) => entry.user.id === selectedUserId) ?? null
+    ? selectedQuery.data ?? pageRows.find((entry) => entry.user.id === selectedUserId) ?? null
     : null;
-  const sortedRows = useMemo(() => {
-    const filteredRows = displayRows
-      .filter((entry) => {
-        if (!debouncedSearch) return true;
-        /* 只按用户名，和输入框自己写的「搜索用户名」一致——名册上已经看不到身份，
-           再拿身份去匹配就会搜出一批看不出为什么会命中的人。 */
-        return entry.user.display_name.toLowerCase().includes(debouncedSearch);
-      })
-      .filter((entry) => {
-        if (classFilter.length === 0) return true;
-        return entry.profile.classes.some((className) => classFilter.includes(className));
-      });
-
-    return [...filteredRows].sort((left, right) => {
-      if (sortMode === "display_name") return left.user.display_name.localeCompare(right.user.display_name);
-      if (sortMode === "class") {
-        return resolveClassCatalogItem(left.profile.classes[0], classCatalog).label.localeCompare(
-          resolveClassCatalogItem(right.profile.classes[0], classCatalog).label,
-        );
-      }
-      return right.profile.power - left.profile.power;
-    });
-  }, [classCatalog, displayRows, debouncedSearch, classFilter, sortMode]);
-  const pageCount = Math.max(1, Math.ceil(sortedRows.length / ROSTER_PAGE_SIZE));
+  const pageCount = usersQuery.data?.total_pages ?? page;
   const currentPage = Math.min(page, pageCount);
-  const pageStart = (currentPage - 1) * ROSTER_PAGE_SIZE;
-  const pageRows = sortedRows.slice(pageStart, pageStart + ROSTER_PAGE_SIZE);
+  const totalCount = usersQuery.data?.total ?? 0;
 
   useEffect(() => {
-    if (page !== currentPage) setPage(currentPage);
-  }, [currentPage, page]);
-
-  useEffect(() => {
-    if (selectedUserId && usersQuery.data && !selected) {
-      selectedUserIdRef.current = null;
-      setSelectedUserId(null);
-      stopAudio();
-    }
-  }, [selected, selectedUserId, usersQuery.data]);
-
-  const playHoverAudio = (entry: { user: User; profile: MemberProfile }) => {
+    if (usersQuery.data && page !== currentPage) setPage(currentPage);
+  }, [currentPage, page, usersQuery.data]);
+  const playHoverAudio = (entry: { user: MemberSummary; profile: MemberProfile }) => {
     if (audioMuted) return;
     const mediaId = entry.profile.audio_media_id;
     if (!mediaId) return;
@@ -291,7 +260,8 @@ export function useRosterPageController() {
     setAudioVolumeState,
     selected,
     usersQuery,
-    sortedRows,
+    totalCount,
+    selectedQuery,
     playHoverAudio,
     stopHoverAudio,
     openMemberProfile,

@@ -26,6 +26,7 @@ function context() {
 
 function store(overrides: Partial<NotificationInboxStore> = {}): NotificationInboxStore {
   return {
+    countUnread: vi.fn(),
     list: vi.fn(),
     markRead: vi.fn(),
     getPreferences: vi.fn(),
@@ -35,6 +36,29 @@ function store(overrides: Partial<NotificationInboxStore> = {}): NotificationInb
 }
 
 describe("NotificationInboxService", () => {
+  it("counts only the authenticated member's current inbox without loading notification rows", async () => {
+    const inboxStore = store({ countUnread: vi.fn().mockResolvedValue(7) });
+    const service = new NotificationInboxService(inboxStore, { publish: vi.fn() }, { defer: vi.fn() });
+
+    await expect(service.getUnreadCount(context())).resolves.toEqual({ unread_count: 7 });
+
+    expect(inboxStore.countUnread).toHaveBeenCalledWith({ userId: "user-1", now: NOW });
+    expect(inboxStore.list).not.toHaveBeenCalled();
+  });
+
+  it("rejects anonymous unread-count requests before reading storage", async () => {
+    const inboxStore = store();
+    const service = new NotificationInboxService(inboxStore, { publish: vi.fn() }, { defer: vi.fn() });
+    const anonymous = createRequestContext({
+      requestId: "anonymous-request",
+      authorization: createAuthorizationContext(null),
+      now: NOW,
+    });
+
+    await expect(service.getUnreadCount(anonymous)).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
+    expect(inboxStore.countUnread).not.toHaveBeenCalled();
+  });
+
   it("lists the authenticated member's recent inbox without an unread-status branch", async () => {
     const list = vi.fn().mockResolvedValue({ data: [], nextCursor: null, unreadCount: 0 });
     const service = new NotificationInboxService(store({ list }), { publish: vi.fn() }, { defer: vi.fn() });

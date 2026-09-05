@@ -1,13 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "../../api/query-keys";
+import { deferred } from "../../testing/deferred";
 import { NotificationPopover } from "./NotificationPopover";
 
 const mocks = vi.hoisted(() => ({
   fetchActiveImportantNotices: vi.fn(),
   fetchInboxNotifications: vi.fn(),
+  fetchInboxUnreadCount: vi.fn(),
   markImportantNoticesRead: vi.fn(),
   markInboxNotificationsRead: vi.fn(),
   isPhone: false,
@@ -43,6 +45,7 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("../../services/NotificationService", () => ({
   fetchActiveImportantNotices: mocks.fetchActiveImportantNotices,
   fetchInboxNotifications: mocks.fetchInboxNotifications,
+  fetchInboxUnreadCount: mocks.fetchInboxUnreadCount,
   markImportantNoticesRead: mocks.markImportantNoticesRead,
   markInboxNotificationsRead: mocks.markInboxNotificationsRead,
 }));
@@ -94,6 +97,7 @@ describe("NotificationPopover", () => {
     mocks.isPhone = false;
     mocks.fetchActiveImportantNotices.mockReset().mockResolvedValue([]);
     mocks.fetchInboxNotifications.mockReset().mockResolvedValue(firstPage);
+    mocks.fetchInboxUnreadCount.mockReset().mockResolvedValue({ unread_count: 1 });
     mocks.markImportantNoticesRead.mockReset().mockResolvedValue({ updated: 1 });
     mocks.markInboxNotificationsRead.mockReset().mockResolvedValue({ ok: true, unread_count: 0 });
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
@@ -112,19 +116,63 @@ describe("NotificationPopover", () => {
     await user.click(screen.getByRole("button", { name: "Notifications" }));
 
     expect(mocks.fetchInboxNotifications).not.toHaveBeenCalled();
+    expect(mocks.fetchInboxUnreadCount).not.toHaveBeenCalled();
     expect(mocks.fetchActiveImportantNotices).not.toHaveBeenCalled();
   });
 
-  it("keeps fresh unread data when opening the inbox", async () => {
+  it("loads only the unread count while closed and reuses fresh inbox data after opening", async () => {
     const user = userEvent.setup();
     renderPopover();
 
     const trigger = await screen.findByRole("button", { name: "Notifications (1 unread)" });
+    expect(mocks.fetchInboxUnreadCount).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchInboxNotifications).not.toHaveBeenCalled();
+
+    await user.click(trigger);
+    expect(await screen.findByText("First announcement")).toBeInTheDocument();
     expect(mocks.fetchInboxNotifications).toHaveBeenCalledTimes(1);
 
     await user.click(trigger);
-
+    await waitFor(() => expect(screen.queryByText("First announcement")).not.toBeInTheDocument());
+    await user.click(trigger);
+    expect(await screen.findByText("First announcement")).toBeInTheDocument();
     expect(mocks.fetchInboxNotifications).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchInboxUnreadCount).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes only the unread count after a closed inbox is invalidated by push", async () => {
+    const user = userEvent.setup();
+    const queryClient = renderPopover();
+    const trigger = await screen.findByRole("button", { name: "Notifications (1 unread)" });
+    await user.click(trigger);
+    expect(await screen.findByText("First announcement")).toBeInTheDocument();
+    await user.click(trigger);
+    await waitFor(() => expect(screen.queryByText("First announcement")).not.toBeInTheDocument());
+
+    mocks.fetchInboxUnreadCount.mockResolvedValue({ unread_count: 2 });
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all }));
+
+    expect(await screen.findByRole("button", { name: "Notifications (2 unread)" })).toBeInTheDocument();
+    expect(mocks.fetchInboxUnreadCount).toHaveBeenCalledTimes(2);
+    expect(mocks.fetchInboxNotifications).toHaveBeenCalledTimes(1);
+
+    await user.click(trigger);
+    await waitFor(() => expect(mocks.fetchInboxNotifications).toHaveBeenCalledTimes(2));
+  });
+
+  it("recovers the unread count from an opened inbox when the count request failed", async () => {
+    mocks.fetchInboxUnreadCount.mockRejectedValue(new Error("count request failed"));
+    const user = userEvent.setup();
+    const queryClient = renderPopover();
+    await waitFor(() => expect(queryClient.getQueryState(queryKeys.notifications.unreadCount("user-1"))?.status)
+      .toBe("error"));
+    expect(mocks.fetchInboxNotifications).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+
+    expect(await screen.findByText("First announcement")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Notifications (1 unread)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark all read" })).toBeEnabled();
   });
 
   it("closes from its trigger and stays closed after the exit transition", async () => {
@@ -143,6 +191,7 @@ describe("NotificationPopover", () => {
   });
 
   it("loads additional notification pages only when the user requests them", async () => {
+    mocks.fetchInboxUnreadCount.mockResolvedValue({ unread_count: 2 });
     mocks.fetchInboxNotifications.mockImplementation(({ cursor }: { cursor?: string | null }) =>
       Promise.resolve(cursor === "next-page" ? secondPage : { ...firstPage, next_cursor: "next-page", unread_count: 2 }));
     const user = userEvent.setup();
@@ -192,6 +241,7 @@ describe("NotificationPopover", () => {
   });
 
   it("does not mark an already-read row on hover or focus", async () => {
+    mocks.fetchInboxUnreadCount.mockResolvedValue({ unread_count: 0 });
     mocks.fetchInboxNotifications.mockResolvedValue({
       ...firstPage,
       data: [{ ...firstPage.data[0]!, read_at: "2026-08-22T13:00:00.000Z" }],
@@ -216,6 +266,108 @@ describe("NotificationPopover", () => {
     await user.click(screen.getByRole("button", { name: "Mark all read" }));
 
     await waitFor(() => expect(mocks.markInboxNotificationsRead).toHaveBeenCalledWith({ all: true }));
+  });
+
+  it("marks all unread notifications even when they are beyond the loaded page", async () => {
+    mocks.fetchInboxUnreadCount.mockResolvedValue({ unread_count: 3 });
+    mocks.fetchInboxNotifications.mockResolvedValue({
+      ...firstPage,
+      data: [{ ...firstPage.data[0]!, read_at: "2026-08-22T13:00:00.000Z" }],
+      next_cursor: "older-unread-notifications",
+      unread_count: 3,
+    });
+    const user = userEvent.setup();
+    renderPopover();
+    await user.click(await screen.findByRole("button", { name: "Notifications (3 unread)" }));
+    expect(await screen.findByText("First announcement")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Mark all read" }));
+
+    await waitFor(() => expect(mocks.markInboxNotificationsRead).toHaveBeenCalledWith({ all: true }));
+    expect(mocks.fetchInboxNotifications).not.toHaveBeenCalledWith({ limit: 50, cursor: "older-unread-notifications" });
+  });
+
+  it.each([
+    { action: "selected", remaining: 3 },
+    { action: "all", remaining: 0 },
+  ])("uses the server's unread count after marking $action notifications read", async ({ action, remaining }) => {
+    const read = deferred<{ ok: true; unread_count: number }>();
+    const refresh = deferred<{ unread_count: number }>();
+    mocks.markInboxNotificationsRead.mockReturnValue(read.promise);
+    const user = userEvent.setup();
+    const queryClient = renderPopover();
+    await user.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));
+    const row = await screen.findByRole("button", { name: firstRowLabel });
+    if (action === "all") await user.click(screen.getByRole("button", { name: "Mark all read" }));
+    else fireEvent.focus(row);
+    expect(await screen.findByRole("button", { name: "Notifications" })).toBeInTheDocument();
+    mocks.fetchInboxUnreadCount.mockReturnValue(refresh.promise);
+    mocks.fetchInboxNotifications.mockResolvedValue({
+      ...firstPage,
+      data: [{ ...firstPage.data[0]!, read_at: "2026-08-22T13:00:00.000Z" }],
+      unread_count: remaining,
+    });
+
+    await act(async () => { read.resolve({ ok: true, unread_count: remaining }); });
+
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.notifications.unreadCount("user-1")))
+      .toEqual({ unread_count: remaining }));
+    expect(await screen.findByRole("button", {
+      name: remaining > 0 ? `Notifications (${remaining} unread)` : "Notifications",
+    })).toBeInTheDocument();
+    await act(async () => { refresh.resolve({ unread_count: remaining }); });
+  });
+
+  it("does not let a cancelled inbox response restore a count changed by marking read", async () => {
+    const list = deferred<typeof firstPage>();
+    const read = deferred<{ ok: true; unread_count: number }>();
+    mocks.fetchInboxNotifications.mockReturnValue(list.promise);
+    mocks.markInboxNotificationsRead.mockReturnValue(read.promise);
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(queryKeys.notifications.inbox("user-1"), {
+      pages: [firstPage],
+      pageParams: [undefined],
+    }, { updatedAt: 1 });
+    renderPopover({ id: "user-1" }, queryClient);
+    await user.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));
+    await waitFor(() => expect(mocks.fetchInboxNotifications).toHaveBeenCalledOnce());
+    fireEvent.focus(await screen.findByRole("button", { name: firstRowLabel }));
+    expect(await screen.findByRole("button", { name: "Notifications" })).toBeInTheDocument();
+
+    await act(async () => { list.resolve(firstPage); });
+
+    expect(queryClient.getQueryData(queryKeys.notifications.unreadCount("user-1"))).toEqual({ unread_count: 0 });
+    mocks.fetchInboxUnreadCount.mockResolvedValue({ unread_count: 0 });
+    mocks.fetchInboxNotifications.mockResolvedValue({ ...firstPage, data: [], unread_count: 0 });
+    await act(async () => { read.resolve({ ok: true, unread_count: 0 }); });
+  });
+
+  it.each(["selected", "all"])("restores the badge and rows when marking %s notifications read fails", async (action) => {
+    const read = deferred<{ ok: true; unread_count: number }>();
+    const countRefresh = deferred<{ unread_count: number }>();
+    const listRefresh = deferred<typeof firstPage>();
+    mocks.markInboxNotificationsRead.mockReturnValue(read.promise);
+    const user = userEvent.setup();
+    const queryClient = renderPopover();
+    await user.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));
+    const row = await screen.findByRole("button", { name: firstRowLabel });
+    if (action === "all") await user.click(screen.getByRole("button", { name: "Mark all read" }));
+    else fireEvent.focus(row);
+    expect(await screen.findByRole("button", { name: "Notifications" })).toBeInTheDocument();
+    mocks.fetchInboxUnreadCount.mockReturnValue(countRefresh.promise);
+    mocks.fetchInboxNotifications.mockReturnValue(listRefresh.promise);
+
+    await act(async () => { read.reject(new Error("write failed")); });
+
+    expect(await screen.findByRole("button", { name: "Notifications (1 unread)" })).toBeInTheDocument();
+    expect(queryClient.getQueryData(queryKeys.notifications.inbox("user-1"))).toMatchObject({
+      pages: [{ data: [{ id: "notification-1", read_at: null }] }],
+    });
+    await act(async () => {
+      countRefresh.resolve({ unread_count: 1 });
+      listRefresh.resolve(firstPage);
+    });
   });
 
   it("keeps active administrator notices above recent activity and marks opening as read without acknowledging", async () => {
@@ -275,7 +427,7 @@ describe("NotificationPopover", () => {
     await user.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));
 
     expect(await screen.findByRole("dialog", { name: /^Notifications/ })).toBeInTheDocument();
-    expect(screen.getByText("First announcement")).toBeInTheDocument();
+    expect(await screen.findByText("First announcement")).toBeInTheDocument();
   });
 
   it("keeps loading, error, and retry feedback inside the inbox panel", async () => {
@@ -283,7 +435,7 @@ describe("NotificationPopover", () => {
     const user = userEvent.setup();
     renderPopover();
 
-    await user.click(await screen.findByRole("button", { name: "Notifications" }));
+    await user.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("notification.activityLoadError");
     const callsBeforeRetry = mocks.fetchInboxNotifications.mock.calls.length;

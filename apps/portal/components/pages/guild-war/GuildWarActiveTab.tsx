@@ -2,13 +2,16 @@ import type { SensorDescriptor, SensorOptions } from "@dnd-kit/core";
 import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
 import { Button } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Suspense, lazy, useCallback, useMemo, useState } from "react";
+import type { MemberPlanningEntry } from "@guild/shared";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "../../../hooks/useAppError";
 import { absenceQueryKeys, concludeGuildWar, guildWarQueryKeys, moveGuildWarMember } from "../../../services/GuildWarService";
-import { fetchAbsencesWindow, type UsersListResponse } from "../../../services/UserService";
+import { fetchAbsencesWindow } from "../../../services/UserService";
+import { useMemberDirectory } from "../../../hooks/data/useMemberDirectory";
+import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
 import { formatDateTimeWithTimeZone, localDateKey } from "../../../utils/datetime";
 import { notifySuccess } from "../../../utils/notifications";
 import { SwordsIcon } from "../../icons";
@@ -50,7 +53,8 @@ type GuildWarActiveTabProps = {
   sensors: SensorDescriptor<SensorOptions>[];
   concludeWarDisabled: boolean;
   concludeWarDisabledReason: string | undefined;
-  usersData: UsersListResponse["data"];
+  usersData: MemberPlanningEntry[];
+  currentUserId?: string;
 };
 
 export function resolveGuildWarAbsenceWindow(
@@ -161,6 +165,7 @@ export function GuildWarActiveTab({
   concludeWarDisabled,
   concludeWarDisabledReason,
   usersData,
+  currentUserId,
 }: GuildWarActiveTabProps) {
   const { t } = useTranslation("guild-war");
   const queryClient = useQueryClient();
@@ -188,6 +193,13 @@ export function GuildWarActiveTab({
   const [addToPoolOpen, setAddToPoolOpen] = useState(false);
   const [addToPoolSelection, setAddToPoolSelection] = useState<string[]>([]);
   const [addToPoolSearch, setAddToPoolSearch] = useState("");
+  const debouncedAddToPoolSearch = useDebouncedValue(addToPoolSearch.trim(), 250);
+  const addToPoolDirectory = useMemberDirectory({
+    currentUserId,
+    enabled: addToPoolOpen,
+    search: debouncedAddToPoolSearch,
+    selectedIds: addToPoolSelection,
+  });
 
   const availableForPool = useMemo(() => {
     const assignedIds = new Set<string>();
@@ -198,15 +210,10 @@ export function GuildWarActiveTab({
       }
       for (const poolMember of activeData.pool) assignedIds.add(poolMember.userId);
     }
-    return usersData
+    return addToPoolDirectory.entries
       .filter((u) => !assignedIds.has(u.user.id))
       .map((u) => ({ value: u.user.id, label: u.user.display_name }));
-  }, [activeQuery.data, usersData]);
-  const filteredAvailableForPool = useMemo(() => {
-    const query = addToPoolSearch.trim().toLocaleLowerCase();
-    if (!query) return availableForPool;
-    return availableForPool.filter((option) => option.label.toLocaleLowerCase().includes(query));
-  }, [addToPoolSearch, availableForPool]);
+  }, [activeQuery.data, addToPoolDirectory.entries]);
 
   const togglePoolSelection = useCallback((userId: string) => {
     setAddToPoolSelection((current) => current.includes(userId)
@@ -332,14 +339,7 @@ export function GuildWarActiveTab({
   return (
     <div className="guild-war-active-shell">
       <Suspense fallback={(
-        <Card className="guild-war-active-skeleton">
-          <Skeleton className="h-8 w-2/5" />
-          <Skeleton className="h-8 w-full" />
-          <div className="guild-war-active-skeleton__row">
-            <Skeleton className="h-8 w-1/3" />
-            <Skeleton className="h-8 w-1/3" />
-          </div>
-        </Card>
+        <LoadingIndicator />
       )}>
         <LazyGuildWarActiveTopCard
           selectedEventId={selectedEventId}
@@ -383,16 +383,7 @@ export function GuildWarActiveTab({
       ) : null}
 
       <Suspense fallback={(
-        <Card className="guild-war-active-board-skeleton">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="guild-war-active-board-skeleton__column">
-              <Skeleton className="h-6 w-3/5" />
-              <Skeleton className="h-15 w-full" />
-              <Skeleton className="h-15 w-full" />
-              <Skeleton className="h-15 w-full" />
-            </div>
-          ))}
-        </Card>
+        <LoadingIndicator />
       )}>
         <LazyGuildWarDragBoard
           dragColumns={guildWarDrag.dragColumns}
@@ -446,7 +437,7 @@ export function GuildWarActiveTab({
         open={addToPoolOpen}
         pending={addToPoolMutation.isPending}
         availableCount={availableForPool.length}
-        options={filteredAvailableForPool}
+        options={availableForPool}
         selectedUserIds={addToPoolSelection}
         search={addToPoolSearch}
         onOpenChange={(open) => {
@@ -456,6 +447,11 @@ export function GuildWarActiveTab({
         }}
         onToggleUser={togglePoolSelection}
         onSearchChange={setAddToPoolSearch}
+        hasMore={addToPoolDirectory.hasMore}
+        loadingMore={addToPoolDirectory.isLoadingMore}
+        onLoadMore={() => { void addToPoolDirectory.loadMore(); }}
+        membersLoading={addToPoolDirectory.directoryQuery.isLoading}
+        memberLoadError={addToPoolDirectory.loadError}
         onCancel={() => {
           setAddToPoolOpen(false);
           setAddToPoolSearch("");

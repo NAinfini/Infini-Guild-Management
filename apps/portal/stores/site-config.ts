@@ -66,6 +66,8 @@ export function applyPublicSiteConfig(config: PublicSiteConfig): void {
 
   const splashTitle = document.getElementById("splash-title");
   if (splashTitle) splashTitle.textContent = config.site_name;
+  const splashEmblem = document.getElementById("splash-emblem");
+  if (splashEmblem instanceof HTMLImageElement) splashEmblem.src = siteLogoUrl;
   const favicon = document.querySelector<HTMLLinkElement>("link[rel='icon']");
   if (favicon && favicon.href !== new URL(siteLogoUrl, document.baseURI).href) {
     favicon.href = siteLogoUrl;

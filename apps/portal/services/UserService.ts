@@ -27,6 +27,9 @@ export {
   fetchUsersStats,
   fetchUsersList,
   fetchUsersListWithOptions,
-  fetchAllUsersListWithOptions,
+  fetchMemberDirectory,
+  fetchMemberIdentities,
+  fetchMemberPlanning,
+  fetchMemberAvailabilitySummary,
 } from "../api/queries/users";
-export type { UsersListResponse, UsersStatsResponse } from "../api/queries/users";
+export type { UsersListResponse, UsersStatsResponse, UsersListOptions } from "../api/queries/users";

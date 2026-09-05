@@ -6,6 +6,7 @@ import { queryKeys } from "../../api/query-keys";
 import { usePushSync } from "../../hooks/usePushSync";
 import { fetchPublicSiteConfig } from "../../services/SiteConfigService";
 import { applyPublicSiteConfig } from "../../stores/site-config";
+import { useAuthStore } from "../../stores/auth";
 
 const ENTITY_QUERY_KEYS = {
   announcement: [queryKeys.announcements.all, queryKeys.dashboard.latestAnnouncement()],
@@ -46,18 +47,35 @@ export function useAppShellPushNotifications({
   enabled,
   onUnauthorized,
 }: UseAppShellPushNotificationsOptions) {
+  const sessionKey = useAuthStore((state) => state.sessionKey);
+  const activeRef = useRef(enabled);
   const pendingInvalidationsRef = useRef(new Map<string, readonly unknown[]>());
   const pendingSiteConfigRefreshRef = useRef(false);
   const invalidationTimerRef = useRef<number | null>(null);
 
-  useEffect(() => () => {
-    if (invalidationTimerRef.current !== null) window.clearTimeout(invalidationTimerRef.current);
-  }, []);
+  useEffect(() => {
+    activeRef.current = enabled;
+    const pending = pendingInvalidationsRef.current;
+    return () => {
+      activeRef.current = false;
+      if (invalidationTimerRef.current !== null) window.clearTimeout(invalidationTimerRef.current);
+      invalidationTimerRef.current = null;
+      pending.clear();
+      pendingSiteConfigRefreshRef.current = false;
+    };
+  }, [enabled, sessionKey]);
+
+  const isCurrentSession = useCallback(
+    () => activeRef.current && useAuthStore.getState().sessionKey === sessionKey,
+    [sessionKey],
+  );
 
   const queueInvalidations = useCallback(
     (keys: readonly (readonly unknown[])[]) => {
+      if (!isCurrentSession()) return;
       for (const key of keys) pendingInvalidationsRef.current.set(JSON.stringify(key), key);
       invalidationTimerRef.current ??= window.setTimeout(() => {
+        if (!isCurrentSession()) return;
         invalidationTimerRef.current = null;
         const pending = [...pendingInvalidationsRef.current.values()];
         pendingInvalidationsRef.current.clear();
@@ -65,18 +83,22 @@ export function useAppShellPushNotifications({
         if (pendingSiteConfigRefreshRef.current) {
           pendingSiteConfigRefreshRef.current = false;
           void fetchPublicSiteConfig()
-            .then(applyPublicSiteConfig)
+            .then((config) => {
+              if (isCurrentSession()) applyPublicSiteConfig(config);
+            })
             .catch((error: unknown) => {
+              if (!isCurrentSession()) return;
               console.error("[site-config] push refresh failed", error);
             });
         }
       }, PUSH_INVALIDATION_WINDOW_MS);
     },
-    [queryClient],
+    [isCurrentSession, queryClient],
   );
 
   const handlePushMessage = useCallback(
     (message: PushMessage) => {
+      if (!isCurrentSession()) return;
       if (message.type === "entity_changed") {
         if (message.entity_type === "site_config") pendingSiteConfigRefreshRef.current = true;
         queueInvalidations([queryKeys.cmdk.all, ...(ENTITY_QUERY_KEYS[message.entity_type] ?? [])]);
@@ -88,17 +110,34 @@ export function useAppShellPushNotifications({
         queueInvalidations([queryKeys.notifications.all, queryKeys.importantNotices.all]);
       }
     },
-    [queueInvalidations],
+    [isCurrentSession, queueInvalidations],
   );
 
   const refreshAfterPushConnection = useCallback(() => {
+    if (!isCurrentSession()) return;
     pendingSiteConfigRefreshRef.current = true;
     queueInvalidations(PUSH_RECOVERY_QUERY_KEYS);
-  }, [queueInvalidations]);
+  }, [isCurrentSession, queueInvalidations]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    // Push is best effort. Returning to the page is a server-state refresh
+    // boundary even when the socket never disconnected after a missed hint.
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshAfterPushConnection();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, [enabled, refreshAfterPushConnection]);
 
   const handleNotificationUnauthorized = useCallback(() => {
+    if (!isCurrentSession()) return;
     onUnauthorized();
-  }, [onUnauthorized]);
+  }, [isCurrentSession, onUnauthorized]);
 
   usePushSync({
     enabled,

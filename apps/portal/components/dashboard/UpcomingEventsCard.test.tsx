@@ -99,4 +99,28 @@ describe("UpcomingEventsCard", () => {
       "Event featured-latest",
     ]);
   });
+
+  it("groups quota and people as secondary details below the primary row when space is tight", () => {
+    const row = eventRow("with-quota", false);
+    row.quotaSummary = {
+      slots: [],
+      matchedTotal: 0,
+      requiredTotal: 1,
+    };
+
+    const { container } = render(
+      <UpcomingEventsCard
+        upcomingEventsCount={1}
+        featuredRows={[]}
+        rows={[row]}
+        onOpenEvent={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
+    );
+
+    const details = container.querySelector(".upcoming-event-row__details");
+    expect(details).toHaveAttribute("data-has-quota", "true");
+    expect(details?.querySelector(".upcoming-event-row__quota")).not.toBeNull();
+    expect(details?.querySelector(".upcoming-event-row__people")).not.toBeNull();
+  });
 });

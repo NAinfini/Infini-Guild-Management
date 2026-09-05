@@ -20,7 +20,7 @@ import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
 import { Progress } from "@portal/components/ui/progress";
 import { ScrollArea } from "@portal/components/ui/scroll-area";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { PlusIcon, SaveIcon, TrashIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
@@ -185,9 +185,7 @@ export function AdminClassesSection({ masterNavigation }: { masterNavigation?: R
               </Alert>
             ) : null}
             {controller.query.isLoading ? (
-              Array.from({ length: 6 }).map((_, index) => (
-                <Skeleton key={index} className="admin-md__skeleton" />
-              ))
+              <LoadingIndicator />
             ) : listBlockingError ? (
               <EmptyState
                 status="error"

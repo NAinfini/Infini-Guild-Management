@@ -17,14 +17,14 @@ import {
 } from "../../support/test";
 
 /*
- * 设置页：主题、主色、语言，以及服务端通知偏好。
+ * 设置页：主题、主色、语言、动效，以及服务端通知偏好。
  *
- * 前三组都是纯客户端偏好——写 localStorage、改 <html> 上的 data-* 属性，
- * 一个请求都不该发（SettingsPage.tsx → preferences store → ThemeProvider）。
+ * 外观与语言都是纯客户端偏好——写 localStorage、改 <html> 上的 data-* 属性，
+ * 不该请求 API（SettingsPage.tsx → preferences store → ThemeProvider）。
  * 所以每条用例的验收是三件事一起看：属性变了、localStorage 落盘了、
  * 刷新之后还在。少了最后一步，「切了但没存住」根本测不出来。
  *
- * 前三条不需要收尾还原：每条用例都是全新的浏览器上下文，localStorage 从空开始，
+ * 客户端偏好不需要收尾还原：每条用例都是全新的浏览器上下文，localStorage 从空开始，
  * 而 storageState 是从纯 API 通道存的，本身不含任何 origin 数据。通知偏好则用
  * 本轮登记的一次性账号验证；不触碰种子管理员，收尾由 user artifact 的外键级联清理。
  */
@@ -134,6 +134,15 @@ async function readRootAttribute(page: Page, name: string): Promise<string | nul
   return page.evaluate((attribute) => document.documentElement.getAttribute(attribute), name);
 }
 
+async function readOptionTransitionSeconds(page: Page): Promise<number[]> {
+  return page.locator(".settings-option-card").first().evaluate((element) =>
+    getComputedStyle(element).transitionDuration.split(",").map((duration) => {
+      const value = duration.trim();
+      return parseFloat(value) / (value.endsWith("ms") ? 1000 : 1);
+    }),
+  );
+}
+
 /**
  * 刷新之后不能直接读 data-*：这些属性是 ThemeProvider 挂载后由 effect 写上去的，
  * load 事件回来时根节点上还什么都没有，直接读到的是 null——看着像偏好没存住，
@@ -153,14 +162,16 @@ async function settle(page: Page): Promise<void> {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
   await page.goto("/settings");
   await expect(page.getByText("Appearance", { exact: true })).toBeVisible();
   await settle(page);
 });
 
 test("主题：切到深色后属性、落盘、刷新三处一致，切回浅色同样成立", async ({ page, flow }) => {
-  expect(await readRootAttribute(page, "data-theme"), "默认是浅色").toBe("light");
-  await expect(optionRadio(page, "Light")).toHaveAttribute("aria-checked", "true");
+  expect(await readRootAttribute(page, "data-theme"), "默认跟随当前浅色系统").toBe("light");
+  await expect(optionRadio(page, "System")).toHaveAttribute("aria-checked", "true");
+  await expect(optionRadio(page, "Light")).toHaveAttribute("aria-checked", "false");
 
   await flow.clickWithoutApi(optionRadio(page, "Dark"));
   expect(await readRootAttribute(page, "data-theme")).toBe("dark");
@@ -175,6 +186,70 @@ test("主题：切到深色后属性、落盘、刷新三处一致，切回浅�
   await flow.clickWithoutApi(optionRadio(page, "Light"));
   expect(await readRootAttribute(page, "data-theme")).toBe("light");
   expect(await readStorage(page, "themeMode")).toBe("light");
+});
+
+test("系统主题：实时响应设备变化，显式选择优先，切回系统后继续跟随", async ({ page, flow }) => {
+  expect(await readStorage(page, "themeMode")).toBeNull();
+  await expect(optionRadio(page, "System")).toHaveAttribute("aria-checked", "true");
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expectRootAttribute(page, "data-theme", "dark", "系统改为深色时应实时响应");
+  await expect(optionRadio(page, "System")).toHaveAttribute("aria-checked", "true");
+
+  await flow.clickWithoutApi(optionRadio(page, "Light"));
+  await expectRootAttribute(page, "data-theme", "light", "手动浅色应覆盖系统深色");
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expectRootAttribute(page, "data-theme", "light", "后续系统变化不能覆盖手动选择");
+  expect(await readStorage(page, "themeMode")).toBe("light");
+
+  await page.reload();
+  await expectRootAttribute(page, "data-theme", "light", "刷新后仍应尊重手动浅色");
+  await expect(optionRadio(page, "Light")).toHaveAttribute("aria-checked", "true");
+  await settle(page);
+  await flow.clickWithoutApi(optionRadio(page, "System"));
+  expect(await readStorage(page, "themeMode")).toBe("system");
+  await expectRootAttribute(page, "data-theme", "dark", "重新选择系统后应采用当前深色偏好");
+
+  await page.emulateMedia({ colorScheme: "light" });
+  await expectRootAttribute(page, "data-theme", "light", "切回系统后仍能实时变化");
+  await page.reload();
+  await expectRootAttribute(page, "data-theme", "light", "刷新保留跟随系统");
+  await expect(optionRadio(page, "System")).toHaveAttribute("aria-checked", "true");
+});
+
+test("减少动效：手动偏好落盘，关闭后跟随系统，不能覆盖系统减少动效", async ({ page, flow }) => {
+  const toggle = page.getByRole("switch", { name: "Reduce motion", exact: true });
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  expect(await readStorage(page, "motionPreference")).toBeNull();
+  await expectRootAttribute(page, "data-motion", "full", "无手动或系统限制时保留完整动效");
+  expect((await readOptionTransitionSeconds(page)).some((duration) => duration > 0.001)).toBe(true);
+
+  await flow.clickWithoutApi(toggle);
+  expect(await readStorage(page, "motionPreference")).toBe("reduce");
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await expectRootAttribute(page, "data-motion", "reduced", "手动减少动效应立即生效");
+  expect((await readOptionTransitionSeconds(page)).every((duration) => duration <= 0.001)).toBe(true);
+
+  await page.reload();
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await expectRootAttribute(page, "data-motion", "reduced", "刷新后仍减少动效");
+  await settle(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await flow.clickWithoutApi(toggle);
+  expect(await readStorage(page, "motionPreference")).toBe("system");
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expectRootAttribute(page, "data-motion", "reduced", "关闭开关不能覆盖系统减少动效");
+  expect((await readOptionTransitionSeconds(page)).every((duration) => duration <= 0.001)).toBe(true);
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expectRootAttribute(page, "data-motion", "full", "跟随系统应响应恢复完整动效");
+  expect((await readOptionTransitionSeconds(page)).some((duration) => duration > 0.001)).toBe(true);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expectRootAttribute(page, "data-motion", "reduced", "跟随系统应实时响应减少动效");
+  await page.reload();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expectRootAttribute(page, "data-motion", "reduced", "刷新后仍遵循系统减少动效");
 });
 
 test("主色：四块色卡各自生效并落盘，刷新后保持", async ({ page, flow }) => {

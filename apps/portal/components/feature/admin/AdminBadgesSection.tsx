@@ -20,11 +20,14 @@ import { Button } from "@portal/components/ui/button";
 import { Input } from "@portal/components/ui/input";
 import { Label } from "@portal/components/ui/label";
 import { ScrollArea } from "@portal/components/ui/scroll-area";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { PaletteIcon, PlusIcon, TrashIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
+import { useDebouncedValue } from "@portal/hooks/useDebouncedValue";
+import { useMemberDirectory } from "@portal/hooks/data/useMemberDirectory";
 import type { AdminBadgesController, BadgeForm } from "@portal/hooks/useAdminBadgesController";
+import { useAuthStore } from "@portal/stores/auth";
 import { verticalDragTransform } from "@portal/utils/sortable-transform";
 import { IconGripVertical } from "@tabler/icons-react";
 import type { CSSProperties } from "react";
@@ -35,16 +38,10 @@ import { LabelStyleModal } from "../../shared/LabelStyleModal";
 import { MemberBadgeChip } from "../../shared/MemberCard";
 import { MemberRoleAvatar } from "../../shared/MemberRoleAvatar";
 import { PickList } from "../../shared/PickList";
+import { AdminLoadError } from "./AdminLoadError";
 import "./AdminBadgesSection.css";
 
-export type AdminBadgeMemberRow = {
-  user: { id: string; display_name: string };
-  profile: { classes: readonly string[]; power: number; avatar_media_id: string | null };
-};
-type UserRow = AdminBadgeMemberRow;
-
 type AdminBadgesSectionProps = {
-  userRows: UserRow[];
   controller: AdminBadgesController;
 };
 
@@ -207,7 +204,7 @@ function BadgeFormFields({
   );
 }
 
-export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionProps) {
+export function AdminBadgesSection({ controller }: AdminBadgesSectionProps) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
   const confirm = useConfirmDialog();
@@ -247,6 +244,14 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
     reorderBadges,
     reorderPending,
   } = controller;
+  const currentUserId = useAuthStore((state) => state.user?.id);
+  const debouncedMemberSearch = useDebouncedValue(memberSearch.trim(), 250);
+  const memberDirectory = useMemberDirectory({
+    currentUserId,
+    enabled: Boolean(selectedBadge),
+    search: debouncedMemberSearch,
+    selectedIds: [...draftMemberIds],
+  });
 
   /* 键盘也要能排：只有指针传感器的话，手柄能聚焦却按不动。 */
   const sensors = useSensors(
@@ -281,14 +286,8 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
    * 面板列的是全体成员，不再只列「还没有这枚徽章的人」：勾选状态本身就表示有没有，
    * 加人和删人是同一份名单上的同一个动作。
    */
-  const filteredUsers = useMemo(() => {
-    const query = memberSearch.trim().toLowerCase();
-    if (!query) return userRows;
-    return userRows.filter((row) => row.user.display_name.toLowerCase().includes(query));
-  }, [userRows, memberSearch]);
-
   const memberOptions = useMemo(
-    () => filteredUsers.map((row) => ({
+    () => memberDirectory.entries.map((row) => ({
       id: row.user.id,
       label: row.user.display_name,
       disabled: assignmentsLoading || assignmentsError,
@@ -303,7 +302,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
         />
       ),
     })),
-    [assignmentsError, assignmentsLoading, filteredUsers],
+    [assignmentsError, assignmentsLoading, memberDirectory.entries],
   );
 
   const confirmUnassign = (count: number) => confirm({
@@ -345,9 +344,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
         <ScrollArea className="admin-md__list">
           <div className="admin-md__list-stack">
             {badgesLoading ? (
-              Array.from({ length: 3 }).map((_, index) => (
-                <Skeleton key={index} className="admin-md__skeleton" />
-              ))
+              <LoadingIndicator />
             ) : badgesError ? (
               <EmptyState
                 status="error"
@@ -449,19 +446,36 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                         </Button>
                       ) : null}
                     </div>
-                    <PickList
-                      className="admin-badges__member-picker"
-                      aria-label={t("badges.field.members")}
-                      options={memberOptions}
-                      selected={draftMemberIds}
-                      onToggle={toggleDraftMember}
-                      emptyLabel={t("badges.membership.noMatch")}
-                      search={{
-                        value: memberSearch,
-                        onChange: setMemberSearch,
-                        placeholder: t("badges.searchMembers"),
-                      }}
-                    />
+                    {memberDirectory.loadError ? (
+                      <AdminLoadError onRetry={() => { void memberDirectory.loadError?.retry(); }} />
+                    ) : null}
+                    {memberDirectory.directoryQuery.isLoading && memberOptions.length === 0 ? (
+                      <LoadingIndicator />
+                    ) : memberDirectory.loadError && memberOptions.length === 0 ? null : (
+                      <PickList
+                        className="admin-badges__member-picker"
+                        aria-label={t("badges.field.members")}
+                        options={memberOptions}
+                        selected={draftMemberIds}
+                        onToggle={toggleDraftMember}
+                        emptyLabel={t("badges.membership.noMatch")}
+                        search={{
+                          value: memberSearch,
+                          onChange: setMemberSearch,
+                          placeholder: t("badges.searchMembers"),
+                        }}
+                      />
+                    )}
+                    {memberDirectory.hasMore && !memberDirectory.loadError ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        loading={memberDirectory.isLoadingMore}
+                        onClick={() => { void memberDirectory.loadMore(); }}
+                      >
+                        {tc("action.loadMore")}
+                      </Button>
+                    ) : null}
                   </div>
                 ) : (
                   <span className="admin-md__muted">{t("badges.membership.createFirst")}</span>

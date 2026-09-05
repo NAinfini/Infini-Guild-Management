@@ -24,7 +24,7 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
   constructor(private readonly sql: SqlExecutor) {}
 
   async list(): Promise<readonly ImportantNoticeRecord[]> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "all",
       columns: RECORD_COLUMNS,
       sql: `SELECT ${RECORD_SELECT} FROM important_notices
@@ -34,7 +34,7 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
   }
 
   async get(id: string): Promise<ImportantNoticeRecord | null> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "get",
       columns: RECORD_COLUMNS,
       sql: `SELECT ${RECORD_SELECT} FROM important_notices WHERE id = ?`,
@@ -114,7 +114,7 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
   }
 
   async listAudienceRoles(): Promise<readonly ImportantNoticeAudienceRole[]> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "all",
       columns: ["id", "name", "color", "level"],
       sql: "SELECT id, name, color, level FROM roles ORDER BY level DESC, name COLLATE NOCASE, id",
@@ -130,7 +130,7 @@ export class SqliteImportantNoticeStore implements ImportantNoticeStore {
   }
 
   async listActive(input: Parameters<ImportantNoticeStore["listActive"]>[0]): Promise<readonly ImportantNoticeActive[]> {
-    const result = await this.sql.execute({
+    const result = await this.sql.read({
       method: "all",
       columns: [
         "id", "title", "body_json", "published_at", "expires_at", "requires_acknowledgement",

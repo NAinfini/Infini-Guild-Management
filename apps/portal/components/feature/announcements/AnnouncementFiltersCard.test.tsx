@@ -54,9 +54,6 @@ describe("AnnouncementFiltersCard", () => {
     expect(search).toHaveValue("dragon");
     await user.click(screen.getByRole("button", { name: "common:action.clear" }));
     expect(onSearchChange).toHaveBeenCalledWith("");
-    expect(search.closest(".content-filter-toolbar")).toHaveClass(
-      "announcements-filter-toolbar",
-    );
     await user.click(screen.getByRole("button", { name: "common:filter.toggle (2)" }));
     const filterDialog = await screen.findByRole("dialog", {
       name: /common:filter\.toggle/,

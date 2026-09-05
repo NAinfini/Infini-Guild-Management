@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@portal/components/ui/select";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import { formatDateTime } from "@portal/utils/datetime";
@@ -125,7 +125,7 @@ export function WarHistoryTable({
         onReset={onClearDates}
       />
 
-      {historyLoading ? <div className="grid gap-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div> : null}
+      {historyLoading ? <LoadingIndicator /> : null}
       {historyError ? <Alert variant="destructive">{loadErrorMessage}</Alert> : null}
 
       {!historyLoading && !historyError ? (

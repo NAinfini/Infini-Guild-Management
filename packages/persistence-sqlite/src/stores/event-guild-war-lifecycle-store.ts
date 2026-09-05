@@ -93,7 +93,7 @@ implements EventGuildWarLifecycleStore, GuildWarEventRosterStore {
       params: [...warGuard.params, ...updatedEventGuard.params],
     };
     const moves = JSON.stringify(input.moves);
-    const labelRows = returnedRows(await this.sql.execute({
+    const labelRows = returnedRows(await this.sql.read({
       method: "all",
       columns: ["id", "display_name"],
       sql: `SELECT id, display_name FROM users

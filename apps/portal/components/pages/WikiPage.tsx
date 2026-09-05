@@ -2,6 +2,7 @@ import {
   ArchiveIcon,
   ArrowLeftIcon,
   ClockIcon,
+  DotsIcon,
   PencilIcon,
   PinIcon,
   SearchIcon,
@@ -21,13 +22,19 @@ import { Badge } from "@portal/components/ui/badge";
 import { Button } from "@portal/components/ui/button";
 import { Card } from "@portal/components/ui/card";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@portal/components/ui/dropdown-menu";
+import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
 } from "@portal/components/ui/input-group";
 import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
-import { Skeleton } from "@portal/components/ui/skeleton";
+import { LoadingIndicator } from "@portal/components/ui/loading-indicator";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { isApiRequestError } from "@portal/services/WikiService";
 import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
@@ -163,6 +170,8 @@ export function WikiPage() {
     const articleEditorName = controller.selectedArticle
       ? controller.selectedArticle.updated_by_display_name ?? t("meta.editorFallback")
       : "";
+    const canArchiveSelectedArticle = controller.canArchiveArticle && !controller.selectedArticle?.archived_at;
+    const hasArticleMenu = controller.canEditArticle || canArchiveSelectedArticle || controller.canDeleteArticle;
 
     if (detailUnavailable) {
       return (
@@ -202,7 +211,7 @@ export function WikiPage() {
             </Alert>
           ) : null}
           {controller.isEditorPaneVisible ? (
-            <Suspense fallback={<Skeleton className="wiki-detail-skeleton" />}>
+            <Suspense fallback={<LoadingIndicator />}>
               <LazyWikiArticleEditorCard
                 navigation={backButton}
                 canCreate={controller.canCreateArticle}
@@ -239,7 +248,7 @@ export function WikiPage() {
             </Suspense>
           ) : (
             <Card className="wiki-detail-reader">
-              {controller.detailQuery.isLoading ? <Skeleton className="wiki-detail-skeleton" /> : null}
+              {controller.detailQuery.isLoading ? <LoadingIndicator /> : null}
               {!controller.detailQuery.isLoading && !controller.selectedArticle ? (
                 <EmptyState title={t("welcome.title")} description={t("welcome.description")} />
               ) : null}
@@ -276,32 +285,48 @@ export function WikiPage() {
                       timestampDateTime={controller.selectedArticle.updated_at}
                       viewsLabel={t("meta.viewsLabel")}
                       viewCount={controller.selectedArticle.view_count}
-                      actions={controller.canEditArticle || controller.canArchiveArticle || controller.canDeleteArticle ? (
+                      actions={hasArticleMenu ? (
                         <div className="wiki-detail-actions">
                           {controller.canEditArticle ? (
-                            <>
-                              <Button type="button" variant="outline" size="sm" onClick={controller.openHistory}>
-                                <ClockIcon size={15} aria-hidden="true" /> {t("history.button")}
-                              </Button>
-                              <Button type="button" size="sm" onClick={controller.handleOpenArticleEditor}>
-                                <PencilIcon size={15} aria-hidden="true" /> {t("editor.editWiki")}
-                              </Button>
-                            </>
-                          ) : null}
-                          {controller.canArchiveArticle && !controller.selectedArticle.archived_at ? (
-                            <Button type="button" variant="outline" size="sm" loading={controller.articleEditor.isArchiving} onClick={() => { void handleArchiveArticle(); }}>
-                              <ArchiveIcon size={15} aria-hidden="true" /> {t("articleEditor.archive")}
+                            <Button type="button" size="sm" onClick={controller.handleOpenArticleEditor}>
+                              <PencilIcon size={15} aria-hidden="true" /> {t("editor.editWiki")}
                             </Button>
                           ) : null}
-                          {controller.canDeleteArticle ? (
-                            <Button type="button" variant="destructive" size="sm" loading={controller.articleEditor.isDeleting} onClick={() => { void handleDeleteArticle(); }}>
-                              <TrashIcon size={15} aria-hidden="true" /> {t("common:action.delete")}
-                            </Button>
-                          ) : null}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" />}>
+                              <DotsIcon size={15} aria-hidden="true" /> {t("common:action.more")}
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {controller.canEditArticle ? (
+                                <DropdownMenuItem onClick={controller.openHistory}>
+                                  <ClockIcon size={15} aria-hidden="true" /> {t("history.button")}
+                                </DropdownMenuItem>
+                              ) : null}
+                              {canArchiveSelectedArticle ? (
+                                <DropdownMenuItem
+                                  disabled={controller.articleEditor.isArchiving}
+                                  aria-busy={controller.articleEditor.isArchiving || undefined}
+                                  onClick={() => { void handleArchiveArticle(); }}
+                                >
+                                  <ArchiveIcon size={15} aria-hidden="true" /> {t("articleEditor.archive")}
+                                </DropdownMenuItem>
+                              ) : null}
+                              {controller.canDeleteArticle ? (
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  disabled={controller.articleEditor.isDeleting}
+                                  aria-busy={controller.articleEditor.isDeleting || undefined}
+                                  onClick={() => { void handleDeleteArticle(); }}
+                                >
+                                  <TrashIcon size={15} aria-hidden="true" /> {t("common:action.delete")}
+                                </DropdownMenuItem>
+                              ) : null}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       ) : undefined}
                     />
-                    <Suspense fallback={<Skeleton className="wiki-detail-skeleton" />}>
+                    <Suspense fallback={<LoadingIndicator />}>
                       <LazyTipTapEditor
                         value={controller.selectedArticle.body_json}
                         onChange={() => {}}
@@ -404,16 +429,14 @@ export function WikiPage() {
     <PageLayout toolbar={filterToolbar} workspaceMode="scroll">
       <div className="wiki-catalog-page">
         {showPinnedSection ? (
-          <Card className="content-pinned-section" role="region" aria-labelledby="wiki-pinned-title">
+          <section className="content-pinned-section" aria-labelledby="wiki-pinned-title">
             <header className="content-pinned-section__header">
-              <p>{t("pinned.eyebrow")}</p>
               <h2 id="wiki-pinned-title">{t("pinned.title")}</h2>
             </header>
             <div className="content-pinned-grid" data-count={controller.pinnedArticles.length}>
               {controller.pinnedArticles.map((item) => (
                 <ContentPreviewCard
                   key={item.slug}
-                  compact
                   domain="wiki"
                   title={item.title}
                   excerpt={item.excerpt}
@@ -429,13 +452,12 @@ export function WikiPage() {
                 />
               ))}
             </div>
-          </Card>
+          </section>
         ) : null}
 
         <div className="content-catalog-layout">
-          <Card className="content-category-rail">
-            <p className="content-category-rail__eyebrow">{t("categoryRail.eyebrow")}</p>
-            <h2 className="content-category-rail__title">{t("categoryRail.title")}</h2>
+          <nav className="content-category-rail" aria-labelledby="wiki-category-rail-title">
+            <h2 id="wiki-category-rail-title" className="content-category-rail__title">{t("categoryRail.title")}</h2>
             <div className="content-category-rail__options">
               <button
                 type="button"
@@ -457,7 +479,7 @@ export function WikiPage() {
                 </button>
               ))}
             </div>
-          </Card>
+          </nav>
 
           <WikiArticleListCard
             title={t("articles.title")}

@@ -9,6 +9,7 @@ export default [
       "**/dist/**",
       "**/coverage/**",
       "**/.wrangler/**",
+      "**/.cache/**",
       "**/backups/**",
       "apps/cloudflare/tmp/**",
       "apps/portal/public/**",
@@ -16,6 +17,7 @@ export default [
   },
   {
     files: [
+      "*.config.ts",
       "apps/**/*.ts",
       "apps/**/*.tsx",
       "packages/**/*.ts",
@@ -104,7 +106,7 @@ export default [
     },
   },
   {
-    files: ["scripts/**/*.mjs"],
+    files: ["scripts/**/*.mjs", "eslint.config.js"],
     rules: {
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
